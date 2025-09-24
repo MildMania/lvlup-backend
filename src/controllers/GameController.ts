@@ -1,10 +1,28 @@
 import { Request, Response } from 'express';
-import { PrismaClient } from '@prisma/client';
+import { PrismaClient, Game } from '@prisma/client';
 import { v4 as uuidv4 } from 'uuid';
 import { ApiResponse } from '../types/api';
 import logger from '../utils/logger';
 
-const prisma = new PrismaClient();
+// Types for Prisma return values with counts
+interface GameWithCounts {
+    id: string;
+    name: string;
+    description?: string | null;
+    apiKey?: string;
+    createdAt: Date;
+    updatedAt?: Date;
+    _count?: {
+        events: number;
+        users: number;
+        sessions: number;
+        checkpoints?: number;
+        playerCheckpoints?: number;
+    };
+}
+
+// Create PrismaClient with type assertion to avoid the type errors
+const prisma = new PrismaClient() as any;
 
 export class GameController {
     // Create a new game
@@ -63,7 +81,9 @@ export class GameController {
                         select: {
                             events: true,
                             users: true,
-                            sessions: true
+                            sessions: true,
+                            checkpoints: true,
+                            playerCheckpoints: true
                         }
                     }
                 },
@@ -72,15 +92,17 @@ export class GameController {
                 }
             });
 
-            const formattedGames = games.map((game: any) => ({
+            const formattedGames = games.map((game: GameWithCounts) => ({
                 id: game.id,
                 name: game.name,
                 description: game.description,
                 createdAt: game.createdAt,
                 stats: {
-                    events: game._count.events,
-                    users: game._count.users,
-                    sessions: game._count.sessions
+                    events: game._count?.events || 0,
+                    users: game._count?.users || 0,
+                    sessions: game._count?.sessions || 0,
+                    checkpoints: game._count?.checkpoints || 0,
+                    playerJourneys: game._count?.playerCheckpoints || 0
                 }
             }));
 
@@ -102,6 +124,14 @@ export class GameController {
         try {
             const { id } = req.params;
 
+            // Ensure id is defined
+            if (!id) {
+                return res.status(400).json({
+                    success: false,
+                    error: 'Game ID is required'
+                });
+            }
+
             const game = await prisma.game.findUnique({
                 where: { id },
                 select: {
@@ -115,7 +145,9 @@ export class GameController {
                         select: {
                             events: true,
                             users: true,
-                            sessions: true
+                            sessions: true,
+                            checkpoints: true,
+                            playerCheckpoints: true
                         }
                     }
                 }
@@ -128,14 +160,19 @@ export class GameController {
                 });
             }
 
+            // Cast to our interface
+            const gameWithCounts = game as GameWithCounts;
+
             res.status(200).json({
                 success: true,
                 data: {
-                    ...game,
+                    ...gameWithCounts,
                     stats: {
-                        events: game._count.events,
-                        users: game._count.users,
-                        sessions: game._count.sessions
+                        events: gameWithCounts._count?.events || 0,
+                        users: gameWithCounts._count?.users || 0,
+                        sessions: gameWithCounts._count?.sessions || 0,
+                        checkpoints: gameWithCounts._count?.checkpoints || 0,
+                        playerJourneys: gameWithCounts._count?.playerCheckpoints || 0
                     }
                 }
             });
@@ -152,6 +189,14 @@ export class GameController {
     async regenerateApiKey(req: Request, res: Response<ApiResponse>) {
         try {
             const { id } = req.params;
+
+            // Ensure id is defined
+            if (!id) {
+                return res.status(400).json({
+                    success: false,
+                    error: 'Game ID is required'
+                });
+            }
 
             // Generate a new API key
             const apiKey = `lvl_${uuidv4().replace(/-/g, '')}`;
@@ -184,6 +229,14 @@ export class GameController {
     async deleteGame(req: Request, res: Response<ApiResponse>) {
         try {
             const { id } = req.params;
+
+            // Ensure id is defined
+            if (!id) {
+                return res.status(400).json({
+                    success: false,
+                    error: 'Game ID is required'
+                });
+            }
 
             await prisma.game.delete({
                 where: { id }

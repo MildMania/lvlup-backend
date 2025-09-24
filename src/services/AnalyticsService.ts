@@ -3,13 +3,16 @@ import { EventData, BatchEventData, UserProfile, SessionData } from '../types/ap
 import logger from '../utils/logger';
 import { v4 as uuidv4 } from 'uuid';
 
-const prisma = new PrismaClient();
-
 export class AnalyticsService {
+    private prisma: PrismaClient;
+
+    constructor(prismaClient?: PrismaClient) {
+        this.prisma = prismaClient || new PrismaClient();
+    }
     // Create or get user
     async getOrCreateUser(gameId: string, userProfile: UserProfile) {
         try {
-            const user = await prisma.user.upsert({
+            const user = await this.prisma.user.upsert({
                 where: {
                     gameId_externalId: {
                         gameId: gameId,
@@ -48,7 +51,7 @@ export class AnalyticsService {
         try {
             const sessionId = uuidv4();
 
-            const session = await prisma.session.create({
+            const session = await this.prisma.session.create({
                 data: {
                     id: sessionId,
                     gameId: gameId,
@@ -70,7 +73,7 @@ export class AnalyticsService {
     // End a session
     async endSession(sessionId: string, endTime: string) {
         try {
-            const session = await prisma.session.findUnique({
+            const session = await this.prisma.session.findUnique({
                 where: { id: sessionId }
             });
 
@@ -81,7 +84,7 @@ export class AnalyticsService {
             const endDateTime = new Date(endTime);
             const duration = Math.floor((endDateTime.getTime() - session.startTime.getTime()) / 1000);
 
-            const updatedSession = await prisma.session.update({
+            const updatedSession = await this.prisma.session.update({
                 where: { id: sessionId },
                 data: {
                     endTime: endDateTime,
@@ -100,7 +103,7 @@ export class AnalyticsService {
     // Track single event
     async trackEvent(gameId: string, userId: string, sessionId: string | null, eventData: EventData) {
         try {
-            const event = await prisma.event.create({
+            const event = await this.prisma.event.create({
                 data: {
                     gameId: gameId,
                     userId: userId,
@@ -140,7 +143,7 @@ export class AnalyticsService {
                 timestamp: eventData.timestamp ? new Date(eventData.timestamp) : new Date()
             }));
 
-            const createdEvents = await prisma.event.createMany({
+            const createdEvents = await this.prisma.event.createMany({
                 data: events,
                 skipDuplicates: true
             });
@@ -164,7 +167,7 @@ export class AnalyticsService {
                 topEvents
             ] = await Promise.all([
                 // Total events
-                prisma.event.count({
+                this.prisma.event.count({
                     where: {
                         gameId: gameId,
                         timestamp: {
@@ -175,7 +178,7 @@ export class AnalyticsService {
                 }),
 
                 // Unique users
-                prisma.user.count({
+                this.prisma.user.count({
                     where: {
                         gameId: gameId,
                         createdAt: {
@@ -186,7 +189,7 @@ export class AnalyticsService {
                 }),
 
                 // Total sessions
-                prisma.session.count({
+                this.prisma.session.count({
                     where: {
                         gameId: gameId,
                         startTime: {

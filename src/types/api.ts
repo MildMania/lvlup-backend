@@ -10,6 +10,16 @@ export interface ApiResponse {
     message?: string;
 }
 
+// Analytics filter parameters
+export interface AnalyticsFilterParams {
+    startDate?: string;
+    endDate?: string;
+    country?: string | string[];
+    platform?: string | string[];
+    version?: string | string[];
+    retentionDays?: number[];
+}
+
 // User profile data
 export interface UserProfile {
     externalId: string;

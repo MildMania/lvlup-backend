@@ -54,6 +54,10 @@ router.get('/dashboard', analyticsController.getAnalytics);
  * GET /analytics/metrics/retention - Get user retention metrics
  * @query {string} startDate - Optional start date (ISO format)
  * @query {string} endDate - Optional end date (ISO format)
+ * @query {string|string[]} country - Optional country or countries to filter by
+ * @query {string|string[]} platform - Optional platform or platforms to filter by
+ * @query {string|string[]} version - Optional version or versions to filter by
+ * @query {string} retentionDays - Optional comma-separated list of retention days (e.g., "1,7,14,30,90")
  */
 router.get('/metrics/retention', analyticsMetricsController.getRetention);
 
@@ -61,6 +65,9 @@ router.get('/metrics/retention', analyticsMetricsController.getRetention);
  * GET /analytics/metrics/active-users - Get DAU, WAU, MAU metrics
  * @query {string} startDate - Optional start date (ISO format)
  * @query {string} endDate - Optional end date (ISO format)
+ * @query {string|string[]} country - Optional country or countries to filter by
+ * @query {string|string[]} platform - Optional platform or platforms to filter by
+ * @query {string|string[]} version - Optional version or versions to filter by
  */
 router.get('/metrics/active-users', analyticsMetricsController.getActiveUsers);
 
@@ -68,6 +75,9 @@ router.get('/metrics/active-users', analyticsMetricsController.getActiveUsers);
  * GET /analytics/metrics/playtime - Get playtime and session metrics
  * @query {string} startDate - Optional start date (ISO format)
  * @query {string} endDate - Optional end date (ISO format)
+ * @query {string|string[]} country - Optional country or countries to filter by
+ * @query {string|string[]} platform - Optional platform or platforms to filter by
+ * @query {string|string[]} version - Optional version or versions to filter by
  */
 router.get('/metrics/playtime', analyticsMetricsController.getPlaytimeMetrics);
 

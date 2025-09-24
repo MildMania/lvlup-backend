@@ -20,11 +20,13 @@ model Game {
   updatedAt   DateTime @updatedAt
 
   // Relations
-  events      Event[]
-  users       User[]
-  sessions    Session[]
-  configs     RemoteConfig[]
-  experiments ABTest[]
+  events            Event[]
+  users             User[]
+  sessions          Session[]
+  configs           RemoteConfig[]
+  experiments       ABTest[]
+  checkpoints       Checkpoint[]
+  playerCheckpoints PlayerCheckpoint[]
 
   @@map("games")
 }
@@ -33,19 +35,20 @@ model Game {
 model User {
   id         String   @id @default(cuid())
   gameId     String
-  externalId String   // Unity/Client tarafından gelen user ID
+  externalId String // Unity/Client tarafından gelen user ID
   deviceId   String?
-  platform   String?  // iOS, Android, WebGL etc.
-  version    String?  // App/Game version
+  platform   String? // iOS, Android, WebGL etc.
+  version    String? // App/Game version
   country    String?
   language   String?
   createdAt  DateTime @default(now())
   updatedAt  DateTime @updatedAt
 
   // Relations
-  game     Game      @relation(fields: [gameId], references: [id], onDelete: Cascade)
-  events   Event[]
-  sessions Session[]
+  game              Game               @relation(fields: [gameId], references: [id], onDelete: Cascade)
+  events            Event[]
+  sessions          Session[]
+  playerCheckpoints PlayerCheckpoint[]
 
   @@unique([gameId, externalId])
   @@map("users")
@@ -58,15 +61,17 @@ model Session {
   userId    String
   startTime DateTime  @default(now())
   endTime   DateTime?
-  duration  Int?      // seconds
+  duration  Int? // seconds
   platform  String?
   version   String?
 
   // Relations
-  game   Game   @relation(fields: [gameId], references: [id], onDelete: Cascade)
-  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  game   Game    @relation(fields: [gameId], references: [id], onDelete: Cascade)
+  user   User    @relation(fields: [userId], references: [id], onDelete: Cascade)
   events Event[]
 
+  @@index([gameId, userId, startTime]) // For user session counts and durations
+  @@index([gameId, startTime]) // For overall game session analytics
   @@map("sessions")
 }
 
@@ -77,7 +82,7 @@ model Event {
   userId     String
   sessionId  String?
   eventName  String
-  properties Json?    // JSONB for flexible event properties
+  properties Json? // JSONB for flexible event properties
   timestamp  DateTime @default(now())
 
   // Relations
@@ -95,7 +100,7 @@ model RemoteConfig {
   id          String   @id @default(cuid())
   gameId      String
   key         String
-  value       Json     // JSONB for any type of config value
+  value       Json // JSONB for any type of config value
   environment String   @default("production") // production, staging, development
   enabled     Boolean  @default(true)
   description String?
@@ -111,45 +116,45 @@ model RemoteConfig {
 
 // A/B Testing
 model ABTest {
-  id          String     @id @default(cuid())
-  gameId      String
-  name        String
-  description String?
-  status      TestStatus @default(DRAFT)
-  trafficSplit Float     @default(0.5) // 0.0 to 1.0
-  startDate   DateTime?
-  endDate     DateTime?
-  createdAt   DateTime   @default(now())
-  updatedAt   DateTime   @updatedAt
+  id           String     @id @default(cuid())
+  gameId       String
+  name         String
+  description  String?
+  status       TestStatus @default(DRAFT)
+  trafficSplit Float      @default(0.5) // 0.0 to 1.0
+  startDate    DateTime?
+  endDate      DateTime?
+  createdAt    DateTime   @default(now())
+  updatedAt    DateTime   @updatedAt
 
   // Relations
-  game      Game        @relation(fields: [gameId], references: [id], onDelete: Cascade)
-  variants  TestVariant[]
+  game        Game             @relation(fields: [gameId], references: [id], onDelete: Cascade)
+  variants    TestVariant[]
   assignments TestAssignment[]
 
   @@map("ab_tests")
 }
 
 model TestVariant {
-  id          String @id @default(cuid())
+  id          String  @id @default(cuid())
   testId      String
   name        String
   description String?
-  config      Json   // JSONB for variant configuration
-  weight      Float  @default(0.5) // Traffic distribution weight
+  config      Json // JSONB for variant configuration
+  weight      Float   @default(0.5) // Traffic distribution weight
 
   // Relations
-  test        ABTest @relation(fields: [testId], references: [id], onDelete: Cascade)
+  test        ABTest           @relation(fields: [testId], references: [id], onDelete: Cascade)
   assignments TestAssignment[]
 
   @@map("test_variants")
 }
 
 model TestAssignment {
-  id        String   @id @default(cuid())
-  testId    String
-  variantId String
-  userId    String
+  id         String   @id @default(cuid())
+  testId     String
+  variantId  String
+  userId     String
   assignedAt DateTime @default(now())
 
   // Relations
@@ -165,4 +170,43 @@ enum TestStatus {
   RUNNING
   PAUSED
   COMPLETED
+}
+
+// Player Journey - Checkpoint Definition
+model Checkpoint {
+  id          String   @id @default(cuid())
+  gameId      String
+  name        String
+  description String?
+  type        String // e.g., "tutorial", "level", "achievement", "feature_unlock"
+  tags        String[] // Array of tags for filtering
+  order       Int? // Optional ordering within a sequence
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  // Relations
+  game              Game               @relation(fields: [gameId], references: [id], onDelete: Cascade)
+  playerCheckpoints PlayerCheckpoint[]
+
+  @@unique([gameId, name])
+  @@map("checkpoints")
+}
+
+// Player Journey - Checkpoint Tracking
+model PlayerCheckpoint {
+  id           String   @id @default(cuid())
+  gameId       String
+  userId       String
+  checkpointId String
+  timestamp    DateTime @default(now())
+  metadata     Json? // Additional data about the checkpoint completion (scores, time taken, etc.)
+
+  // Relations
+  game       Game       @relation(fields: [gameId], references: [id], onDelete: Cascade)
+  user       User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  checkpoint Checkpoint @relation(fields: [checkpointId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, checkpointId]) // Each user can reach a checkpoint only once
+  @@index([gameId, userId, timestamp]) // For efficient queries on user progression
+  @@map("player_checkpoints")
 }

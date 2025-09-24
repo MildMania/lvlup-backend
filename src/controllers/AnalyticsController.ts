@@ -115,7 +115,7 @@ export class AnalyticsController {
             for (let i = 0; i < batchData.events.length; i++) {
                 const event = batchData.events[i];
 
-                if (!event.eventName) {
+                if (!event || !event.eventName) {
                     return res.status(400).json({
                         success: false,
                         error: `Event at index ${i} is missing eventName`

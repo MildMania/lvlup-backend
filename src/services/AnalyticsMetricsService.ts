@@ -1,5 +1,6 @@
 import { PrismaClient } from '@prisma/client';
 import logger from '../utils/logger';
+import { AnalyticsFilterParams } from '../types/api';
 
 const prisma = new PrismaClient();
 
@@ -24,18 +25,45 @@ export interface PlaytimeData {
 }
 
 export class AnalyticsMetricsService {
-    // Calculate retention metrics (classic retention at days 1, 3, 7, 14, 30)
-    async calculateRetention(gameId: string, startDate: Date, endDate: Date): Promise<RetentionData[]> {
+    // Calculate retention metrics with flexible retention days and filters
+    async calculateRetention(
+        gameId: string,
+        startDate: Date,
+        endDate: Date,
+        filters?: AnalyticsFilterParams
+    ): Promise<RetentionData[]> {
         try {
-            // Get new users in date range
+            // Build user filters
+            const userFilters: any = {
+                gameId: gameId,
+                createdAt: {
+                    gte: startDate,
+                    lte: endDate
+                }
+            };
+
+            // Add optional filters
+            if (filters?.country) {
+                userFilters.country = Array.isArray(filters.country)
+                    ? { in: filters.country }
+                    : filters.country;
+            }
+
+            if (filters?.platform) {
+                userFilters.platform = Array.isArray(filters.platform)
+                    ? { in: filters.platform }
+                    : filters.platform;
+            }
+
+            if (filters?.version) {
+                userFilters.version = Array.isArray(filters.version)
+                    ? { in: filters.version }
+                    : filters.version;
+            }
+
+            // Get new users in date range with filters
             const newUsers = await prisma.user.findMany({
-                where: {
-                    gameId: gameId,
-                    createdAt: {
-                        gte: startDate,
-                        lte: endDate
-                    }
-                },
+                where: userFilters,
                 select: {
                     id: true,
                     externalId: true,
@@ -47,8 +75,11 @@ export class AnalyticsMetricsService {
                 return [];
             }
 
-            // Calculate retention for days 1, 3, 7, 14, 30
-            const retentionDays = [1, 3, 7, 14, 30];
+            // Use custom retention days if provided, or default to standard days
+            const retentionDays = filters?.retentionDays && filters.retentionDays.length > 0
+                ? filters.retentionDays.sort((a, b) => a - b)  // Sort ascending
+                : [1, 3, 7, 14, 30];
+
             const retentionData: RetentionData[] = [];
 
             for (const day of retentionDays) {
@@ -64,15 +95,37 @@ export class AnalyticsMetricsService {
                         continue;
                     }
 
+                    // Build event filters for retention check
+                    const eventFilters: any = {
+                        userId: user.id,
+                        gameId: gameId,
+                        timestamp: {
+                            gte: retentionDate
+                        }
+                    };
+
+                    // Add optional event filters if available
+                    if (filters?.platform || filters?.version) {
+                        // We need to fetch the events with session information
+                        // to filter by platform and version
+                        eventFilters.session = {};
+
+                        if (filters?.platform) {
+                            eventFilters.session.platform = Array.isArray(filters.platform)
+                                ? { in: filters.platform }
+                                : filters.platform;
+                        }
+
+                        if (filters?.version) {
+                            eventFilters.session.version = Array.isArray(filters.version)
+                                ? { in: filters.version }
+                                : filters.version;
+                        }
+                    }
+
                     // Count if user has any event on or after the retention date
                     const hasReturnedAfterDay = await prisma.event.findFirst({
-                        where: {
-                            userId: user.id,
-                            gameId: gameId,
-                            timestamp: {
-                                gte: retentionDate
-                            }
-                        }
+                        where: eventFilters
                     });
 
                     if (hasReturnedAfterDay) {
@@ -104,8 +157,13 @@ export class AnalyticsMetricsService {
         }
     }
 
-    // Calculate daily, weekly, monthly active users
-    async calculateActiveUsers(gameId: string, startDate: Date, endDate: Date): Promise<ActiveUserData[]> {
+    // Calculate daily, weekly, monthly active users with filters
+    async calculateActiveUsers(
+        gameId: string,
+        startDate: Date,
+        endDate: Date,
+        filters?: AnalyticsFilterParams
+    ): Promise<ActiveUserData[]> {
         try {
             // Get daily active users for each day in the range
             const dailyData: ActiveUserData[] = [];
@@ -129,42 +187,63 @@ export class AnalyticsMetricsService {
                 monthStart.setDate(monthStart.getDate() - 29); // 30 days including current
                 monthStart.setHours(0, 0, 0, 0);
 
+                // Build base filters for events
+                const buildEventFilters = (timeStart: Date, timeEnd: Date) => {
+                    const baseFilters: any = {
+                        gameId: gameId,
+                        timestamp: {
+                            gte: timeStart,
+                            lte: timeEnd
+                        }
+                    };
+
+                    // Join with user to apply country filter if needed
+                    if (filters?.country) {
+                        baseFilters.user = {
+                            country: Array.isArray(filters.country)
+                                ? { in: filters.country }
+                                : filters.country
+                        };
+                    }
+
+                    // Add session filters if platform or version is specified
+                    if (filters?.platform || filters?.version) {
+                        baseFilters.session = {};
+
+                        if (filters.platform) {
+                            baseFilters.session.platform = Array.isArray(filters.platform)
+                                ? { in: filters.platform }
+                                : filters.platform;
+                        }
+
+                        if (filters.version) {
+                            baseFilters.session.version = Array.isArray(filters.version)
+                                ? { in: filters.version }
+                                : filters.version;
+                        }
+                    }
+
+                    return baseFilters;
+                };
+
                 // Get unique users for each time frame
                 const [dau, wau, mau] = await Promise.all([
                     // Daily active users
                     prisma.event.groupBy({
                         by: ['userId'],
-                        where: {
-                            gameId: gameId,
-                            timestamp: {
-                                gte: dayStart,
-                                lte: dayEnd
-                            }
-                        }
+                        where: buildEventFilters(dayStart, dayEnd)
                     }).then((results: any[]) => results.length),
 
                     // Weekly active users
                     prisma.event.groupBy({
                         by: ['userId'],
-                        where: {
-                            gameId: gameId,
-                            timestamp: {
-                                gte: weekStart,
-                                lte: dayEnd
-                            }
-                        }
+                        where: buildEventFilters(weekStart, dayEnd)
                     }).then((results: any[]) => results.length),
 
                     // Monthly active users
                     prisma.event.groupBy({
                         by: ['userId'],
-                        where: {
-                            gameId: gameId,
-                            timestamp: {
-                                gte: monthStart,
-                                lte: dayEnd
-                            }
-                        }
+                        where: buildEventFilters(monthStart, dayEnd)
                     }).then((results: any[]) => results.length)
                 ]);
 
@@ -190,8 +269,13 @@ export class AnalyticsMetricsService {
         }
     }
 
-    // Calculate daily playtime metrics
-    async calculatePlaytimeMetrics(gameId: string, startDate: Date, endDate: Date): Promise<PlaytimeData[]> {
+    // Calculate daily playtime metrics with filters
+    async calculatePlaytimeMetrics(
+        gameId: string,
+        startDate: Date,
+        endDate: Date,
+        filters?: AnalyticsFilterParams
+    ): Promise<PlaytimeData[]> {
         try {
             // Get daily playtime data for each day in the range
             const playtimeData: PlaytimeData[] = [];
@@ -205,18 +289,42 @@ export class AnalyticsMetricsService {
                 const dayEnd = new Date(currentDate);
                 dayEnd.setHours(23, 59, 59, 999);
 
+                // Build session filters
+                const sessionFilters: any = {
+                    gameId: gameId,
+                    startTime: {
+                        gte: dayStart,
+                        lte: dayEnd
+                    },
+                    // Only include sessions that have ended and have duration
+                    endTime: { not: null },
+                    duration: { not: null }
+                };
+
+                // Apply optional filters
+                if (filters?.platform) {
+                    sessionFilters.platform = Array.isArray(filters.platform)
+                        ? { in: filters.platform }
+                        : filters.platform;
+                }
+
+                if (filters?.version) {
+                    sessionFilters.version = Array.isArray(filters.version)
+                        ? { in: filters.version }
+                        : filters.version;
+                }
+
+                if (filters?.country) {
+                    sessionFilters.user = {
+                        country: Array.isArray(filters.country)
+                            ? { in: filters.country }
+                            : filters.country
+                    };
+                }
+
                 // Get session data for this day
                 const sessions = await prisma.session.findMany({
-                    where: {
-                        gameId: gameId,
-                        startTime: {
-                            gte: dayStart,
-                            lte: dayEnd
-                        },
-                        // Only include sessions that have ended and have duration
-                        endTime: { not: null },
-                        duration: { not: null }
-                    },
+                    where: sessionFilters,
                     select: {
                         userId: true,
                         duration: true

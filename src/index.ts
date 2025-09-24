@@ -28,6 +28,100 @@ app.get('/', (_req: Request, res: Response) => {
     `);
 });
 
+// Debug endpoint to see all registered routes
+app.get('/debug/routes', (_req, res) => {
+    // Instead of trying to extract routes from Express internals, 
+    // let's manually enumerate our known routes for clarity
+
+    // Root routes
+    const rootRoutes = [
+        { path: "/", methods: "GET" },
+        { path: "/debug/routes", methods: "GET" },
+    ];
+
+    // API routes from our defined routes
+    const apiPaths = [
+        // Health check
+        { path: "/api/health", methods: "GET" },
+
+        // Analytics routes
+        { path: "/api/analytics/events", methods: "POST" },
+        { path: "/api/analytics/events/batch", methods: "POST" },
+        { path: "/api/analytics/session/start", methods: "POST" },
+        { path: "/api/analytics/session/end", methods: "PUT" },
+        { path: "/api/analytics/game/:gameId", methods: "GET" },
+
+        // Enhanced Analytics routes
+        { path: "/api/analytics/enhanced/metrics/retention", methods: "GET" },
+        { path: "/api/analytics/enhanced/metrics/active-users", methods: "GET" },
+        { path: "/api/analytics/enhanced/metrics/playtime", methods: "GET" },
+        { path: "/api/analytics/enhanced/metrics/session-count", methods: "GET" },
+        { path: "/api/analytics/enhanced/metrics/session-length", methods: "GET" },
+
+        // Journey Analytics routes
+        { path: "/api/analytics/enhanced/journey/checkpoints", methods: "GET" },
+        { path: "/api/analytics/enhanced/journey/record", methods: "POST" },
+        { path: "/api/analytics/enhanced/journey/progress", methods: "GET" },
+        { path: "/api/analytics/enhanced/journey/user/:userId", methods: "GET" },
+
+        // Game management routes
+        { path: "/api/games", methods: "GET, POST" },
+        { path: "/api/games/:gameId", methods: "GET, DELETE" },
+        { path: "/api/games/:gameId/apikey", methods: "PUT" }
+    ];
+
+    // We can return either JSON or HTML based on the request's Accept header
+    const allRoutes = [...rootRoutes, ...apiPaths];
+
+    // Check if the request accepts HTML
+    const acceptHeader = _req.headers.accept || '';
+    if (acceptHeader.includes('text/html')) {
+        // Return HTML for browser requests
+        let html = `
+        <!DOCTYPE html>
+        <html>
+        <head>
+            <title>LvlUp Backend API Routes</title>
+            <style>
+                body { font-family: Arial, sans-serif; margin: 20px; }
+                h1 { color: #333; }
+                table { border-collapse: collapse; width: 100%; }
+                th, td { border: 1px solid #ddd; padding: 8px; text-align: left; }
+                th { background-color: #f2f2f2; }
+                tr:nth-child(even) { background-color: #f9f9f9; }
+            </style>
+        </head>
+        <body>
+            <h1>LvlUp Backend API Routes</h1>
+            <table>
+                <tr>
+                    <th>Path</th>
+                    <th>Methods</th>
+                </tr>
+        `;
+
+        allRoutes.forEach(route => {
+            html += `
+                <tr>
+                    <td>${route.path}</td>
+                    <td>${route.methods}</td>
+                </tr>
+            `;
+        });
+
+        html += `
+            </table>
+        </body>
+        </html>
+        `;
+
+        res.send(html);
+    } else {
+        // Return JSON for API requests
+        res.status(200).json(allRoutes);
+    }
+});
+
 // API Routes - all under /api prefix
 app.use('/api', apiRoutes);
 
@@ -41,6 +135,6 @@ app.use((err: any, req: Request, res: Response, next: any) => {
 });
 
 // Start server
-app.listen(PORT, () => {
-    logger.info(`LvlUp server running at http://localhost:${PORT}`);
+app.listen(PORT, '0.0.0.0', () => {
+    logger.info(`LvlUp server running at http://0.0.0.0:${PORT}`);
 });

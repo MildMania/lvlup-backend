@@ -11,8 +11,8 @@ describe('AnalyticsService', () => {
     // Reset mocks before each test
     jest.clearAllMocks();
 
-    // Create a fresh instance of the service for each test
-    analyticsService = new AnalyticsService();
+    // Create a fresh instance of the service for each test with the mockPrisma
+    analyticsService = new AnalyticsService(mockPrisma as unknown as PrismaClient);
   });
 
   describe('getOrCreateUser', () => {
@@ -265,6 +265,7 @@ describe('AnalyticsService', () => {
 
       // Mock user creation and batch event creation
       mockPrisma.user.upsert.mockResolvedValue(mockUser);
+      // @ts-ignore - Type mismatch in mock
       mockPrisma.event.createMany.mockResolvedValue({ count: batchData.events.length });
 
       // Act
@@ -305,6 +306,7 @@ describe('AnalyticsService', () => {
       mockPrisma.event.count.mockResolvedValue(1000);
       mockPrisma.user.count.mockResolvedValue(500);
       mockPrisma.session.count.mockResolvedValue(750);
+      // @ts-ignore - Type mismatch in mock
       mockPrisma.session.aggregate.mockResolvedValue({
         _avg: { duration: 600 } // 10 minutes in seconds
       });
@@ -344,6 +346,7 @@ describe('AnalyticsService', () => {
       const startDate = new Date('2023-09-01');
       const endDate = new Date('2023-09-30');
 
+      // @ts-ignore - Mocking error case
       mockPrisma.event.count.mockRejectedValue(new Error('Database error'));
 
       // Act & Assert

@@ -20,21 +20,21 @@ export class AnalyticsService {
                     }
                 },
                 update: {
-                    deviceId: userProfile.deviceId,
-                    platform: userProfile.platform,
-                    version: userProfile.version,
-                    country: userProfile.country,
-                    language: userProfile.language,
+                    deviceId: userProfile.deviceId ?? null,
+                    platform: userProfile.platform ?? null,
+                    version: userProfile.version ?? null,
+                    country: userProfile.country ?? null,
+                    language: userProfile.language ?? null,
                     updatedAt: new Date()
                 },
                 create: {
                     gameId: gameId,
                     externalId: userProfile.externalId,
-                    deviceId: userProfile.deviceId,
-                    platform: userProfile.platform,
-                    version: userProfile.version,
-                    country: userProfile.country,
-                    language: userProfile.language
+                    deviceId: userProfile.deviceId ?? null,
+                    platform: userProfile.platform ?? null,
+                    version: userProfile.version ?? null,
+                    country: userProfile.country ?? null,
+                    language: userProfile.language ?? null
                 }
             });
 
@@ -57,8 +57,8 @@ export class AnalyticsService {
                     gameId: gameId,
                     userId: userId,
                     startTime: new Date(sessionData.startTime),
-                    platform: sessionData.platform,
-                    version: sessionData.version
+                    platform: sessionData.platform ?? null,
+                    version: sessionData.version ?? null
                 }
             });
 
@@ -137,7 +137,7 @@ export class AnalyticsService {
             const events = batchData.events.map(eventData => ({
                 gameId: gameId,
                 userId: user.id,
-                sessionId: batchData.sessionId,
+                sessionId: batchData.sessionId || null,
                 eventName: eventData.eventName,
                 properties: eventData.properties || {},
                 timestamp: eventData.timestamp ? new Date(eventData.timestamp) : new Date()
@@ -200,7 +200,7 @@ export class AnalyticsService {
                 }),
 
                 // Average session duration
-                prisma.session.aggregate({
+                this.prisma.session.aggregate({
                     where: {
                         gameId: gameId,
                         startTime: {
@@ -217,7 +217,7 @@ export class AnalyticsService {
                 }),
 
                 // Top events
-                prisma.event.groupBy({
+                this.prisma.event.groupBy({
                     by: ['eventName'],
                     where: {
                         gameId: gameId,

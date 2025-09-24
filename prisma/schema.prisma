@@ -1,0 +1,168 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// Games/Apps using LvlUp
+model Game {
+  id          String   @id @default(cuid())
+  name        String
+  apiKey      String   @unique
+  description String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  // Relations
+  events      Event[]
+  users       User[]
+  sessions    Session[]
+  configs     RemoteConfig[]
+  experiments ABTest[]
+
+  @@map("games")
+}
+
+// User profiles for analytics
+model User {
+  id         String   @id @default(cuid())
+  gameId     String
+  externalId String   // Unity/Client tarafından gelen user ID
+  deviceId   String?
+  platform   String?  // iOS, Android, WebGL etc.
+  version    String?  // App/Game version
+  country    String?
+  language   String?
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  // Relations
+  game     Game      @relation(fields: [gameId], references: [id], onDelete: Cascade)
+  events   Event[]
+  sessions Session[]
+
+  @@unique([gameId, externalId])
+  @@map("users")
+}
+
+// User sessions for analytics
+model Session {
+  id        String    @id @default(cuid())
+  gameId    String
+  userId    String
+  startTime DateTime  @default(now())
+  endTime   DateTime?
+  duration  Int?      // seconds
+  platform  String?
+  version   String?
+
+  // Relations
+  game   Game   @relation(fields: [gameId], references: [id], onDelete: Cascade)
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  events Event[]
+
+  @@map("sessions")
+}
+
+// Analytics events
+model Event {
+  id         String   @id @default(cuid())
+  gameId     String
+  userId     String
+  sessionId  String?
+  eventName  String
+  properties Json?    // JSONB for flexible event properties
+  timestamp  DateTime @default(now())
+
+  // Relations
+  game    Game     @relation(fields: [gameId], references: [id], onDelete: Cascade)
+  user    User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  session Session? @relation(fields: [sessionId], references: [id], onDelete: SetNull)
+
+  @@index([gameId, eventName, timestamp])
+  @@index([userId, timestamp])
+  @@map("events")
+}
+
+// Remote Configuration
+model RemoteConfig {
+  id          String   @id @default(cuid())
+  gameId      String
+  key         String
+  value       Json     // JSONB for any type of config value
+  environment String   @default("production") // production, staging, development
+  enabled     Boolean  @default(true)
+  description String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  // Relations
+  game Game @relation(fields: [gameId], references: [id], onDelete: Cascade)
+
+  @@unique([gameId, key, environment])
+  @@map("remote_configs")
+}
+
+// A/B Testing
+model ABTest {
+  id          String     @id @default(cuid())
+  gameId      String
+  name        String
+  description String?
+  status      TestStatus @default(DRAFT)
+  trafficSplit Float     @default(0.5) // 0.0 to 1.0
+  startDate   DateTime?
+  endDate     DateTime?
+  createdAt   DateTime   @default(now())
+  updatedAt   DateTime   @updatedAt
+
+  // Relations
+  game      Game        @relation(fields: [gameId], references: [id], onDelete: Cascade)
+  variants  TestVariant[]
+  assignments TestAssignment[]
+
+  @@map("ab_tests")
+}
+
+model TestVariant {
+  id          String @id @default(cuid())
+  testId      String
+  name        String
+  description String?
+  config      Json   // JSONB for variant configuration
+  weight      Float  @default(0.5) // Traffic distribution weight
+
+  // Relations
+  test        ABTest @relation(fields: [testId], references: [id], onDelete: Cascade)
+  assignments TestAssignment[]
+
+  @@map("test_variants")
+}
+
+model TestAssignment {
+  id        String   @id @default(cuid())
+  testId    String
+  variantId String
+  userId    String
+  assignedAt DateTime @default(now())
+
+  // Relations
+  test    ABTest      @relation(fields: [testId], references: [id], onDelete: Cascade)
+  variant TestVariant @relation(fields: [variantId], references: [id], onDelete: Cascade)
+
+  @@unique([testId, userId])
+  @@map("test_assignments")
+}
+
+enum TestStatus {
+  DRAFT
+  RUNNING
+  PAUSED
+  COMPLETED
+}

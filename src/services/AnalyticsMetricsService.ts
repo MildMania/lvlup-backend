@@ -2,8 +2,6 @@ import { PrismaClient } from '@prisma/client';
 import logger from '../utils/logger';
 import { AnalyticsFilterParams } from '../types/api';
 
-const prisma = new PrismaClient();
-
 export interface RetentionData {
     day: number;
     count: number;
@@ -25,6 +23,12 @@ export interface PlaytimeData {
 }
 
 export class AnalyticsMetricsService {
+    private prisma: PrismaClient;
+
+    constructor(prismaClient?: PrismaClient) {
+        this.prisma = prismaClient || new PrismaClient();
+    }
+
     // Calculate retention metrics with flexible retention days and filters
     async calculateRetention(
         gameId: string,
@@ -62,7 +66,7 @@ export class AnalyticsMetricsService {
             }
 
             // Get new users in date range with filters
-            const newUsers = await prisma.user.findMany({
+            const newUsers = await this.prisma.user.findMany({
                 where: userFilters,
                 select: {
                     id: true,
@@ -124,7 +128,7 @@ export class AnalyticsMetricsService {
                     }
 
                     // Count if user has any event on or after the retention date
-                    const hasReturnedAfterDay = await prisma.event.findFirst({
+                    const hasReturnedAfterDay = await this.prisma.event.findFirst({
                         where: eventFilters
                     });
 
@@ -229,19 +233,19 @@ export class AnalyticsMetricsService {
                 // Get unique users for each time frame
                 const [dau, wau, mau] = await Promise.all([
                     // Daily active users
-                    prisma.event.groupBy({
+                    this.prisma.event.groupBy({
                         by: ['userId'],
                         where: buildEventFilters(dayStart, dayEnd)
                     }).then((results: any[]) => results.length),
 
                     // Weekly active users
-                    prisma.event.groupBy({
+                    this.prisma.event.groupBy({
                         by: ['userId'],
                         where: buildEventFilters(weekStart, dayEnd)
                     }).then((results: any[]) => results.length),
 
                     // Monthly active users
-                    prisma.event.groupBy({
+                    this.prisma.event.groupBy({
                         by: ['userId'],
                         where: buildEventFilters(monthStart, dayEnd)
                     }).then((results: any[]) => results.length)
@@ -323,7 +327,7 @@ export class AnalyticsMetricsService {
                 }
 
                 // Get session data for this day
-                const sessions = await prisma.session.findMany({
+                const sessions = await this.prisma.session.findMany({
                     where: sessionFilters,
                     select: {
                         userId: true,

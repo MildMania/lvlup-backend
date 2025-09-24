@@ -10,8 +10,8 @@ describe('AnalyticsMetricsService', () => {
     // Reset mocks before each test
     jest.clearAllMocks();
 
-    // Create a fresh instance of the service for each test
-    metricsService = new AnalyticsMetricsService();
+    // Create a fresh instance of the service for each test with the mockPrisma
+    metricsService = new AnalyticsMetricsService(mockPrisma as unknown as PrismaClient);
   });
 
   describe('calculateRetention', () => {

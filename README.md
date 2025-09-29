@@ -1,124 +1,42 @@
-# LvlUp Backend
+# LvlUp Platform Monorepo
 
-Backend service for LvlUp - a game analytics and remote configuration tool for game developers.
+This repository now houses two separate projects:
 
-## Features
+- `backend/` – Express + Prisma service powering analytics, engagement metrics, and player journey features.
+- `frontend/` – React + Vite dashboard that consumes the backend APIs.
 
-- Game analytics tracking (events, sessions)
-- User analytics and metrics
-  - Retention analysis
-  - Active users (DAU, WAU, MAU)
-  - Engagement metrics (session count, session length)
-  - Player journey and progression tracking
-- Remote configuration
-- A/B testing tools
+## Getting Started
 
-## Setup
+Clone the repo and work with each project independently.
 
-### Prerequisites
-
-- Node.js v16 or higher
-- PostgreSQL database
-- npm or yarn package manager
-
-### Installation
-
-1. Clone the repository
+### Backend
 
 ```bash
-git clone <repository-url>
-cd lvlup-backend
-```
-
-2. Install dependencies
-
-```bash
+cd backend
 npm install
-```
-
-3. Set up environment variables
-   Create a `.env` file in the root directory with the following variables:
-
-```
-DATABASE_URL="postgresql://username:password@localhost:5432/lvlup"
-PORT=3000
-```
-
-4. Generate Prisma client
-
-```bash
-npx prisma generate
-```
-
-5. Apply database migrations
-
-```bash
-npx prisma db push
-```
-
-6. Start the development server
-
-```bash
+cp .env.example .env
 npm run dev
 ```
 
-## API Documentation
+The backend README (`backend/README.md`) covers schema details, available APIs, and testing instructions.
 
-### Authentication
-
-All API endpoints require an API key that can be generated through the `/games` endpoint.
-The API key should be provided in the `X-API-Key` header or as an `api_key` query parameter.
-
-### Endpoints
-
-- `/games` - Game management (CRUD operations)
-- `/analytics` - Analytics tracking and reporting
-- `/analytics/enhanced` - Enhanced analytics features
-  - `/metrics/session-count` - Session count metrics per user per day
-  - `/metrics/session-length` - Session length metrics per user per day
-  - `/journey/checkpoints` - Player journey checkpoints management
-  - `/journey/progress` - Player journey analytics
-- `/config` - Remote configuration management
-
-## Enhanced Analytics Features
-
-### Engagement Metrics
-
-Track and analyze user engagement patterns:
-
-- **Session Count Analytics**: Track how many sessions users have per day
-
-  - Filterable by date range, country, platform, version
-  - Supports specific day analysis (e.g., d1, d7, d30)
-  - Returns average, median, and distribution of session counts
-
-- **Session Length Analytics**: Track how long users play per day
-  - Filterable by date range, country, platform, version
-  - Supports specific day analysis (e.g., d1, d7, d30)
-  - Returns average, median, total playtime, and duration distribution
-
-### Player Journey
-
-Track player progression through important milestones:
-
-- **Checkpoint Management**: Define and manage game checkpoints (levels, achievements, etc.)
-
-  - Support for checkpoint types and tags for categorization
-  - Optional ordering for sequence-based progression
-
-- **Journey Analytics**: Analyze player progression through checkpoints
-  - Track completion rates and drop-offs
-  - Filter by checkpoint types and tags
-  - View individual player journeys
-
-## Testing
-
-Run tests with:
+### Frontend
 
 ```bash
-npm test
+cd frontend
+npm install
+cp .env.example .env.local
+npm run dev
 ```
 
-## License
+The Vite dev server proxies `/api` requests to `http://localhost:3000` by default. Override this via `VITE_BACKEND_PROXY` if your backend runs elsewhere. See `frontend/README.md` for additional guidance.
 
-MIT
+## Repository Scripts
+
+Commands must be executed from inside either `backend/` or `frontend/`. There is no root-level package configuration.
+
+## Contributing
+
+- Keep backend- and frontend-specific changes scoped to their respective folders.
+- Update the corresponding README when adding new workflows or dependencies.
+

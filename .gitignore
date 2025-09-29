@@ -68,8 +68,8 @@ Icon
 .com.apple.timemachine.donotpresent
 
 # Prisma
-prisma/.env
-prisma/migrations/
+backend/prisma/.env
+backend/prisma/migrations/
 
 # Coverage directory used by tools like istanbul
 coverage/

@@ -2,6 +2,7 @@ import { Router } from 'express';
 import analyticsRoutes from './analytics';
 import enhancedAnalyticsRoutes from './analytics-enhanced';
 import gameRoutes from './games';
+import dashboardRoutes from './dashboard';
 
 const router = Router();
 
@@ -17,6 +18,7 @@ router.get('/health', (req, res) => {
 // API Routes
 router.use('/analytics', analyticsRoutes);
 router.use('/analytics/enhanced', enhancedAnalyticsRoutes);
+router.use('/analytics', dashboardRoutes);
 router.use('/games', gameRoutes);
 
 // TODO: Add these routes as we implement them

@@ -144,8 +144,7 @@ export class AnalyticsService {
             }));
 
             const createdEvents = await this.prisma.event.createMany({
-                data: events,
-                skipDuplicates: true
+                data: events
             });
 
             logger.info(`Batch tracked ${createdEvents.count} events for user ${batchData.userId}`);
@@ -161,7 +160,8 @@ export class AnalyticsService {
         try {
             const [
                 totalEvents,
-                uniqueUsers,
+                newUsers,
+                totalActiveUsers,
                 totalSessions,
                 avgSessionDuration,
                 topEvents
@@ -177,7 +177,7 @@ export class AnalyticsService {
                     }
                 }),
 
-                // Unique users
+                // New users (registered in date range)
                 this.prisma.user.count({
                     where: {
                         gameId: gameId,
@@ -185,6 +185,35 @@ export class AnalyticsService {
                             gte: startDate,
                             lte: endDate
                         }
+                    }
+                }),
+
+                // Total active users (had activity in date range)
+                this.prisma.user.count({
+                    where: {
+                        gameId: gameId,
+                        OR: [
+                            {
+                                events: {
+                                    some: {
+                                        timestamp: {
+                                            gte: startDate,
+                                            lte: endDate
+                                        }
+                                    }
+                                }
+                            },
+                            {
+                                sessions: {
+                                    some: {
+                                        startTime: {
+                                            gte: startDate,
+                                            lte: endDate
+                                        }
+                                    }
+                                }
+                            }
+                        ]
                     }
                 }),
 
@@ -238,11 +267,38 @@ export class AnalyticsService {
                 })
             ]);
 
+            // Calculate average sessions per user
+            const avgSessionsPerUser = totalActiveUsers > 0 ?
+                Math.round((totalSessions / totalActiveUsers) * 100) / 100 : 0;
+
+            // Calculate average playtime duration (total session duration / total active users)
+            const totalSessionDuration = await this.prisma.session.aggregate({
+                where: {
+                    gameId: gameId,
+                    startTime: {
+                        gte: startDate,
+                        lte: endDate
+                    },
+                    duration: {
+                        not: null
+                    }
+                },
+                _sum: {
+                    duration: true
+                }
+            });
+
+            const avgPlaytimeDuration = totalActiveUsers > 0 ?
+                Math.round((totalSessionDuration._sum.duration || 0) / totalActiveUsers) : 0;
+
             return {
                 totalEvents,
-                uniqueUsers,
+                newUsers,
+                totalActiveUsers,
                 totalSessions,
                 avgSessionDuration: Math.round(avgSessionDuration._avg.duration || 0),
+                avgSessionsPerUser,
+                avgPlaytimeDuration,
                 topEvents: topEvents.map((event: any) => ({
                     name: event.eventName,
                     count: event._count.eventName

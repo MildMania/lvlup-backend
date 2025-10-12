@@ -88,23 +88,34 @@ export class AnalyticsMetricsService {
 
             for (const day of retentionDays) {
                 let retainedCount = 0;
+                let eligibleUsersForThisDay = 0;
 
-                // For each user, check if they have any event after their registration + N days
+                // For each user, check if they have any event within the Day N window
                 for (const user of newUsers) {
-                    const retentionDate = new Date(user.createdAt);
-                    retentionDate.setDate(retentionDate.getDate() + day);
+                    const registrationDate = new Date(user.createdAt);
 
-                    // Skip users whose retention date is beyond our end date
-                    if (retentionDate > endDate) {
-                        continue;
+                    // Calculate the start and end of Day N after registration
+                    const dayNStart = new Date(registrationDate);
+                    dayNStart.setDate(dayNStart.getDate() + day);
+                    dayNStart.setHours(0, 0, 0, 0); // Start of Day N
+
+                    const dayNEnd = new Date(dayNStart);
+                    dayNEnd.setHours(23, 59, 59, 999); // End of Day N
+
+                    // Only include users whose Day N window has already passed (for accurate measurement)
+                    if (dayNEnd > endDate) {
+                        continue; // Skip this user for this retention day
                     }
 
-                    // Build event filters for retention check
+                    eligibleUsersForThisDay++;
+
+                    // Build event filters for retention check - look for events on Day N specifically
                     const eventFilters: any = {
                         userId: user.id,
                         gameId: gameId,
                         timestamp: {
-                            gte: retentionDate
+                            gte: dayNStart,
+                            lte: dayNEnd
                         }
                     };
 
@@ -127,24 +138,18 @@ export class AnalyticsMetricsService {
                         }
                     }
 
-                    // Count if user has any event on or after the retention date
-                    const hasReturnedAfterDay = await this.prisma.event.findFirst({
+                    // Count if user has any event during Day N
+                    const hasActivityOnDayN = await this.prisma.event.findFirst({
                         where: eventFilters
                     });
 
-                    if (hasReturnedAfterDay) {
+                    if (hasActivityOnDayN) {
                         retainedCount++;
                     }
                 }
 
-                // Calculate percentage - eligible users are those whose retention date is within our data range
-                const eligibleUsers = newUsers.filter((user: any) => {
-                    const retentionDate = new Date(user.createdAt);
-                    retentionDate.setDate(retentionDate.getDate() + day);
-                    return retentionDate <= endDate;
-                }).length;
-
-                const percentage = eligibleUsers > 0 ? (retainedCount / eligibleUsers) * 100 : 0;
+                // Calculate percentage based on eligible users for this specific retention day
+                const percentage = eligibleUsersForThisDay > 0 ? (retainedCount / eligibleUsersForThisDay) * 100 : 0;
 
                 retentionData.push({
                     day,

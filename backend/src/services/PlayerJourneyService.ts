@@ -180,7 +180,7 @@ export class PlayerJourneyService {
                 };
             }
 
-            // Build player checkpoint filters
+            // Build player checkpoint filters with proper date handling
             const playerCheckpointFilters: any = {
                 gameId,
                 timestamp: {
@@ -189,7 +189,37 @@ export class PlayerJourneyService {
                 }
             };
 
-            // Get user filters
+            // Count total active users in this period (same logic as AnalyticsService)
+            // This should be the baseline for the funnel, not just users with checkpoints
+            const totalActiveUsers = await this.prisma.user.count({
+                where: {
+                    gameId,
+                    OR: [
+                        {
+                            events: {
+                                some: {
+                                    timestamp: {
+                                        gte: startDate,
+                                        lte: endDate
+                                    }
+                                }
+                            }
+                        },
+                        {
+                            sessions: {
+                                some: {
+                                    startTime: {
+                                        gte: startDate,
+                                        lte: endDate
+                                    }
+                                }
+                            }
+                        }
+                    ]
+                }
+            });
+
+            // Get user filters for additional filtering
             const userFilters: any = {};
 
             if (filters?.country) {
@@ -210,16 +240,10 @@ export class PlayerJourneyService {
                     : filters.version;
             }
 
-            // If we have user filters, include them through the user relation
+            // If we have user filters, include them in the checkpoint filters
             if (Object.keys(userFilters).length > 0) {
                 playerCheckpointFilters.user = userFilters;
             }
-
-            // Count total users who have any checkpoint in this period
-            const totalUsersWithCheckpoints = await this.prisma.playerCheckpoint.groupBy({
-                by: ['userId'],
-                where: playerCheckpointFilters
-            }).then((results: any[]) => results.length);
 
             // Calculate journey progress for each checkpoint
             const checkpointProgress: CheckpointProgressData[] = [];
@@ -240,9 +264,9 @@ export class PlayerJourneyService {
                 // Count of users who reached this checkpoint
                 const count = usersReached.length;
 
-                // Calculate percentage
-                const percentage = totalUsersWithCheckpoints > 0
-                    ? (count / totalUsersWithCheckpoints) * 100
+                // Calculate percentage based on total active users
+                const percentage = totalActiveUsers > 0
+                    ? (count / totalActiveUsers) * 100
                     : 0;
 
                 // Calculate average time to reach from the start of the period
@@ -271,7 +295,7 @@ export class PlayerJourneyService {
             }
 
             const journeyData: JourneyProgressData = {
-                totalUsers: totalUsersWithCheckpoints,
+                totalUsers: totalActiveUsers,
                 checkpoints: checkpointProgress
             };
 

@@ -71,6 +71,14 @@ Icon
 backend/prisma/.env
 backend/prisma/migrations/
 
+# TypeScript compiled output (keep source .ts files only)
+backend/src/**/*.js
+backend/src/**/*.d.ts
+backend/src/**/*.map
+backend/tests/**/*.js
+backend/tests/**/*.d.ts
+backend/tests/**/*.map
+
 # Coverage directory used by tools like istanbul
 coverage/
 *.lcov

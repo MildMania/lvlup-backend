@@ -6,7 +6,7 @@ generator client {
 }
 
 datasource db {
-  provider = "sqlite"
+  provider = "postgresql"
   url      = env("DATABASE_URL")
 }
 
@@ -179,7 +179,7 @@ model Checkpoint {
   name        String
   description String?
   type        String // e.g., "tutorial", "level", "achievement", "feature_unlock"
-  tags        Json? // Array of tags for filtering (stored as JSON in SQLite)
+  tags        String[] // Array of tags for filtering
   order       Int? // Optional ordering within a sequence
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt

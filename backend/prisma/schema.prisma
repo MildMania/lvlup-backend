@@ -27,6 +27,11 @@ model Game {
   experiments       ABTest[]
   checkpoints       Checkpoint[]
   playerCheckpoints PlayerCheckpoint[]
+  releases          Release[]
+  businessEvents    BusinessEvent[]
+  aiQueries         AiQuery[]
+  aiInsights        AiInsight[]
+  contextMetadata   ContextMetadata[]
 
   @@map("games")
 }
@@ -49,6 +54,7 @@ model User {
   events            Event[]
   sessions          Session[]
   playerCheckpoints PlayerCheckpoint[]
+  aiQueries         AiQuery[]
 
   @@unique([gameId, externalId])
   @@map("users")
@@ -209,4 +215,119 @@ model PlayerCheckpoint {
   @@unique([userId, checkpointId]) // Each user can reach a checkpoint only once
   @@index([gameId, userId, timestamp]) // For efficient queries on user progression
   @@map("player_checkpoints")
+}
+
+// AI Context Management Tables
+model Release {
+  id          String   @id @default(cuid())
+  version     String   @unique
+  releaseDate DateTime
+  description String?
+  gameId      String?
+  rolloutType String   @default("full") // full, gradual, beta
+  status      String   @default("active") // active, rolled_back, completed
+  tags        Json?    // array of tags for categorization
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  // Relations
+  game     Game?            @relation(fields: [gameId], references: [id])
+  features ReleaseFeature[]
+
+  @@map("releases")
+}
+
+model ReleaseFeature {
+  id               String   @id @default(cuid())
+  releaseId        String
+  name             String
+  description      String?
+  type             String // ui_change, gameplay_change, performance, monetization, analytics
+  expectedImpact   String? // positive, negative, neutral
+  impactMetrics    Json? // which metrics this might affect
+  rolloutStartDate DateTime?
+  rolloutEndDate   DateTime?
+  createdAt        DateTime @default(now())
+
+  // Relations
+  release Release @relation(fields: [releaseId], references: [id], onDelete: Cascade)
+
+  @@map("release_features")
+}
+
+model BusinessEvent {
+  id          String   @id @default(cuid())
+  name        String
+  description String?
+  type        String // marketing_campaign, competitor_launch, holiday, promotion, external_event
+  startDate   DateTime
+  endDate     DateTime?
+  gameId      String?
+  impact      String? // expected impact: increase_engagement, increase_revenue, etc.
+  metadata    Json? // campaign details, budget, target audience, etc.
+  tags        Json? // array of tags for categorization
+  createdAt   DateTime @default(now())
+
+  // Relations
+  game Game? @relation(fields: [gameId], references: [id])
+
+  @@map("business_events")
+}
+
+model AiQuery {
+  id           String   @id @default(cuid())
+  query        String
+  queryType    String // natural_language, structured, exploratory
+  context      Json? // date ranges, games, specific metrics requested
+  response     String?
+  responseType String? // text, chart_data, insights, recommendations
+  confidence   Float? // AI confidence in the response
+  gameId       String?
+  userId       String? // who made the query
+  createdAt    DateTime @default(now())
+
+  // Relations
+  game     Game?      @relation(fields: [gameId], references: [id])
+  user     User?      @relation(fields: [userId], references: [id])
+  insights AiInsight[]
+
+  @@map("ai_queries")
+}
+
+model AiInsight {
+  id          String   @id @default(cuid())
+  queryId     String?
+  title       String
+  description String
+  type        String // pattern, anomaly, recommendation, prediction
+  confidence  Float
+  gameId      String?
+  dateRange   Json? // {start: date, end: date}
+  metrics     Json? // which metrics this insight relates to
+  metadata    Json? // supporting data, calculations, etc.
+  status      String   @default("active") // active, dismissed, acted_upon
+  createdAt   DateTime @default(now())
+
+  // Relations
+  game  Game?    @relation(fields: [gameId], references: [id])
+  query AiQuery? @relation(fields: [queryId], references: [id])
+
+  @@map("ai_insights")
+}
+
+model ContextMetadata {
+  id           String   @id @default(cuid())
+  type         String // data_quality, pattern_detection, baseline_metrics
+  description  String
+  dateRange    Json? // {start: date, end: date}
+  gameId       String?
+  metadata     Json // flexible storage for various context types
+  computedAt   DateTime @default(now())
+  validUntil   DateTime?
+  status       String   @default("active") // active, expired, updated
+
+  // Relations
+  game Game? @relation(fields: [gameId], references: [id])
+
+  @@map("context_metadata")
 }

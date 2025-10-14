@@ -3,6 +3,8 @@ import analyticsRoutes from './analytics';
 import enhancedAnalyticsRoutes from './analytics-enhanced';
 import gameRoutes from './games';
 import dashboardRoutes from './dashboard';
+import aiContextRoutes from './ai-context';
+import aiAnalyticsRoutes from './ai-analytics';
 
 const router = Router();
 
@@ -20,6 +22,8 @@ router.use('/analytics', analyticsRoutes);
 router.use('/analytics/enhanced', enhancedAnalyticsRoutes);
 router.use('/analytics', dashboardRoutes);
 router.use('/games', gameRoutes);
+router.use('/ai-context', aiContextRoutes);
+router.use('/ai-analytics', aiAnalyticsRoutes);
 
 // TODO: Add these routes as we implement them
 // router.use('/config', configRoutes);

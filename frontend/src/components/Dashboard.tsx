@@ -22,6 +22,7 @@ import type {
   DashboardSummary 
 } from '../types/analytics';
 import { useTheme } from '../contexts/ThemeContext';
+import { AIChatWidget } from './AIChatWidget';
 import './Dashboard.css';
 
 const COLORS = ['#3b82f6', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6'];
@@ -928,6 +929,9 @@ const Dashboard: React.FC<DashboardProps> = ({ gameInfo, isCollapsed = false }) 
           </ResponsiveContainer>
         </ChartContainer>
       </div>
+
+      {/* AI Chat Widget - Floating */}
+      <AIChatWidget />
     </div>
   );
 };

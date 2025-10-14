@@ -15,7 +15,8 @@ import {
   ChevronDown,
   ChevronUp,
   Moon,
-  Sun
+  Sun,
+  GitBranch
 } from 'lucide-react';
 import { useTheme } from '../contexts/ThemeContext';
 import './Sidebar.css';
@@ -54,6 +55,7 @@ const Sidebar: React.FC<SidebarProps> = ({
     { id: 'users', label: 'Users', icon: Users },
     { id: 'events', label: 'Events', icon: Activity },
     { id: 'funnels', label: 'Funnels', icon: Target },
+    { id: 'releases', label: 'Releases', icon: GitBranch },
     { id: 'settings', label: 'Settings', icon: Settings },
   ];
 

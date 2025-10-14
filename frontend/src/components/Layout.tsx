@@ -1,6 +1,8 @@
 import React, { useState } from 'react';
 import Sidebar from './Sidebar';
 import Dashboard from './Dashboard';
+import ReleaseManagement from './ReleaseManagement';
+import { AIChatWidget } from './AIChatWidget';
 import './Layout.css';
 
 interface GameInfo {
@@ -51,6 +53,8 @@ const Layout: React.FC = () => {
         return <div className="page-placeholder">Events Page - Coming Soon</div>;
       case 'funnels':
         return <div className="page-placeholder">Funnels Page - Coming Soon</div>;
+      case 'releases':
+        return <ReleaseManagement isCollapsed={isSidebarCollapsed} />;
       case 'settings':
         return <div className="page-placeholder">Settings Page - Coming Soon</div>;
       default:
@@ -71,6 +75,7 @@ const Layout: React.FC = () => {
       <main className="main-content">
         {renderPage()}
       </main>
+      <AIChatWidget />
     </div>
   );
 };

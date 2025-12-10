@@ -1,13 +1,16 @@
 import './App.css';
 import Layout from './components/Layout';
 import { ThemeProvider } from './contexts/ThemeContext';
+import { GameProvider } from './contexts/GameContext';
 
 function App() {
   return (
     <ThemeProvider>
-      <div className="app">
-        <Layout />
-      </div>
+      <GameProvider>
+        <div className="app">
+          <Layout />
+        </div>
+      </GameProvider>
     </ThemeProvider>
   );
 }

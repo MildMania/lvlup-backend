@@ -115,11 +115,18 @@ export class PlayerJourneyController {
             }
 
             // Default to last 30 days if not provided
-            const endDate = filters.endDate ? new Date(filters.endDate) : new Date();
-            const startDate = filters.startDate ? new Date(filters.startDate) : new Date();
+            // Parse dates to include full day (start at 00:00:00, end at 23:59:59)
+            let endDate = filters.endDate ? new Date(filters.endDate + 'T23:59:59.999Z') : new Date();
+            let startDate = filters.startDate ? new Date(filters.startDate + 'T00:00:00.000Z') : new Date();
 
             if (!filters.startDate) {
+                startDate = new Date(endDate);
                 startDate.setDate(startDate.getDate() - 30); // Last 30 days
+                startDate.setHours(0, 0, 0, 0);
+            }
+
+            if (!filters.endDate) {
+                endDate.setHours(23, 59, 59, 999);
             }
 
             const data = await playerJourneyService.getJourneyProgress(gameId, startDate, endDate, filters);

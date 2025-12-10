@@ -19,7 +19,7 @@ router.get('/health', (req, res) => {
 
 // API Routes
 router.use('/analytics', analyticsRoutes);
-router.use('/analytics/enhanced', enhancedAnalyticsRoutes);
+router.use('/analytics', enhancedAnalyticsRoutes);
 router.use('/analytics', dashboardRoutes);
 router.use('/games', gameRoutes);
 router.use('/ai-context', aiContextRoutes);

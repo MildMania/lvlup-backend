@@ -28,8 +28,8 @@ export class AnalyticsMetricsController {
             }
 
             // Default to last 30 days if not provided
-            const endDate = filters.endDate ? new Date(filters.endDate) : new Date();
-            const startDate = filters.startDate ? new Date(filters.startDate) : new Date();
+            const endDate = filters.endDate ? new Date(filters.endDate + 'T23:59:59.999Z') : new Date();
+            const startDate = filters.startDate ? new Date(filters.startDate + 'T00:00:00.000Z') : new Date();
 
             if (!filters.startDate) {
                 startDate.setDate(startDate.getDate() - 30); // Last 30 days
@@ -112,8 +112,8 @@ export class AnalyticsMetricsController {
             };
 
             // Default to last 30 days if not provided
-            const endDate = filters.endDate ? new Date(filters.endDate) : new Date();
-            const startDate = filters.startDate ? new Date(filters.startDate) : new Date();
+            const endDate = filters.endDate ? new Date(filters.endDate + 'T23:59:59.999Z') : new Date();
+            const startDate = filters.startDate ? new Date(filters.startDate + 'T00:00:00.000Z') : new Date();
 
             if (!filters.startDate) {
                 startDate.setDate(startDate.getDate() - 30); // Last 30 days

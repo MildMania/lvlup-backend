@@ -1,6 +1,8 @@
 import { Router } from 'express';
 import { EngagementMetricsController } from '../controllers/EngagementMetricsController';
 import { PlayerJourneyController } from '../controllers/PlayerJourneyController';
+import { CohortAnalyticsController } from '../controllers/CohortAnalyticsController';
+import { AnalyticsFiltersController } from '../controllers/AnalyticsFiltersController';
 import { authenticateApiKey } from '../middleware/auth';
 
 /**
@@ -9,9 +11,17 @@ import { authenticateApiKey } from '../middleware/auth';
 const router = Router();
 const engagementMetricsController = new EngagementMetricsController();
 const playerJourneyController = new PlayerJourneyController();
+const cohortAnalyticsController = new CohortAnalyticsController();
+const analyticsFiltersController = new AnalyticsFiltersController();
 
 // Apply authentication middleware to all routes
 router.use(authenticateApiKey);
+
+// Filter Options Endpoint
+/**
+ * GET /analytics/filters/options - Get available filter options (countries, versions, platforms)
+ */
+router.get('/filters/options', analyticsFiltersController.getFilterOptions);
 
 // Engagement Metrics Endpoints
 /**
@@ -38,6 +48,19 @@ router.get('/metrics/session-count', engagementMetricsController.getSessionCount
  * @query {string} durationType - Optional type: "average", "total", "distribution", "all"
  */
 router.get('/metrics/session-length', engagementMetricsController.getSessionLengths);
+
+// Cohort Analytics Endpoints
+/**
+ * GET /analytics/cohort/retention - Get cohort retention table
+ * @query {string} startDate - Optional start date (ISO format)
+ * @query {string} endDate - Optional end date (ISO format)
+ * @query {string|string[]} country - Optional country or countries to filter by
+ * @query {string|string[]} platform - Optional platform or platforms to filter by
+ * @query {string|string[]} version - Optional version or versions to filter by
+ * @query {string} abTestGroup - Optional A/B test group to filter by
+ * @query {string} days - Optional comma-separated list of days (e.g., "0,1,3,7,14,30")
+ */
+router.get('/cohort/retention', cohortAnalyticsController.getCohortRetention);
 
 // Player Journey Endpoints
 /**

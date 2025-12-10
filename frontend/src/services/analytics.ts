@@ -49,7 +49,7 @@ export class AnalyticsService {
   static async getDashboardSummary(startDate?: string, endDate?: string): Promise<DashboardSummary> {
     try {
       const params = startDate && endDate ? { startDate, endDate } : {};
-      const response = await apiClient.get<ApiResponse<DashboardSummary>>('/analytics/dashboard/summary', {
+      const response = await apiClient.get<ApiResponse<DashboardSummary>>('/analytics/dashboard', {
         params
       });
       return response.data.data;

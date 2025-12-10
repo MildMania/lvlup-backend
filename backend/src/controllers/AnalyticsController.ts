@@ -274,8 +274,8 @@ export class AnalyticsController {
             const endDateStr = req.query.endDate as string || '';
 
             // Default to last 30 days if not provided
-            const endDate = endDateStr ? new Date(endDateStr) : new Date();
-            const startDate = startDateStr ? new Date(startDateStr) : new Date(endDate);
+            let endDate = endDateStr ? new Date(endDateStr + 'T23:59:59.999Z') : new Date();
+            let startDate = startDateStr ? new Date(startDateStr + 'T00:00:00.000Z') : new Date(endDate);
 
             // Validate date inputs
             if (startDateStr && isNaN(startDate.getTime())) {
@@ -294,7 +294,13 @@ export class AnalyticsController {
 
             // Set default date range if not provided (last 30 days)
             if (!startDateStr) {
+                startDate = new Date(endDate);
                 startDate.setDate(startDate.getDate() - 30); // Last 30 days
+                startDate.setHours(0, 0, 0, 0);
+            }
+
+            if (!endDateStr) {
+                endDate.setHours(23, 59, 59, 999);
             }
 
             // Ensure endDate is not before startDate

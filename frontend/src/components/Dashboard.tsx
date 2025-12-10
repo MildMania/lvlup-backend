@@ -161,7 +161,7 @@ const Dashboard: React.FC<DashboardProps> = ({ gameInfo, isCollapsed = false }) 
       // Subsequent changes - only update data, don't show full loading
       updateDashboardData();
     }
-  }, [selectedDateRange]);
+  }, [selectedDateRange, gameInfo?.id]); // Re-fetch when game changes
 
   // Update data without full loading state
   const updateDashboardData = async () => {
@@ -188,15 +188,15 @@ const Dashboard: React.FC<DashboardProps> = ({ gameInfo, isCollapsed = false }) 
       }
 
       // Fetch chart data
-      const [activeUsersResult, playtimeResult, playerJourneyResult] = await Promise.allSettled([
-        AnalyticsService.getActiveUsers(startDateStr, endDateStr),
-        fetchPlaytime(new URLSearchParams({
-          gameId: '1',
-          startDate: startDateStr,
-          endDate: endDateStr
-        })),
-        AnalyticsService.getPlayerJourney(startDateStr, endDateStr)
-      ]);
+        const [activeUsersResult, playtimeResult, playerJourneyResult] = await Promise.allSettled([
+          AnalyticsService.getActiveUsers(startDateStr, endDateStr),
+          fetchPlaytime(new URLSearchParams({
+            gameId: gameInfo?.id || '1',
+            startDate: startDateStr,
+            endDate: endDateStr
+          })),
+          AnalyticsService.getPlayerJourney(startDateStr, endDateStr)
+        ]);
       
       if (activeUsersResult.status === 'fulfilled') {
         setActiveUsers(activeUsersResult.value || []);

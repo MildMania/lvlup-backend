@@ -14,10 +14,18 @@ export const apiClient = axios.create({
   },
 });
 
+// Global variable to store current API key
+let currentApiKey = import.meta.env.VITE_API_KEY || 'pqa_api_key_12345';
+
+export const setApiKey = (apiKey: string) => {
+  currentApiKey = apiKey;
+};
+
+export const getApiKey = () => currentApiKey;
+
 apiClient.interceptors.request.use((config) => {
-  const apiKey = import.meta.env.VITE_API_KEY;
-  if (apiKey) {
-    config.headers['X-API-Key'] = apiKey;
+  if (currentApiKey) {
+    config.headers['X-API-Key'] = currentApiKey;
   }
   return config;
 });

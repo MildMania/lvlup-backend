@@ -1,6 +1,3 @@
-// This is your Prisma schema file,
-// learn more about it in the docs: https://pris.ly/d/prisma-schema
-
 generator client {
   provider = "prisma-client-js"
 }
@@ -10,187 +7,155 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
-// Games/Apps using LvlUp
 model Game {
-  id          String   @id @default(cuid())
-  name        String
-  apiKey      String   @unique
-  description String?
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
-
-  // Relations
-  events            Event[]
-  users             User[]
-  sessions          Session[]
-  configs           RemoteConfig[]
+  id                String             @id @default(cuid())
+  name              String
+  apiKey            String             @unique
+  description       String?
+  createdAt         DateTime           @default(now())
+  updatedAt         DateTime           @updatedAt
   experiments       ABTest[]
+  aiInsights        AiInsight[]
+  aiQueries         AiQuery[]
+  businessEvents    BusinessEvent[]
   checkpoints       Checkpoint[]
+  contextMetadata   ContextMetadata[]
+  events            Event[]
   playerCheckpoints PlayerCheckpoint[]
   releases          Release[]
-  businessEvents    BusinessEvent[]
-  aiQueries         AiQuery[]
-  aiInsights        AiInsight[]
-  contextMetadata   ContextMetadata[]
+  configs           RemoteConfig[]
+  sessions          Session[]
+  users             User[]
 
   @@map("games")
 }
 
-// User profiles for analytics
 model User {
-  id         String   @id @default(cuid())
-  gameId     String
-  externalId String // Unity/Client tarafından gelen user ID
-  deviceId   String?
-  platform   String? // iOS, Android, WebGL etc.
-  version    String? // App/Game version
-  country    String?
-  language   String?
-  createdAt  DateTime @default(now())
-  updatedAt  DateTime @updatedAt
-
-  // Relations
-  game              Game               @relation(fields: [gameId], references: [id], onDelete: Cascade)
-  events            Event[]
-  sessions          Session[]
-  playerCheckpoints PlayerCheckpoint[]
+  id                String             @id @default(cuid())
+  gameId            String
+  externalId        String
+  deviceId          String?
+  platform          String?
+  version           String?
+  country           String?
+  language          String?
+  createdAt         DateTime           @default(now())
+  updatedAt         DateTime           @updatedAt
   aiQueries         AiQuery[]
+  events            Event[]
+  playerCheckpoints PlayerCheckpoint[]
+  sessions          Session[]
+  game              Game               @relation(fields: [gameId], references: [id], onDelete: Cascade)
 
   @@unique([gameId, externalId])
   @@map("users")
 }
 
-// User sessions for analytics
 model Session {
   id        String    @id @default(cuid())
   gameId    String
   userId    String
   startTime DateTime  @default(now())
   endTime   DateTime?
-  duration  Int? // seconds
+  duration  Int?
   platform  String?
   version   String?
+  events    Event[]
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  game      Game      @relation(fields: [gameId], references: [id], onDelete: Cascade)
 
-  // Relations
-  game   Game    @relation(fields: [gameId], references: [id], onDelete: Cascade)
-  user   User    @relation(fields: [userId], references: [id], onDelete: Cascade)
-  events Event[]
-
-  @@index([gameId, userId, startTime]) // For user session counts and durations
-  @@index([gameId, startTime]) // For overall game session analytics
+  @@index([gameId, userId, startTime])
+  @@index([gameId, startTime])
   @@map("sessions")
 }
 
-// Analytics events
 model Event {
   id         String   @id @default(cuid())
   gameId     String
   userId     String
   sessionId  String?
   eventName  String
-  properties Json? // JSONB for flexible event properties
+  properties Json?
   timestamp  DateTime @default(now())
-
-  // Relations
-  game    Game     @relation(fields: [gameId], references: [id], onDelete: Cascade)
-  user    User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  session Session? @relation(fields: [sessionId], references: [id], onDelete: SetNull)
+  session    Session? @relation(fields: [sessionId], references: [id])
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  game       Game     @relation(fields: [gameId], references: [id], onDelete: Cascade)
 
   @@index([gameId, eventName, timestamp])
   @@index([userId, timestamp])
   @@map("events")
 }
 
-// Remote Configuration
 model RemoteConfig {
   id          String   @id @default(cuid())
   gameId      String
   key         String
-  value       Json // JSONB for any type of config value
-  environment String   @default("production") // production, staging, development
+  value       Json
+  environment String   @default("production")
   enabled     Boolean  @default(true)
   description String?
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
-
-  // Relations
-  game Game @relation(fields: [gameId], references: [id], onDelete: Cascade)
+  game        Game     @relation(fields: [gameId], references: [id], onDelete: Cascade)
 
   @@unique([gameId, key, environment])
   @@map("remote_configs")
 }
 
-// A/B Testing
 model ABTest {
-  id           String     @id @default(cuid())
+  id           String           @id @default(cuid())
   gameId       String
   name         String
   description  String?
-  status       TestStatus @default(DRAFT)
-  trafficSplit Float      @default(0.5) // 0.0 to 1.0
+  status       TestStatus       @default("DRAFT")
+  trafficSplit Float            @default(0.5)
   startDate    DateTime?
   endDate      DateTime?
-  createdAt    DateTime   @default(now())
-  updatedAt    DateTime   @updatedAt
-
-  // Relations
-  game        Game             @relation(fields: [gameId], references: [id], onDelete: Cascade)
-  variants    TestVariant[]
-  assignments TestAssignment[]
+  createdAt    DateTime         @default(now())
+  updatedAt    DateTime         @updatedAt
+  game         Game             @relation(fields: [gameId], references: [id], onDelete: Cascade)
+  assignments  TestAssignment[]
+  variants     TestVariant[]
 
   @@map("ab_tests")
 }
 
 model TestVariant {
-  id          String  @id @default(cuid())
+  id          String           @id @default(cuid())
   testId      String
   name        String
   description String?
-  config      Json // JSONB for variant configuration
-  weight      Float   @default(0.5) // Traffic distribution weight
-
-  // Relations
-  test        ABTest           @relation(fields: [testId], references: [id], onDelete: Cascade)
+  config      Json
+  weight      Float            @default(0.5)
   assignments TestAssignment[]
+  test        ABTest           @relation(fields: [testId], references: [id], onDelete: Cascade)
 
   @@map("test_variants")
 }
 
 model TestAssignment {
-  id         String   @id @default(cuid())
+  id         String      @id @default(cuid())
   testId     String
   variantId  String
   userId     String
-  assignedAt DateTime @default(now())
-
-  // Relations
-  test    ABTest      @relation(fields: [testId], references: [id], onDelete: Cascade)
-  variant TestVariant @relation(fields: [variantId], references: [id], onDelete: Cascade)
+  assignedAt DateTime    @default(now())
+  variant    TestVariant @relation(fields: [variantId], references: [id], onDelete: Cascade)
+  test       ABTest      @relation(fields: [testId], references: [id], onDelete: Cascade)
 
   @@unique([testId, userId])
   @@map("test_assignments")
 }
 
-enum TestStatus {
-  DRAFT
-  RUNNING
-  PAUSED
-  COMPLETED
-}
-
-// Player Journey - Checkpoint Definition
 model Checkpoint {
-  id          String   @id @default(cuid())
-  gameId      String
-  name        String
-  description String?
-  type        String // e.g., "tutorial", "level", "achievement", "feature_unlock"
-  tags        Json? // Array of tags for filtering (stored as JSON in SQLite)
-  order       Int? // Optional ordering within a sequence
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
-
-  // Relations
+  id                String             @id @default(cuid())
+  gameId            String
+  name              String
+  description       String?
+  type              String
+  tags              Json?
+  order             Int?
+  createdAt         DateTime           @default(now())
+  updatedAt         DateTime           @updatedAt
   game              Game               @relation(fields: [gameId], references: [id], onDelete: Cascade)
   playerCheckpoints PlayerCheckpoint[]
 
@@ -198,98 +163,86 @@ model Checkpoint {
   @@map("checkpoints")
 }
 
-// Player Journey - Checkpoint Tracking
 model PlayerCheckpoint {
-  id           String   @id @default(cuid())
+  id           String     @id @default(cuid())
   gameId       String
   userId       String
   checkpointId String
-  timestamp    DateTime @default(now())
-  metadata     Json? // Additional data about the checkpoint completion (scores, time taken, etc.)
+  timestamp    DateTime   @default(now())
+  metadata     Json?
+  checkpoint   Checkpoint @relation(fields: [checkpointId], references: [id], onDelete: Cascade)
+  user         User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  game         Game       @relation(fields: [gameId], references: [id], onDelete: Cascade)
 
-  // Relations
-  game       Game       @relation(fields: [gameId], references: [id], onDelete: Cascade)
-  user       User       @relation(fields: [userId], references: [id], onDelete: Cascade)
-  checkpoint Checkpoint @relation(fields: [checkpointId], references: [id], onDelete: Cascade)
-
-  @@unique([userId, checkpointId]) // Each user can reach a checkpoint only once
-  @@index([gameId, userId, timestamp]) // For efficient queries on user progression
+  @@unique([userId, checkpointId])
+  @@index([gameId, userId, timestamp])
   @@map("player_checkpoints")
 }
 
-// AI Context Management Tables
 model Release {
-  id          String   @id @default(cuid())
-  version     String   @unique
+  id          String           @id @default(cuid())
+  version     String           @unique
   releaseDate DateTime
   description String?
   gameId      String?
-  rolloutType String   @default("full") // full, gradual, beta
-  status      String   @default("active") // active, rolled_back, completed
-  tags        Json?    // array of tags for categorization
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
-
-  // Relations
-  game     Game?            @relation(fields: [gameId], references: [id])
-  features ReleaseFeature[]
+  rolloutType String           @default("full")
+  status      String           @default("active")
+  tags        Json?
+  createdAt   DateTime         @default(now())
+  updatedAt   DateTime         @updatedAt
+  features    ReleaseFeature[]
+  game        Game?            @relation(fields: [gameId], references: [id])
 
   @@map("releases")
 }
 
 model ReleaseFeature {
-  id               String   @id @default(cuid())
+  id               String    @id @default(cuid())
   releaseId        String
   name             String
   description      String?
-  type             String // ui_change, gameplay_change, performance, monetization, analytics
-  expectedImpact   String? // positive, negative, neutral
-  impactMetrics    Json? // which metrics this might affect
+  type             String
+  expectedImpact   String?
+  impactMetrics    Json?
   rolloutStartDate DateTime?
   rolloutEndDate   DateTime?
-  createdAt        DateTime @default(now())
-
-  // Relations
-  release Release @relation(fields: [releaseId], references: [id], onDelete: Cascade)
+  createdAt        DateTime  @default(now())
+  release          Release   @relation(fields: [releaseId], references: [id], onDelete: Cascade)
 
   @@map("release_features")
 }
 
 model BusinessEvent {
-  id          String   @id @default(cuid())
+  id          String    @id @default(cuid())
   name        String
   description String?
-  type        String // marketing_campaign, competitor_launch, holiday, promotion, external_event
+  type        String
   startDate   DateTime
   endDate     DateTime?
   gameId      String?
-  impact      String? // expected impact: increase_engagement, increase_revenue, etc.
-  metadata    Json? // campaign details, budget, target audience, etc.
-  tags        Json? // array of tags for categorization
-  createdAt   DateTime @default(now())
-
-  // Relations
-  game Game? @relation(fields: [gameId], references: [id])
+  impact      String?
+  metadata    Json?
+  tags        Json?
+  createdAt   DateTime  @default(now())
+  game        Game?     @relation(fields: [gameId], references: [id])
 
   @@map("business_events")
 }
 
 model AiQuery {
-  id           String   @id @default(cuid())
+  id           String      @id @default(cuid())
   query        String
-  queryType    String // natural_language, structured, exploratory
-  context      Json? // date ranges, games, specific metrics requested
+  queryType    String
+  context      Json?
   response     String?
-  responseType String? // text, chart_data, insights, recommendations
-  confidence   Float? // AI confidence in the response
+  responseType String?
+  confidence   Float?
   gameId       String?
-  userId       String? // who made the query
-  createdAt    DateTime @default(now())
-
-  // Relations
-  game     Game?      @relation(fields: [gameId], references: [id])
-  user     User?      @relation(fields: [userId], references: [id])
-  insights AiInsight[]
+  userId       String?
+  createdAt    DateTime    @default(now())
+  insights     AiInsight[]
+  user         User?       @relation(fields: [userId], references: [id])
+  game         Game?       @relation(fields: [gameId], references: [id])
 
   @@map("ai_queries")
 }
@@ -299,35 +252,38 @@ model AiInsight {
   queryId     String?
   title       String
   description String
-  type        String // pattern, anomaly, recommendation, prediction
+  type        String
   confidence  Float
   gameId      String?
-  dateRange   Json? // {start: date, end: date}
-  metrics     Json? // which metrics this insight relates to
-  metadata    Json? // supporting data, calculations, etc.
-  status      String   @default("active") // active, dismissed, acted_upon
+  dateRange   Json?
+  metrics     Json?
+  metadata    Json?
+  status      String   @default("active")
   createdAt   DateTime @default(now())
-
-  // Relations
-  game  Game?    @relation(fields: [gameId], references: [id])
-  query AiQuery? @relation(fields: [queryId], references: [id])
+  query       AiQuery? @relation(fields: [queryId], references: [id])
+  game        Game?    @relation(fields: [gameId], references: [id])
 
   @@map("ai_insights")
 }
 
 model ContextMetadata {
-  id           String   @id @default(cuid())
-  type         String // data_quality, pattern_detection, baseline_metrics
-  description  String
-  dateRange    Json? // {start: date, end: date}
-  gameId       String?
-  metadata     Json // flexible storage for various context types
-  computedAt   DateTime @default(now())
-  validUntil   DateTime?
-  status       String   @default("active") // active, expired, updated
-
-  // Relations
-  game Game? @relation(fields: [gameId], references: [id])
+  id          String    @id @default(cuid())
+  type        String
+  description String
+  dateRange   Json?
+  gameId      String?
+  metadata    Json
+  computedAt  DateTime  @default(now())
+  validUntil  DateTime?
+  status      String    @default("active")
+  game        Game?     @relation(fields: [gameId], references: [id])
 
   @@map("context_metadata")
+}
+
+enum TestStatus {
+  DRAFT
+  RUNNING
+  PAUSED
+  COMPLETED
 }

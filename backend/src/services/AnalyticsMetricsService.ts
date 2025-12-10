@@ -88,49 +88,45 @@ export class AnalyticsMetricsService {
 
             for (const day of retentionDays) {
                 let retainedCount = 0;
-                let eligibleUsersForThisDay = 0;
+                let eligibleUsersCount = 0;
 
-                // For each user, check if they have any event within the Day N window
+                // For each user, check if they were active on their specific Day N
                 for (const user of newUsers) {
                     const registrationDate = new Date(user.createdAt);
 
-                    // Calculate the start and end of Day N after registration
-                    const dayNStart = new Date(registrationDate);
-                    dayNStart.setDate(dayNStart.getDate() + day);
-                    dayNStart.setHours(0, 0, 0, 0); // Start of Day N
+                    // Calculate Day N after registration
+                    const userDayN = new Date(registrationDate);
+                    userDayN.setDate(userDayN.getDate() + day);
+                    userDayN.setHours(0, 0, 0, 0);
 
-                    const dayNEnd = new Date(dayNStart);
-                    dayNEnd.setHours(23, 59, 59, 999); // End of Day N
+                    const userDayNEnd = new Date(userDayN);
+                    userDayNEnd.setHours(23, 59, 59, 999);
 
-                    // Only include users whose Day N window has already passed (for accurate measurement)
-                    if (dayNEnd > endDate) {
-                        continue; // Skip this user for this retention day
+                    // Only count users whose Day N has already passed (for accurate measurement)
+                    if (userDayN > endDate) {
+                        continue;
                     }
 
-                    eligibleUsersForThisDay++;
+                    eligibleUsersCount++;
 
-                    // Build event filters for retention check - look for events on Day N specifically
+                    // Check if user was active on their Day N
                     const eventFilters: any = {
                         userId: user.id,
                         gameId: gameId,
                         timestamp: {
-                            gte: dayNStart,
-                            lte: dayNEnd
+                            gte: userDayN,
+                            lte: userDayNEnd
                         }
                     };
 
-                    // Add optional event filters if available
+                    // Add optional filters for platform/version
                     if (filters?.platform || filters?.version) {
-                        // We need to fetch the events with session information
-                        // to filter by platform and version
                         eventFilters.session = {};
-
                         if (filters?.platform) {
                             eventFilters.session.platform = Array.isArray(filters.platform)
                                 ? { in: filters.platform }
                                 : filters.platform;
                         }
-
                         if (filters?.version) {
                             eventFilters.session.version = Array.isArray(filters.version)
                                 ? { in: filters.version }
@@ -138,7 +134,6 @@ export class AnalyticsMetricsService {
                         }
                     }
 
-                    // Count if user has any event during Day N
                     const hasActivityOnDayN = await this.prisma.event.findFirst({
                         where: eventFilters
                     });
@@ -149,12 +144,12 @@ export class AnalyticsMetricsService {
                 }
 
                 // Calculate percentage based on eligible users for this specific retention day
-                const percentage = eligibleUsersForThisDay > 0 ? (retainedCount / eligibleUsersForThisDay) * 100 : 0;
+                const percentage = eligibleUsersCount > 0 ? (retainedCount / eligibleUsersCount) * 100 : 0;
 
                 retentionData.push({
                     day,
                     count: retainedCount,
-                    percentage: Math.round(percentage * 100) / 100 // Round to 2 decimal places
+                    percentage: Math.round(percentage * 100) / 100
                 });
             }
 
@@ -347,13 +342,16 @@ export class AnalyticsMetricsService {
                 const avgSessionDuration = totalSessions > 0 ? totalDuration / totalSessions : 0;
                 const sessionsPerUser = uniqueUsers > 0 ? totalSessions / uniqueUsers : 0;
 
+                // Total playtime per user = avg sessions per user * avg session duration
+                const totalPlaytimePerUser = sessionsPerUser * avgSessionDuration;
+
                 // Format date as ISO string (YYYY-MM-DD)
                 const dateString = currentDate.toISOString().split('T')[0];
 
                 playtimeData.push({
                     date: dateString || '',
                     avgSessionDuration,
-                    totalPlaytime: totalDuration,
+                    totalPlaytime: totalPlaytimePerUser,
                     sessionsPerUser
                 });
 

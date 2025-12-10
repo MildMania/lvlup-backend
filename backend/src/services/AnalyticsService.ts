@@ -291,14 +291,66 @@ export class AnalyticsService {
             const avgPlaytimeDuration = totalActiveUsers > 0 ?
                 Math.round((totalSessionDuration._sum.duration || 0) / totalActiveUsers) : 0;
 
+            // Calculate real retention rates using AnalyticsMetricsService
+            const { AnalyticsMetricsService } = await import('./AnalyticsMetricsService');
+            const metricsService = new AnalyticsMetricsService();
+
+            const retentionData = await metricsService.calculateRetention(
+                gameId,
+                startDate,
+                endDate,
+                { retentionDays: [1, 7] }
+            );
+
+            const retentionDay1 = retentionData.find(r => r.day === 1)?.percentage || 0;
+            const retentionDay7 = retentionData.find(r => r.day === 7)?.percentage || 0;
+
+            // Active users today (users with events today)
+            const today = new Date();
+            today.setHours(0, 0, 0, 0);
+            const tomorrow = new Date(today);
+            tomorrow.setDate(tomorrow.getDate() + 1);
+
+            const activeUsersToday = await this.prisma.user.count({
+                where: {
+                    gameId: gameId,
+                    OR: [
+                        {
+                            events: {
+                                some: {
+                                    timestamp: {
+                                        gte: today,
+                                        lt: tomorrow
+                                    }
+                                }
+                            }
+                        },
+                        {
+                            sessions: {
+                                some: {
+                                    startTime: {
+                                        gte: today,
+                                        lt: tomorrow
+                                    }
+                                }
+                            }
+                        }
+                    ]
+                }
+            });
+
             return {
-                totalEvents,
+                totalUsers: totalActiveUsers, // Frontend expects totalUsers
                 newUsers,
-                totalActiveUsers,
                 totalSessions,
+                totalEvents,
                 avgSessionDuration: Math.round(avgSessionDuration._avg.duration || 0),
                 avgSessionsPerUser,
                 avgPlaytimeDuration,
+                retentionDay1,
+                retentionDay7,
+                activeUsersToday,
+                topEvent: topEvents.length > 0 ? topEvents[0].eventName : 'No events', // Frontend expects single topEvent string
                 topEvents: topEvents.map((event: any) => ({
                     name: event.eventName,
                     count: event._count.eventName

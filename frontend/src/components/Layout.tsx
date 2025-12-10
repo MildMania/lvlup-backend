@@ -1,44 +1,28 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import Sidebar from './Sidebar';
 import Dashboard from './Dashboard';
+import Analytics from './Analytics';
 import ReleaseManagement from './ReleaseManagement';
 import { AIChatWidget } from './AIChatWidget';
+import { useGame } from '../contexts/GameContext';
+import { setApiKey } from '../lib/apiClient';
 import './Layout.css';
-
-interface GameInfo {
-  id: string;
-  name: string;
-  description?: string;
-}
 
 const Layout: React.FC = () => {
   const [currentPage, setCurrentPage] = useState('dashboard');
-  const [selectedGameId, setSelectedGameId] = useState('cmgnwzyny00001y9kkivzptyx');
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
-  
-  // Mock games data - in a real app, this would come from an API or context
-  const availableGames: GameInfo[] = [
-    {
-      id: 'cmgnwzyny00001y9kkivzptyx',
-      name: 'Puzzle Quest Adventures',
-      description: 'A puzzle adventure game with RPG elements'
-    },
-    {
-      id: 'game_2',
-      name: 'Space Raiders',
-      description: 'An action-packed space shooter game'
-    },
-    {
-      id: 'game_3', 
-      name: 'Fantasy Kingdom',
-      description: 'A strategic kingdom building game'
-    }
-  ];
+  const { currentGame, availableGames, setCurrentGame } = useGame();
 
-  const currentGame = availableGames.find(game => game.id === selectedGameId) || availableGames[0];
+  // Update API key when game changes
+  useEffect(() => {
+    setApiKey(currentGame.apiKey);
+  }, [currentGame]);
 
   const handleGameChange = (gameId: string) => {
-    setSelectedGameId(gameId);
+    const game = availableGames.find(g => g.id === gameId);
+    if (game) {
+      setCurrentGame(game);
+    }
   };
 
   const renderPage = () => {
@@ -46,7 +30,7 @@ const Layout: React.FC = () => {
       case 'dashboard':
         return <Dashboard gameInfo={currentGame} isCollapsed={isSidebarCollapsed} />;
       case 'analytics':
-        return <div className="page-placeholder">Analytics Page - Coming Soon</div>;
+        return <Analytics gameInfo={currentGame} isCollapsed={isSidebarCollapsed} />;
       case 'users':
         return <div className="page-placeholder">Users Page - Coming Soon</div>;
       case 'events':

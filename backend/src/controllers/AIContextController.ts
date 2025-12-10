@@ -77,8 +77,8 @@ export class AIContextController {
                 name,
                 description,
                 type,
-                startDate: new Date(startDate),
-                ...(endDate && { endDate: new Date(endDate) }),
+                startDate: new Date(startDate + 'T00:00:00.000Z'),
+                ...(endDate && { endDate: new Date(endDate + 'T23:59:59.999Z') }),
                 gameId,
                 impact,
                 metadata
@@ -166,8 +166,8 @@ export class AIContextController {
                 name,
                 description,
                 type,
-                startDate: new Date(startDate),
-                ...(endDate && { endDate: new Date(endDate) }),
+                startDate: new Date(startDate + 'T00:00:00.000Z'),
+                ...(endDate && { endDate: new Date(endDate + 'T23:59:59.999Z') }),
                 gameId,
                 impact,
                 metadata,
@@ -198,8 +198,8 @@ export class AIContextController {
             }
 
             const context = await this.contextManager.getContextForDate(
-                new Date(startDate as string),
-                new Date(endDate as string),
+                new Date(startDate as string + 'T00:00:00.000Z'),
+                new Date(endDate as string + 'T23:59:59.999Z'),
                 gameId as string | undefined
             );
 

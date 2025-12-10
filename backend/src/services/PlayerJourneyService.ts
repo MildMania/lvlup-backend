@@ -189,36 +189,6 @@ export class PlayerJourneyService {
                 }
             };
 
-            // Count total active users in this period (same logic as AnalyticsService)
-            // This should be the baseline for the funnel, not just users with checkpoints
-            const totalActiveUsers = await this.prisma.user.count({
-                where: {
-                    gameId,
-                    OR: [
-                        {
-                            events: {
-                                some: {
-                                    timestamp: {
-                                        gte: startDate,
-                                        lte: endDate
-                                    }
-                                }
-                            }
-                        },
-                        {
-                            sessions: {
-                                some: {
-                                    startTime: {
-                                        gte: startDate,
-                                        lte: endDate
-                                    }
-                                }
-                            }
-                        }
-                    ]
-                }
-            });
-
             // Get user filters for additional filtering
             const userFilters: any = {};
 
@@ -240,6 +210,20 @@ export class PlayerJourneyService {
                     : filters.version;
             }
 
+            // Count NEW users in this period (registered during the date range)
+            // Player journey should track new user onboarding, not all active users
+            // Apply same filters as will be used for checkpoint queries
+            const totalNewUsers = await this.prisma.user.count({
+                where: {
+                    gameId,
+                    createdAt: {
+                        gte: startDate,
+                        lte: endDate
+                    },
+                    ...userFilters
+                }
+            });
+
             // If we have user filters, include them in the checkpoint filters
             if (Object.keys(userFilters).length > 0) {
                 playerCheckpointFilters.user = userFilters;
@@ -249,11 +233,18 @@ export class PlayerJourneyService {
             const checkpointProgress: CheckpointProgressData[] = [];
 
             for (const checkpoint of checkpoints) {
-                // Find all users who reached this checkpoint
+                // Find all users who reached this checkpoint AND were registered during the date range
                 const usersReached = await this.prisma.playerCheckpoint.findMany({
                     where: {
                         ...playerCheckpointFilters,
-                        checkpointId: checkpoint.id
+                        checkpointId: checkpoint.id,
+                        user: {
+                            ...userFilters,
+                            createdAt: {
+                                gte: startDate,
+                                lte: endDate
+                            }
+                        }
                     },
                     select: {
                         userId: true,
@@ -261,12 +252,12 @@ export class PlayerJourneyService {
                     }
                 });
 
-                // Count of users who reached this checkpoint
+                // Count of NEW users who reached this checkpoint
                 const count = usersReached.length;
 
-                // Calculate percentage based on total active users
-                const percentage = totalActiveUsers > 0
-                    ? (count / totalActiveUsers) * 100
+                // Calculate percentage based on total new users
+                const percentage = totalNewUsers > 0
+                    ? (count / totalNewUsers) * 100
                     : 0;
 
                 // Calculate average time to reach from the start of the period
@@ -295,7 +286,7 @@ export class PlayerJourneyService {
             }
 
             const journeyData: JourneyProgressData = {
-                totalUsers: totalActiveUsers,
+                totalUsers: totalNewUsers,
                 checkpoints: checkpointProgress
             };
 

@@ -54,10 +54,10 @@ async function main() {
     const userBatches = await Promise.all(
         games.map(async (game, gameIndex) => {
             const users = [];
-            const userCount = 50 + gameIndex * 25; // 50, 75, 100 users per game
+            const userCount = 1000 + gameIndex * 500; // 1000, 1500, 2000 users per game
 
             for (let i = 0; i < userCount; i++) {
-                const createdAt = daysAgo(Math.floor(Math.random() * 90)); // Users joined over last 90 days
+                const createdAt = daysAgo(Math.floor(Math.random() * 60)); // Users joined over last 60 days
 
                 users.push({
                     gameId: game.id,
@@ -81,20 +81,60 @@ async function main() {
     // Fetch created users for session and event creation
     const allUsers = await prisma.user.findMany({ include: { game: true } });
 
-    // Create Sessions and Events
+
+    // Batch create sessions and events for all users
+    const allSessions = [];
+    const allEvents = [];
+    const eventTypes = {
+        'Puzzle Quest Adventures': [
+            'level_start', 'level_complete', 'level_fail', 'power_up_used',
+            'purchase_made', 'daily_reward_claimed', 'tutorial_step_completed'
+        ],
+        'Space Runner 3D': [
+            'game_start', 'game_over', 'power_up_collected', 'obstacle_hit',
+            'high_score_achieved', 'shop_visited', 'achievement_unlocked'
+        ],
+        'City Builder Pro': [
+            'building_placed', 'building_upgraded', 'resource_collected', 'quest_completed',
+            'city_expanded', 'population_milestone', 'trade_completed'
+        ],
+    };
+
     for (const user of allUsers) {
-        const sessionsCount = Math.floor(Math.random() * 20) + 5; // 5-25 sessions per user
+        const registrationDate = new Date(user.createdAt);
+        const daysSinceRegistration = Math.min(30, Math.floor((Date.now() - registrationDate.getTime()) / (24 * 60 * 60 * 1000)));
+        const retentionProbabilities = {
+            1: 0.65,
+            2: 0.50,
+            3: 0.42,
+            7: 0.35,
+            14: 0.25,
+            30: 0.15
+        };
 
-        for (let i = 0; i < sessionsCount; i++) {
-            const sessionStart = new Date(
-                user.createdAt.getTime() + Math.random() * (Date.now() - user.createdAt.getTime())
-            );
-
-            const sessionDuration = Math.floor(Math.random() * 3600) + 300; // 5 minutes to 1 hour
-            const sessionEnd = new Date(sessionStart.getTime() + sessionDuration * 1000);
-
-            const session = await prisma.session.create({
-                data: {
+        for (let dayOffset = 0; dayOffset <= daysSinceRegistration; dayOffset++) {
+            let returnProbability = 1.0;
+            if (dayOffset === 1) returnProbability = retentionProbabilities[1];
+            else if (dayOffset === 2) returnProbability = retentionProbabilities[2];
+            else if (dayOffset === 3) returnProbability = retentionProbabilities[3];
+            else if (dayOffset <= 7) returnProbability = retentionProbabilities[7];
+            else if (dayOffset <= 14) returnProbability = retentionProbabilities[14];
+            else if (dayOffset <= 30) returnProbability = retentionProbabilities[30];
+            else returnProbability = 0.1;
+            if (dayOffset > 0 && Math.random() > returnProbability) continue;
+            // Randomly assign 1-4 sessions per day for realistic variation
+            const dailySessionsCount = Math.floor(Math.random() * 4) + 1; // 1-4 sessions per day
+            for (let sessionIdx = 0; sessionIdx < dailySessionsCount; sessionIdx++) {
+                const sessionStart = new Date(registrationDate);
+                sessionStart.setDate(sessionStart.getDate() + dayOffset);
+                sessionStart.setHours(
+                    Math.floor(Math.random() * 16) + 6,
+                    Math.floor(Math.random() * 60),
+                    Math.floor(Math.random() * 60)
+                );
+                const sessionDuration = Math.floor(Math.random() * 3600) + 300;
+                const sessionEnd = new Date(sessionStart.getTime() + sessionDuration * 1000);
+                const sessionObj = {
                     gameId: user.gameId,
                     userId: user.id,
                     startTime: sessionStart,
@@ -102,86 +142,90 @@ async function main() {
                     duration: sessionDuration,
                     platform: user.platform,
                     version: user.version,
-                },
-            });
-
-            // Create events for this session
-            const eventTypes = {
-                'Puzzle Quest Adventures': [
-                    'level_start', 'level_complete', 'level_fail', 'power_up_used',
-                    'purchase_made', 'daily_reward_claimed', 'tutorial_step_completed'
-                ],
-                'Space Runner 3D': [
-                    'game_start', 'game_over', 'power_up_collected', 'obstacle_hit',
-                    'high_score_achieved', 'shop_visited', 'achievement_unlocked'
-                ],
-                'City Builder Pro': [
-                    'building_placed', 'building_upgraded', 'resource_collected', 'quest_completed',
-                    'city_expanded', 'population_milestone', 'trade_completed'
-                ],
-            };
-
-            const gameEvents = eventTypes[user.game.name as keyof typeof eventTypes] || eventTypes['Puzzle Quest Adventures'];
-            const eventsCount = Math.floor(Math.random() * 15) + 5; // 5-20 events per session
-
-            for (let j = 0; j < eventsCount; j++) {
-                const eventTime = new Date(
-                    sessionStart.getTime() + (j / eventsCount) * sessionDuration * 1000
-                );
-
-                const eventName = gameEvents[Math.floor(Math.random() * gameEvents.length)];
-
-                // Ensure eventName is not undefined
-                if (!eventName) continue;
-
-                // Generate realistic properties based on event type
-                let properties = {};
-
-                switch (eventName) {
-                    case 'level_start':
-                    case 'level_complete':
-                    case 'level_fail':
-                        properties = {
-                            level: Math.floor(Math.random() * 100) + 1,
-                            difficulty: ['easy', 'medium', 'hard'][Math.floor(Math.random() * 3)],
-                            score: Math.floor(Math.random() * 10000),
-                        };
-                        break;
-                    case 'purchase_made':
-                        properties = {
-                            item_id: `item_${Math.floor(Math.random() * 50) + 1}`,
-                            item_type: ['power_up', 'currency', 'cosmetic'][Math.floor(Math.random() * 3)],
-                            price: (Math.random() * 10).toFixed(2),
-                            currency: 'USD',
-                        };
-                        break;
-                    case 'building_placed':
-                    case 'building_upgraded':
-                        properties = {
-                            building_type: ['house', 'shop', 'park', 'office'][Math.floor(Math.random() * 4)],
-                            level: Math.floor(Math.random() * 10) + 1,
-                            cost: Math.floor(Math.random() * 1000) + 100,
-                        };
-                        break;
-                    default:
-                        properties = {
-                            value: Math.floor(Math.random() * 1000),
-                            context: 'gameplay',
-                        };
-                }
-
-                await prisma.event.create({
-                    data: {
-                        gameId: user.gameId,
-                        userId: user.id,
-                        sessionId: session.id,
-                        eventName,
-                        properties,
-                        timestamp: eventTime,
-                    },
-                });
+                };
+                allSessions.push(sessionObj);
             }
         }
+    }
+
+    // Batch insert sessions
+    const sessionInsertChunks = [];
+    for (let i = 0; i < allSessions.length; i += 1000) {
+        sessionInsertChunks.push(allSessions.slice(i, i + 1000));
+    }
+    let createdSessions = [];
+    for (const chunk of sessionInsertChunks) {
+        const result = await prisma.session.createMany({ data: chunk });
+        createdSessions.push(result);
+    }
+
+    // Fetch all sessions with IDs for event creation
+    const sessionsWithIds = await prisma.session.findMany();
+
+    // Create events for each session
+    for (const session of sessionsWithIds) {
+        const gameName = allUsers.find(u => u.id === session.userId)?.game?.name || 'Puzzle Quest Adventures';
+        const gameEvents = eventTypes[gameName as keyof typeof eventTypes] || eventTypes['Puzzle Quest Adventures'];
+        const eventsCount = 5; // 5 events per session for performance
+        for (let j = 0; j < eventsCount; j++) {
+            const eventTime = new Date(
+                session.startTime.getTime() + (j / eventsCount) * (session.duration || 300) * 1000
+            );
+            const eventName = gameEvents[Math.floor(Math.random() * gameEvents.length)];
+            if (!eventName) continue;
+            let properties = {};
+            switch (eventName) {
+                case 'level_start':
+                case 'level_complete':
+                case 'level_fail':
+                    properties = {
+                        level: Math.floor(Math.random() * 100) + 1,
+                        difficulty: ['easy', 'medium', 'hard'][Math.floor(Math.random() * 3)],
+                        score: Math.floor(Math.random() * 10000),
+                    };
+                    break;
+                case 'purchase_made':
+                    properties = {
+                        item_id: `item_${Math.floor(Math.random() * 50) + 1}`,
+                        item_type: ['power_up', 'currency', 'cosmetic'][Math.floor(Math.random() * 3)],
+                        price: (Math.random() * 10).toFixed(2),
+                        currency: 'USD',
+                    };
+                    break;
+                case 'building_placed':
+                case 'building_upgraded':
+                    properties = {
+                        building_type: ['house', 'shop', 'park', 'office'][Math.floor(Math.random() * 4)],
+                        level: Math.floor(Math.random() * 10) + 1,
+                        cost: Math.floor(Math.random() * 1000) + 100,
+                    };
+                    break;
+                default:
+                    properties = {
+                        value: Math.floor(Math.random() * 1000),
+                        context: 'gameplay',
+                    };
+            }
+            allEvents.push({
+                gameId: session.gameId,
+                userId: session.userId,
+                sessionId: session.id,
+                eventName,
+                properties,
+                timestamp: eventTime,
+            });
+        }
+    }
+
+    // Batch insert events
+    const eventInsertChunks = [];
+    for (let i = 0; i < allEvents.length; i += 1000) {
+        eventInsertChunks.push(allEvents.slice(i, i + 1000));
+    }
+    let createdEvents = [];
+    for (const chunk of eventInsertChunks) {
+        const result = await prisma.event.createMany({ data: chunk });
+        createdEvents.push(result);
     }
 
     console.log('✅ Created sessions and events for all users');

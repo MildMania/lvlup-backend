@@ -107,7 +107,7 @@ model ABTest {
   gameId       String
   name         String
   description  String?
-  status       TestStatus       @default("DRAFT")
+  status       TestStatus       @default(DRAFT)
   trafficSplit Float            @default(0.5)
   startDate    DateTime?
   endDate      DateTime?

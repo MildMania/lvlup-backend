@@ -34,7 +34,10 @@ export const GameProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       const response = await fetch(`${apiBaseUrl}/games`);
       
       if (response.ok) {
-        const games = await response.json();
+        const responseData = await response.json();
+        // Backend returns {success: true, data: [...games]}
+        const games = responseData.data || responseData;
+        
         if (games && games.length > 0) {
           setAvailableGames(games);
           // Set first game as current if we don't have a current game set

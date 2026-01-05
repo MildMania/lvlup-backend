@@ -37,6 +37,23 @@ export class GameController {
                 });
             }
 
+            // Check if game with same name already exists
+            const existingGame = await prisma.game.findFirst({
+                where: {
+                    name: {
+                        equals: name,
+                        mode: 'insensitive' // Case-insensitive comparison
+                    }
+                }
+            });
+
+            if (existingGame) {
+                return res.status(409).json({
+                    success: false,
+                    error: `Game with name "${name}" already exists. Please choose a different name.`
+                });
+            }
+
             // Generate a unique API key
             const apiKey = `lvl_${uuidv4().replace(/-/g, '')}`;
 
@@ -56,6 +73,7 @@ export class GameController {
                     id: game.id,
                     name: game.name,
                     apiKey: game.apiKey,
+                    description: game.description,
                     createdAt: game.createdAt
                 }
             });
@@ -76,6 +94,7 @@ export class GameController {
                     id: true,
                     name: true,
                     description: true,
+                    apiKey: true, // Include API key for frontend
                     createdAt: true,
                     _count: {
                         select: {
@@ -96,6 +115,7 @@ export class GameController {
                 id: game.id,
                 name: game.name,
                 description: game.description,
+                apiKey: game.apiKey, // Include in response
                 createdAt: game.createdAt,
                 stats: {
                     events: game._count?.events || 0,

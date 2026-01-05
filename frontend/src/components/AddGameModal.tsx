@@ -53,12 +53,15 @@ const AddGameModal: React.FC<AddGameModalProps> = ({ isOpen, onClose, onGameAdde
         throw new Error(errorMessage);
       }
 
-      const data = await response.json();
-      console.log('Game created successfully:', data);
+      const responseData = await response.json();
+      console.log('Game created successfully:', responseData);
       
-      setCreatedGame(data);
+      // Backend returns {success: true, data: {...game}}
+      const gameData = responseData.data || responseData;
+      
+      setCreatedGame(gameData);
       setSuccess(true);
-      onGameAdded(data);
+      onGameAdded(gameData);
 
       // Reset form after a delay
       setTimeout(() => {

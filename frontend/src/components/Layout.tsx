@@ -11,7 +11,7 @@ import './Layout.css';
 const Layout: React.FC = () => {
   const [currentPage, setCurrentPage] = useState('dashboard');
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
-  const { currentGame, availableGames, setCurrentGame } = useGame();
+  const { currentGame, availableGames, setCurrentGame, refreshGames } = useGame();
 
   // Update API key when game changes
   useEffect(() => {
@@ -23,6 +23,17 @@ const Layout: React.FC = () => {
     if (game) {
       setCurrentGame(game);
     }
+  };
+
+  const handleGameAdded = async (game: { id: string; name: string; apiKey: string }) => {
+    // Refresh the games list
+    await refreshGames();
+    // Switch to the newly created game
+    setCurrentGame({
+      id: game.id,
+      name: game.name,
+      apiKey: game.apiKey
+    });
   };
 
   const renderPage = () => {
@@ -55,6 +66,7 @@ const Layout: React.FC = () => {
         availableGames={availableGames}
         onGameChange={handleGameChange}
         onCollapseChange={setIsSidebarCollapsed}
+        onGameAdded={handleGameAdded}
       />
       <main className="main-content">
         {renderPage()}

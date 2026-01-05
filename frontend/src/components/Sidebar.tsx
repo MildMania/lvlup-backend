@@ -19,6 +19,7 @@ import {
   GitBranch
 } from 'lucide-react';
 import { useTheme } from '../contexts/ThemeContext';
+import AddGameModal from './AddGameModal';
 import './Sidebar.css';
 
 interface GameInfo {
@@ -34,6 +35,7 @@ interface SidebarProps {
   availableGames?: GameInfo[];
   onGameChange?: (gameId: string) => void;
   onCollapseChange?: (collapsed: boolean) => void;
+  onGameAdded?: (game: { id: string; name: string; apiKey: string }) => void;
 }
 
 const Sidebar: React.FC<SidebarProps> = ({ 
@@ -42,11 +44,13 @@ const Sidebar: React.FC<SidebarProps> = ({
   gameInfo, 
   availableGames = [], 
   onGameChange,
-  onCollapseChange 
+  onCollapseChange,
+  onGameAdded
 }) => {
   const [isCollapsed, setIsCollapsed] = useState(false);
   const [isMobileOpen, setIsMobileOpen] = useState(false);
   const [isGamesExpanded, setIsGamesExpanded] = useState(true);
+  const [isAddGameModalOpen, setIsAddGameModalOpen] = useState(false);
   const { isDarkMode, toggleTheme } = useTheme();
 
   const menuItems = [
@@ -132,8 +136,8 @@ const Sidebar: React.FC<SidebarProps> = ({
               )}
             </div>
             
-            {/* Games List */}
-            {!isCollapsed && availableGames.length > 1 && (
+            {/* Games List - Always show so Add Game button is accessible */}
+            {!isCollapsed && (
               <div className="games-section">
                 <div 
                   className="games-toggle"
@@ -145,7 +149,7 @@ const Sidebar: React.FC<SidebarProps> = ({
                 
                 {isGamesExpanded && (
                   <div className="games-list">
-                    {availableGames.map((game) => (
+                    {availableGames.filter(game => game.id !== 'default').map((game) => (
                       <button
                         key={game.id}
                         className={`game-item ${game.id === gameInfo.id ? 'active' : ''}`}
@@ -155,7 +159,17 @@ const Sidebar: React.FC<SidebarProps> = ({
                         <span className="game-item-name">{game.name}</span>
                       </button>
                     ))}
-                    <button className="game-item add-game">
+                    {availableGames.filter(game => game.id !== 'default').length === 0 && (
+                      <div className="no-games-message">
+                        <p style={{ fontSize: '12px', color: 'var(--text-secondary)', padding: '8px', textAlign: 'center' }}>
+                          No games yet. Create your first one!
+                        </p>
+                      </div>
+                    )}
+                    <button 
+                      className="game-item add-game"
+                      onClick={() => setIsAddGameModalOpen(true)}
+                    >
                       <Plus size={14} />
                       <span className="game-item-name">Add Game</span>
                     </button>
@@ -218,6 +232,18 @@ const Sidebar: React.FC<SidebarProps> = ({
           )}
         </div>
       </div>
+
+      {/* Add Game Modal */}
+      <AddGameModal
+        isOpen={isAddGameModalOpen}
+        onClose={() => setIsAddGameModalOpen(false)}
+        onGameAdded={(game) => {
+          if (onGameAdded) {
+            onGameAdded(game);
+          }
+          setIsAddGameModalOpen(false);
+        }}
+      />
     </>
   );
 };

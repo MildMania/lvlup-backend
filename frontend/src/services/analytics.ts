@@ -6,11 +6,7 @@ import type {
   ApiResponse,
   UserAnalytics,
   RetentionData,
-  EngagementData,
   PlayerJourneyData,
-  EventData,
-  PlatformData,
-  CountryData,
   DashboardSummary,
 } from '../types/analytics';
 

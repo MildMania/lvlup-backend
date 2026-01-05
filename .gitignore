@@ -84,7 +84,7 @@ Icon
 
 # Prisma
 backend/prisma/.env
-backend/prisma/migrations/
+# NOTE: backend/prisma/migrations/ should be committed!
 
 # TypeScript compiled output (keep source .ts files only)
 backend/src/**/*.js

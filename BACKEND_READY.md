@@ -1,5 +1,16 @@
 # ✅ Backend Ready for Deployment!
 
+## ⚠️ IMPORTANT: Updated Recommendation
+
+**For live games with low traffic, use Railway.app instead of Render.com!**
+
+- ❌ **Render Free**: Sleeps after 15 min → 30s cold start → BAD UX for games
+- ✅ **Railway Free**: Always-on, instant response → PERFECT for games
+
+**See:** `BETTER_DEPLOYMENT_OPTIONS.md` for complete guide
+
+---
+
 ## What Was Done
 
 ### 1. Deployment Configuration ✅
@@ -26,17 +37,33 @@
 
 ---
 
-## 🎯 Deployment Stack (100% FREE)
+## 🎯 Deployment Stack (100% FREE / Nearly Free)
 
-| Component | Provider | Plan | Cost |
-|-----------|----------|------|------|
-| **Backend** | Render.com | Free | $0/month |
-| **Database** | Render PostgreSQL | Free | $0/month |
-| **Frontend** | Vercel | Hobby | $0/month |
-| **Domain** | Render/Vercel | Free subdomain | $0/month |
-| **HTTPS** | Auto | Included | $0/month |
+### Recommended for Live Games:
 
-**Total Cost**: $0/month 🎉
+| Component | Provider | Plan | Cost | Always On |
+|-----------|----------|------|------|-----------|
+| **Backend** | Railway.app ⭐ | Free | $0-3/month | ✅ Yes |
+| **Database** | Railway PostgreSQL | Free | Included | ✅ Yes |
+| **Frontend** | Vercel | Hobby | $0/month | ✅ Yes |
+| **Domain** | Railway/Vercel | Free subdomain | $0/month | - |
+| **HTTPS** | Auto | Included | $0/month | - |
+
+**Total Cost**: $0-3/month 🎉
+
+### Alternative (NOT for Live Games):
+
+| Component | Provider | Issue |
+|-----------|----------|-------|
+| ~~Render.com~~ | Free tier | ❌ Sleeps after 15 min, 30s cold start |
+
+**Why Railway instead of Render?**
+- ✅ No sleep/cold start issues
+- ✅ Always instant response
+- ✅ Better for live games
+- ✅ Still very affordable
+
+**See:** `BETTER_DEPLOYMENT_OPTIONS.md` for detailed comparison
 
 ---
 

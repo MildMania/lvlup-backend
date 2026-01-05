@@ -341,6 +341,7 @@ export class AnalyticsService {
 
             return {
                 totalUsers: totalActiveUsers, // Frontend expects totalUsers
+                totalActiveUsers, // Deprecated but kept for backward compatibility
                 newUsers,
                 totalSessions,
                 totalEvents,
@@ -350,7 +351,7 @@ export class AnalyticsService {
                 retentionDay1,
                 retentionDay7,
                 activeUsersToday,
-                topEvent: topEvents.length > 0 ? topEvents[0].eventName : 'No events', // Frontend expects single topEvent string
+                topEvent: topEvents.length > 0 ? (topEvents[0]?.eventName || 'No events') : 'No events', // Frontend expects single topEvent string
                 topEvents: topEvents.map((event: any) => ({
                     name: event.eventName,
                     count: event._count.eventName

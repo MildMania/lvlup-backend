@@ -121,7 +121,12 @@ export class AIContextController {
      */
     updateRelease = async (req: Request, res: Response): Promise<void> => {
         try {
-            const { id } = req.params;
+            const id = req.params.id as string;
+            if (!id) {
+                res.status(400).json({ error: 'Release ID is required' });
+                return;
+            }
+            
             const { version, description, gameId, rolloutType, features, tags } = req.body;
 
             if (!version) {
@@ -132,7 +137,7 @@ export class AIContextController {
             await this.contextManager.updateRelease(id, {
                 version,
                 description,
-                gameId,
+                gameId: gameId || undefined,
                 rolloutType,
                 features,
                 tags
@@ -154,7 +159,12 @@ export class AIContextController {
      */
     updateBusinessEvent = async (req: Request, res: Response): Promise<void> => {
         try {
-            const { id } = req.params;
+            const id = req.params.id as string;
+            if (!id) {
+                res.status(400).json({ error: 'Business event ID is required' });
+                return;
+            }
+            
             const { name, description, type, startDate, endDate, gameId, impact, metadata, tags } = req.body;
 
             if (!name || !type || !startDate) {
@@ -168,7 +178,7 @@ export class AIContextController {
                 type,
                 startDate: new Date(startDate + 'T00:00:00.000Z'),
                 ...(endDate && { endDate: new Date(endDate + 'T23:59:59.999Z') }),
-                gameId,
+                gameId: gameId || undefined,
                 impact,
                 metadata,
                 tags

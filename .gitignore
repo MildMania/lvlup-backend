@@ -1,3 +1,18 @@
+# Database files - NEVER commit these!
+*.db
+*.db-*
+*.db-journal
+*.db-shm
+*.db-wal
+backend/prisma/dev.db
+backend/prisma/*.db
+backend/prisma/*.db-*
+backend/prisma/migrations/.DS_Store
+
+# Prisma
+.env
+prisma/.env
+
 # Node.js
 node_modules/
 npm-debug.log

@@ -23,25 +23,38 @@ export interface AIAnalysisResponse {
 }
 
 export class OpenAIService {
-    private openai: OpenAI;
+    private openai: OpenAI | null;
     private model: string;
+    private isEnabled: boolean;
 
     constructor() {
         if (!process.env.OPENAI_API_KEY) {
-            throw new Error('OPENAI_API_KEY environment variable is required');
+            logger.warn('OPENAI_API_KEY not set. AI features will be disabled.');
+            this.openai = null;
+            this.isEnabled = false;
+            this.model = 'gpt-4';
+        } else {
+            this.openai = new OpenAI({
+                apiKey: process.env.OPENAI_API_KEY,
+            });
+            this.model = process.env.OPENAI_MODEL || 'gpt-4';
+            this.isEnabled = true;
+            logger.info('OpenAI service initialized successfully');
         }
+    }
 
-        this.openai = new OpenAI({
-            apiKey: process.env.OPENAI_API_KEY,
-        });
-
-        this.model = process.env.OPENAI_MODEL || 'gpt-4o-mini';
+    public isAIEnabled(): boolean {
+        return this.isEnabled;
     }
 
     /**
      * Analyze analytics data using AI and provide intelligent insights
      */
     async analyzeAnalyticsQuery(request: AIAnalysisRequest): Promise<AIAnalysisResponse> {
+        if (!this.isEnabled || !this.openai) {
+            throw new Error('AI features are disabled. Please set OPENAI_API_KEY environment variable.');
+        }
+
         try {
             const systemPrompt = this.buildSystemPrompt();
             const userPrompt = this.buildUserPrompt(request);
@@ -91,6 +104,10 @@ export class OpenAIService {
         confidence: number;
         reasoning: string;
     }> {
+        if (!this.isEnabled || !this.openai) {
+            throw new Error('AI features are disabled. Please set OPENAI_API_KEY environment variable.');
+        }
+
         try {
             const systemPrompt = `You are an expert at understanding analytics queries. Extract the intent, relevant metrics, and timeframe from user queries.
 
@@ -194,6 +211,10 @@ Please analyze this data and provide insights that directly address the user's q
      * Test OpenAI connection
      */
     async testConnection(): Promise<boolean> {
+        if (!this.isEnabled || !this.openai) {
+            return false;
+        }
+
         try {
             const completion = await this.openai.chat.completions.create({
                 model: this.model,

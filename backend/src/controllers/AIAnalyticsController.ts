@@ -14,6 +14,14 @@ export class AIAnalyticsController {
      */
     processQuery = async (req: Request, res: Response): Promise<void> => {
         try {
+            if (!this.aiAnalyticsService.isAIEnabled()) {
+                res.status(503).json({ 
+                    error: 'AI features are currently unavailable. Please configure OPENAI_API_KEY.',
+                    success: false
+                });
+                return;
+            }
+
             const { query, gameId, userId } = req.body;
 
             if (!query) {

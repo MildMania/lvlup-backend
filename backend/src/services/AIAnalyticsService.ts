@@ -18,6 +18,13 @@ export class AIAnalyticsService {
   }
 
   /**
+   * Check if AI features are enabled
+   */
+  public isAIEnabled(): boolean {
+    return this.openaiService.isAIEnabled();
+  }
+
+  /**
    * Process natural language query using real AI
    */
   async processQuery(query: string, gameId?: string, userId?: string): Promise<any> {

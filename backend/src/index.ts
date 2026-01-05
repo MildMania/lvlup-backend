@@ -19,11 +19,22 @@ app.use(express.json({ limit: '2mb' })); // Increased limit for batch events
 app.use(express.urlencoded({ extended: true }));
 app.use(morgan('combined')); // HTTP request logging
 
+// Health check endpoint for Railway (root level)
+app.get('/health', (_req: Request, res: Response) => {
+    res.json({
+        status: 'ok',
+        timestamp: new Date().toISOString(),
+        uptime: process.uptime(),
+        environment: process.env.NODE_ENV || 'development'
+    });
+});
+
 // Root endpoint - API info
 app.get('/', (_req: Request, res: Response) => {
     res.send(`
         <h1>LvlUp Backend API</h1>
         <p>Version: 1.0.0</p>
+        <p>Health: <a href="/health">/health</a></p>
         <p>API Documentation: <a href="/docs">View Docs</a></p>
     `);
 });

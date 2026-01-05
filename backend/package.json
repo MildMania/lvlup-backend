@@ -10,11 +10,14 @@
     "dev": "ts-node-dev --respawn --transpile-only src/index.ts",
     "start": "node dist/index.js",
     "start:ts": "ts-node src/index.ts",
-    "build": "tsc",
+    "build": "tsc && prisma generate",
     "generate": "prisma generate",
     "db:push": "prisma db push",
+    "db:migrate": "prisma migrate deploy",
     "db:seed": "ts-node prisma/seed.ts",
-    "db:reset": "prisma db push --force-reset && npm run db:seed"
+    "db:reset": "prisma db push --force-reset && npm run db:seed",
+    "postinstall": "prisma generate",
+    "deploy": "npm run build && npm run db:migrate"
   },
   "keywords": [],
   "author": "",

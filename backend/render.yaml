@@ -1,0 +1,29 @@
+# LvlUp Backend - Render.com Deployment
+
+## Build Command
+```bash
+npm install && npm run build
+```
+
+## Start Command
+```bash
+npm start
+```
+
+## Environment Variables
+
+Set these in Render.com dashboard:
+
+### Required
+- `DATABASE_URL` - PostgreSQL connection string (auto-provided by Render)
+- `PORT` - Port number (auto-provided by Render, usually 10000)
+- `NODE_ENV` - Set to `production`
+
+### Optional
+- `OPENAI_API_KEY` - Your OpenAI API key (for AI features)
+- `CORS_ORIGIN` - Frontend URL (e.g., https://your-frontend.vercel.app)
+
+## Auto-Deploy
+- Connected to GitHub repository
+- Deploys automatically on push to main branch
+

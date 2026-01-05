@@ -85,3 +85,9 @@ coverage/
 
 # nyc test coverage
 .nyc_output/
+# Database files
+*.db
+*.db-*
+backend/prisma/dev.db
+backend/prisma/*.db
+backend/prisma/*.db-journal

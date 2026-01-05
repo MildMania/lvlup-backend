@@ -42,7 +42,20 @@
 .game-badge {
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: 8px;
+}
+
+.game-badge-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.game-badge-row.api-key-row {
+  background: var(--bg-tertiary);
+  padding: 8px 12px;
+  border-radius: 6px;
+  border: 1px solid var(--border-primary);
 }
 
 .game-name {
@@ -59,6 +72,45 @@
   padding: 2px 8px;
   border-radius: 4px;
   display: inline-block;
+}
+
+.game-api-key {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: 1;
+}
+
+.game-api-key code {
+  font-family: 'Monaco', 'Menlo', 'Courier New', monospace;
+  font-size: 0.75rem;
+  color: var(--text-secondary);
+  background: var(--bg-secondary);
+  padding: 4px 8px;
+  border-radius: 4px;
+  letter-spacing: 0.5px;
+}
+
+.copy-api-key-btn {
+  background: var(--primary-color);
+  color: white;
+  border: none;
+  padding: 6px 8px;
+  border-radius: 4px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.2s ease;
+}
+
+.copy-api-key-btn:hover {
+  background: var(--primary-hover);
+  transform: translateY(-1px);
+}
+
+.copy-api-key-btn:active {
+  transform: translateY(0);
 }
 
 .last-updated {

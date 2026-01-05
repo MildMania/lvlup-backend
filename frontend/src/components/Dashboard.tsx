@@ -12,7 +12,7 @@ import {
   Pie,
   Cell
 } from 'recharts';
-import { Users, Activity, Clock, TrendingUp, RefreshCw, Info } from 'lucide-react';
+import { Users, Activity, Clock, TrendingUp, RefreshCw, Info, Copy, Check } from 'lucide-react';
 import { AnalyticsService, fetchPlaytime } from '../services/analytics';
 import type { 
   ActiveUserPoint, 
@@ -120,6 +120,7 @@ interface DashboardProps {
     id: string;
     name: string;
     description?: string;
+    apiKey?: string;
   };
   isCollapsed?: boolean;
 }
@@ -129,6 +130,7 @@ const Dashboard: React.FC<DashboardProps> = ({ gameInfo, isCollapsed = false }) 
   const [retention, setRetention] = useState<RetentionPoint[]>([]);
   const [playtime, setPlaytime] = useState<PlaytimePoint[]>([]);
   const [playerJourney, setPlayerJourney] = useState<PlayerJourneyData[]>([]);
+  const [apiKeyCopied, setApiKeyCopied] = useState(false);
   const [summary, setSummary] = useState<DashboardSummary | null>(null);
   const [loading, setLoading] = useState(true);
   const [updating, setUpdating] = useState(false); // For incremental updates
@@ -151,6 +153,14 @@ const Dashboard: React.FC<DashboardProps> = ({ gameInfo, isCollapsed = false }) 
     tertiary: '#f59e0b',
     quaternary: '#ef4444',
     background: isDarkMode ? '#1e293b' : '#ffffff'
+  };
+
+  const copyApiKey = () => {
+    if (gameInfo?.apiKey) {
+      navigator.clipboard.writeText(gameInfo.apiKey);
+      setApiKeyCopied(true);
+      setTimeout(() => setApiKeyCopied(false), 2000);
+    }
   };
 
   useEffect(() => {
@@ -423,8 +433,24 @@ const Dashboard: React.FC<DashboardProps> = ({ gameInfo, isCollapsed = false }) 
             <h1>Analytics Dashboard</h1>
             {gameInfo && (
               <div className="game-badge">
-                <span className="game-name">{gameInfo.name}</span>
-                <span className="game-id">ID: {gameInfo.id}</span>
+                <div className="game-badge-row">
+                  <span className="game-name">{gameInfo.name}</span>
+                  <span className="game-id">ID: {gameInfo.id}</span>
+                </div>
+                {gameInfo.apiKey && (
+                  <div className="game-badge-row api-key-row">
+                    <span className="game-api-key">
+                      <code>{gameInfo.apiKey}</code>
+                    </span>
+                    <button 
+                      className="copy-api-key-btn"
+                      onClick={copyApiKey}
+                      title="Copy API Key"
+                    >
+                      {apiKeyCopied ? <Check size={14} /> : <Copy size={14} />}
+                    </button>
+                  </div>
+                )}
               </div>
             )}
           </div>

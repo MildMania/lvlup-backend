@@ -209,6 +209,20 @@
   gap: 4px;
 }
 
+.games-list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 8px 0;
+}
+
+.game-item-wrapper {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  position: relative;
+}
+
 .game-item {
   display: flex;
   align-items: center;
@@ -222,7 +236,7 @@
   cursor: pointer;
   transition: all 0.2s ease;
   text-align: left;
-  width: 100%;
+  flex: 1;
 }
 
 .game-item:hover {
@@ -233,6 +247,29 @@
 .game-item.active {
   background: rgba(59, 130, 246, 0.2);
   color: #60a5fa;
+}
+
+.game-item-delete {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 6px;
+  background: rgba(239, 68, 68, 0.1);
+  border: none;
+  border-radius: 4px;
+  color: #ef4444;
+  cursor: pointer;
+  opacity: 0;
+  transition: all 0.2s ease;
+}
+
+.game-item-wrapper:hover .game-item-delete {
+  opacity: 1;
+}
+
+.game-item-delete:hover {
+  background: rgba(239, 68, 68, 0.2);
+  transform: scale(1.1);
 }
 
 .game-item.add-game {

@@ -16,7 +16,8 @@ import {
   ChevronUp,
   Moon,
   Sun,
-  GitBranch
+  GitBranch,
+  Trash2
 } from 'lucide-react';
 import { useTheme } from '../contexts/ThemeContext';
 import AddGameModal from './AddGameModal';
@@ -36,6 +37,7 @@ interface SidebarProps {
   onGameChange?: (gameId: string) => void;
   onCollapseChange?: (collapsed: boolean) => void;
   onGameAdded?: (game: { id: string; name: string; apiKey: string }) => void;
+  onGameDelete?: (gameId: string) => void;
 }
 
 const Sidebar: React.FC<SidebarProps> = ({ 
@@ -45,7 +47,8 @@ const Sidebar: React.FC<SidebarProps> = ({
   availableGames = [], 
   onGameChange,
   onCollapseChange,
-  onGameAdded
+  onGameAdded,
+  onGameDelete
 }) => {
   const [isCollapsed, setIsCollapsed] = useState(false);
   const [isMobileOpen, setIsMobileOpen] = useState(false);
@@ -150,14 +153,29 @@ const Sidebar: React.FC<SidebarProps> = ({
                 {isGamesExpanded && (
                   <div className="games-list">
                     {availableGames.filter(game => game.id !== 'default').map((game) => (
-                      <button
-                        key={game.id}
-                        className={`game-item ${game.id === gameInfo.id ? 'active' : ''}`}
-                        onClick={() => onGameChange && onGameChange(game.id)}
-                      >
-                        <GamepadIcon size={14} />
-                        <span className="game-item-name">{game.name}</span>
-                      </button>
+                      <div key={game.id} className="game-item-wrapper">
+                        <button
+                          className={`game-item ${game.id === gameInfo.id ? 'active' : ''}`}
+                          onClick={() => onGameChange && onGameChange(game.id)}
+                        >
+                          <GamepadIcon size={14} />
+                          <span className="game-item-name">{game.name}</span>
+                        </button>
+                        {onGameDelete && (
+                          <button
+                            className="game-item-delete"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              if (window.confirm(`Are you sure you want to delete "${game.name}"? This action cannot be undone.`)) {
+                                onGameDelete(game.id);
+                              }
+                            }}
+                            title="Delete game"
+                          >
+                            <Trash2 size={12} />
+                          </button>
+                        )}
+                      </div>
                     ))}
                     {availableGames.filter(game => game.id !== 'default').length === 0 && (
                       <div className="no-games-message">

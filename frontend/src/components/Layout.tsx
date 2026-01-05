@@ -36,6 +36,42 @@ const Layout: React.FC = () => {
     });
   };
 
+  const handleGameDelete = async (gameId: string) => {
+    try {
+      const apiBaseUrl = import.meta.env.VITE_API_BASE_URL || 'http://localhost:3000/api';
+      const response = await fetch(`${apiBaseUrl}/games/${gameId}`, {
+        method: 'DELETE',
+      });
+
+      if (response.ok) {
+        // Refresh games list
+        await refreshGames();
+        
+        // If deleted game was current, switch to first available or default
+        if (currentGame.id === gameId) {
+          const remainingGames = availableGames.filter(g => g.id !== gameId);
+          if (remainingGames.length > 0) {
+            setCurrentGame(remainingGames[0]);
+          } else {
+            // Reset to default if no games left
+            setCurrentGame({
+              id: 'default',
+              name: 'No Games Yet',
+              description: 'Create your first game',
+              apiKey: 'default_key'
+            });
+          }
+        }
+      } else {
+        const errorData = await response.json();
+        alert(`Failed to delete game: ${errorData.error || response.statusText}`);
+      }
+    } catch (error) {
+      console.error('Error deleting game:', error);
+      alert('Failed to delete game. Please try again.');
+    }
+  };
+
   const renderPage = () => {
     switch (currentPage) {
       case 'dashboard':
@@ -67,6 +103,7 @@ const Layout: React.FC = () => {
         onGameChange={handleGameChange}
         onCollapseChange={setIsSidebarCollapsed}
         onGameAdded={handleGameAdded}
+        onGameDelete={handleGameDelete}
       />
       <main className="main-content">
         {renderPage()}

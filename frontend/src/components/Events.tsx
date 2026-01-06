@@ -295,130 +295,131 @@ const Events: React.FC<EventsProps> = ({ gameInfo, isCollapsed = false }) => {
                   <span className="event-time">{formatTime(event.timestamp)}</span>
                 </div>
 
-                <div className="event-details">
+                <div className="event-summary">
                   <div className="event-detail-item">
                     <User size={14} />
                     <span className="detail-label">User ID:</span>
                     <code className="detail-value">{event.userId}</code>
                   </div>
-
-                  {event.sessionId && (
-                    <div className="event-detail-item">
-                      <Gamepad2 size={14} />
-                      <span className="detail-label">Session:</span>
-                      <code className="detail-value">{event.sessionId}</code>
-                    </div>
-                  )}
-
-                  {event.sessionNum && (
-                    <div className="event-detail-item">
-                      <span className="detail-label">Session #:</span>
-                      <code className="detail-value">{event.sessionNum}</code>
-                    </div>
-                  )}
-
-                  {event.platform && (
-                    <div className="event-detail-item">
-                      <span className="detail-label">Platform:</span>
-                      <code className="detail-value">{event.platform}</code>
-                    </div>
-                  )}
-
-                  {event.device && (
-                    <div className="event-detail-item">
-                      <span className="detail-label">Device:</span>
-                      <code className="detail-value">{event.device}</code>
-                    </div>
-                  )}
-
-                  {event.manufacturer && (
-                    <div className="event-detail-item">
-                      <span className="detail-label">Manufacturer:</span>
-                      <code className="detail-value">{event.manufacturer}</code>
-                    </div>
-                  )}
-
-                  {event.osVersion && (
-                    <div className="event-detail-item">
-                      <span className="detail-label">OS:</span>
-                      <code className="detail-value">{event.osVersion}</code>
-                    </div>
-                  )}
-
-                  {event.appVersion && (
-                    <div className="event-detail-item">
-                      <span className="detail-label">App Version:</span>
-                      <code className="detail-value">{event.appVersion}{event.appBuild && ` (${event.appBuild})`}</code>
-                    </div>
-                  )}
-
-                  {event.connectionType && (
-                    <div className="event-detail-item">
-                      <span className="detail-label">Connection:</span>
-                      <code className="detail-value">{event.connectionType}</code>
-                    </div>
-                  )}
-
-                  {event.engineVersion && (
-                    <div className="event-detail-item">
-                      <span className="detail-label">Engine:</span>
-                      <code className="detail-value">{event.engineVersion}</code>
-                    </div>
-                  )}
-
-                  {event.bundleId && (
-                    <div className="event-detail-item">
-                      <span className="detail-label">Bundle ID:</span>
-                      <code className="detail-value">{event.bundleId}</code>
-                    </div>
-                  )}
-
-                  {event.channelId && (
-                    <div className="event-detail-item">
-                      <span className="detail-label">Channel:</span>
-                      <code className="detail-value">{event.channelId}</code>
-                    </div>
-                  )}
                 </div>
 
-                {/* Event Metadata Section */}
-                {(event.eventUuid || event.clientTs || event.deviceId || event.sdkVersion || event.appSignature) && (
-                  <details className="event-metadata">
-                    <summary>Metadata</summary>
-                    <div className="metadata-grid">
-                      {event.eventUuid && (
-                        <div className="metadata-item">
-                          <span className="metadata-label">Event UUID:</span>
-                          <code className="metadata-value">{event.eventUuid}</code>
-                        </div>
-                      )}
-                      {event.clientTs && (
-                        <div className="metadata-item">
-                          <span className="metadata-label">Client Timestamp:</span>
-                          <code className="metadata-value">{new Date(event.clientTs).toISOString()}</code>
-                        </div>
-                      )}
-                      {event.deviceId && (
-                        <div className="metadata-item">
-                          <span className="metadata-label">Device ID:</span>
-                          <code className="metadata-value">{event.deviceId}</code>
-                        </div>
-                      )}
-                      {event.sdkVersion && (
-                        <div className="metadata-item">
-                          <span className="metadata-label">SDK Version:</span>
-                          <code className="metadata-value">{event.sdkVersion}</code>
-                        </div>
-                      )}
-                      {event.appSignature && (
-                        <div className="metadata-item">
-                          <span className="metadata-label">App Signature:</span>
-                          <code className="metadata-value">{event.appSignature}</code>
-                        </div>
-                      )}
-                    </div>
-                  </details>
-                )}
+                {/* Event Details - Collapsible */}
+                <details className="event-details-section">
+                  <summary>Event Details</summary>
+                  <div className="details-grid">
+                    {event.sessionId && (
+                      <div className="detail-item">
+                        <span className="detail-label">Session ID:</span>
+                        <code className="detail-value">{event.sessionId}</code>
+                      </div>
+                    )}
+
+                    {event.sessionNum && (
+                      <div className="detail-item">
+                        <span className="detail-label">Session #:</span>
+                        <code className="detail-value">{event.sessionNum}</code>
+                      </div>
+                    )}
+
+                    {event.platform && (
+                      <div className="detail-item">
+                        <span className="detail-label">Platform:</span>
+                        <code className="detail-value">{event.platform}</code>
+                      </div>
+                    )}
+
+                    {event.device && (
+                      <div className="detail-item">
+                        <span className="detail-label">Device:</span>
+                        <code className="detail-value">{event.device}</code>
+                      </div>
+                    )}
+
+                    {event.manufacturer && (
+                      <div className="detail-item">
+                        <span className="detail-label">Manufacturer:</span>
+                        <code className="detail-value">{event.manufacturer}</code>
+                      </div>
+                    )}
+
+                    {event.osVersion && (
+                      <div className="detail-item">
+                        <span className="detail-label">OS Version:</span>
+                        <code className="detail-value">{event.osVersion}</code>
+                      </div>
+                    )}
+
+                    {event.appVersion && (
+                      <div className="detail-item">
+                        <span className="detail-label">App Version:</span>
+                        <code className="detail-value">{event.appVersion}{event.appBuild && ` (${event.appBuild})`}</code>
+                      </div>
+                    )}
+
+                    {event.connectionType && (
+                      <div className="detail-item">
+                        <span className="detail-label">Connection:</span>
+                        <code className="detail-value">{event.connectionType}</code>
+                      </div>
+                    )}
+
+                    {event.engineVersion && (
+                      <div className="detail-item">
+                        <span className="detail-label">Engine:</span>
+                        <code className="detail-value">{event.engineVersion}</code>
+                      </div>
+                    )}
+
+                    {event.bundleId && (
+                      <div className="detail-item">
+                        <span className="detail-label">Bundle ID:</span>
+                        <code className="detail-value">{event.bundleId}</code>
+                      </div>
+                    )}
+
+                    {event.channelId && (
+                      <div className="detail-item">
+                        <span className="detail-label">Channel:</span>
+                        <code className="detail-value">{event.channelId}</code>
+                      </div>
+                    )}
+
+                    {event.sdkVersion && (
+                      <div className="detail-item">
+                        <span className="detail-label">SDK Version:</span>
+                        <code className="detail-value">{event.sdkVersion}</code>
+                      </div>
+                    )}
+
+                    {event.deviceId && (
+                      <div className="detail-item">
+                        <span className="detail-label">Device ID:</span>
+                        <code className="detail-value">{event.deviceId}</code>
+                      </div>
+                    )}
+
+                    {event.eventUuid && (
+                      <div className="detail-item">
+                        <span className="detail-label">Event UUID:</span>
+                        <code className="detail-value">{event.eventUuid}</code>
+                      </div>
+                    )}
+
+                    {event.clientTs && (
+                      <div className="detail-item">
+                        <span className="detail-label">Client Timestamp:</span>
+                        <code className="detail-value">{new Date(Number(event.clientTs)).toISOString()}</code>
+                      </div>
+                    )}
+
+                    {event.appSignature && (
+                      <div className="detail-item">
+                        <span className="detail-label">App Signature:</span>
+                        <code className="detail-value">{event.appSignature}</code>
+                      </div>
+                    )}
+                  </div>
+                </details>
 
                 {event.properties && Object.keys(event.properties).length > 0 && (
                   <details className="event-properties">

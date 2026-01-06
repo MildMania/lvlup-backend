@@ -277,14 +277,12 @@
   color: var(--text-tertiary);
 }
 
-.event-details {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
-  gap: 8px;
+/* Event Summary - Always visible */
+.event-summary {
   margin-bottom: 12px;
 }
 
-.event-detail-item {
+.event-summary .event-detail-item {
   display: flex;
   align-items: center;
   gap: 8px;
@@ -293,43 +291,47 @@
   padding: 4px 0;
 }
 
-.detail-label {
-  font-weight: 500;
-  min-width: 80px;
-}
-
-.detail-value {
-  font-family: 'Monaco', 'Menlo', 'Courier New', monospace;
-  font-size: 12px;
-  background: var(--bg-secondary);
-  padding: 2px 6px;
-  border-radius: 4px;
-  color: var(--text-primary);
-  flex: 1;
-}
-
-/* Metadata */
-.event-metadata {
+/* Event Details Section - Collapsible */
+.event-details-section {
   margin-top: 12px;
   border-top: 1px solid var(--border-primary);
   padding-top: 12px;
 }
 
-.event-metadata summary {
+.event-details-section summary {
   cursor: pointer;
   font-size: 13px;
   font-weight: 600;
   color: var(--text-secondary);
   padding: 4px 0;
   user-select: none;
+  list-style: none;
+  display: flex;
+  align-items: center;
+  gap: 6px;
 }
 
-.event-metadata summary:hover {
+.event-details-section summary::-webkit-details-marker {
+  display: none;
+}
+
+.event-details-section summary::before {
+  content: '▶';
+  font-size: 10px;
+  transition: transform 0.2s;
+  display: inline-block;
+}
+
+.event-details-section[open] summary::before {
+  transform: rotate(90deg);
+}
+
+.event-details-section summary:hover {
   color: var(--primary-color);
 }
 
-.metadata-grid {
-  margin-top: 8px;
+.details-grid {
+  margin-top: 12px;
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
   gap: 12px;
@@ -338,13 +340,13 @@
   border-radius: 6px;
 }
 
-.metadata-item {
+.detail-item {
   display: flex;
   flex-direction: column;
   gap: 4px;
 }
 
-.metadata-label {
+.detail-item .detail-label {
   font-size: 11px;
   font-weight: 600;
   color: var(--text-tertiary);
@@ -352,17 +354,18 @@
   letter-spacing: 0.5px;
 }
 
-.metadata-value {
+.detail-item .detail-value {
   font-family: 'Monaco', 'Menlo', 'Courier New', monospace;
-  font-size: 11px;
+  font-size: 12px;
   background: var(--bg-tertiary);
   padding: 4px 8px;
   border-radius: 4px;
   color: var(--text-primary);
   overflow: hidden;
   text-overflow: ellipsis;
-  white-space: nowrap;
+  word-break: break-all;
 }
+
 
 /* Properties */
 .event-properties {
@@ -378,6 +381,25 @@
   color: var(--text-secondary);
   padding: 4px 0;
   user-select: none;
+  list-style: none;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.event-properties summary::-webkit-details-marker {
+  display: none;
+}
+
+.event-properties summary::before {
+  content: '▶';
+  font-size: 10px;
+  transition: transform 0.2s;
+  display: inline-block;
+}
+
+.event-properties[open] summary::before {
+  transform: rotate(90deg);
 }
 
 .event-properties summary:hover {

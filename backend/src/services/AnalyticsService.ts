@@ -431,10 +431,10 @@ export class AnalyticsService {
                     userId: true,
                     sessionId: true,
                     properties: true,
-                    createdAt: true
+                    timestamp: true
                 },
                 orderBy: {
-                    createdAt: sort === 'desc' ? 'desc' : 'asc'
+                    timestamp: sort === 'desc' ? 'desc' : 'asc'
                 },
                 take: limit,
                 skip: offset

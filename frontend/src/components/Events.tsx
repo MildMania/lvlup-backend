@@ -8,7 +8,7 @@ interface Event {
   userId: string;
   sessionId?: string;
   properties?: Record<string, any>;
-  createdAt: string;
+  timestamp: string;
 }
 
 interface EventsProps {
@@ -268,7 +268,7 @@ const Events: React.FC<EventsProps> = ({ gameInfo, isCollapsed = false }) => {
                     <Activity size={14} />
                     <span className="event-name">{event.eventName}</span>
                   </div>
-                  <span className="event-time">{formatTime(event.createdAt)}</span>
+                  <span className="event-time">{formatTime(event.timestamp)}</span>
                 </div>
 
                 <div className="event-details">

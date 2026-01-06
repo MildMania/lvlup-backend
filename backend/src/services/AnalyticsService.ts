@@ -128,26 +128,57 @@ export class AnalyticsService {
             // Get or create user
             const userProfile: UserProfile = {
                 externalId: batchData.userId,
-                ...batchData.deviceInfo
+                ...(batchData.deviceInfo?.deviceId && { deviceId: batchData.deviceInfo.deviceId }),
+                ...(batchData.deviceInfo?.platform && { platform: batchData.deviceInfo.platform }),
+                ...((batchData.deviceInfo?.appVersion || batchData.deviceInfo?.version) && {
+                    version: batchData.deviceInfo.appVersion || batchData.deviceInfo.version
+                }),
             };
 
             const user = await this.getOrCreateUser(gameId, userProfile);
 
-            // Create events in batch
+            // Extract device info for easier access
+            const deviceInfo = batchData.deviceInfo || {};
+
+            // Create events in batch with comprehensive metadata
             const events = batchData.events.map(eventData => ({
                 gameId: gameId,
                 userId: user.id,
                 sessionId: batchData.sessionId || null,
                 eventName: eventData.eventName,
                 properties: eventData.properties || {},
-                timestamp: eventData.timestamp ? new Date(eventData.timestamp) : new Date()
+                timestamp: eventData.timestamp ? new Date(eventData.timestamp) : new Date(),
+                
+                // Event metadata
+                eventUuid: eventData.eventUuid,
+                clientTs: eventData.clientTs ? BigInt(eventData.clientTs) : null,
+                
+                // Device & Platform info (automatically captured)
+                platform: deviceInfo.platform,
+                osVersion: deviceInfo.osVersion,
+                manufacturer: deviceInfo.manufacturer,
+                device: deviceInfo.device,
+                deviceId: deviceInfo.deviceId,
+                
+                // App info (automatically captured)
+                appVersion: deviceInfo.appVersion,
+                appBuild: deviceInfo.appBuild,
+                bundleId: deviceInfo.bundleId,
+                engineVersion: deviceInfo.engineVersion,
+                sdkVersion: deviceInfo.sdkVersion,
+                
+                // Network & Additional (automatically captured)
+                connectionType: deviceInfo.connectionType,
+                sessionNum: deviceInfo.sessionNum,
+                appSignature: deviceInfo.appSignature,
+                channelId: deviceInfo.channelId,
             }));
 
             const createdEvents = await this.prisma.event.createMany({
                 data: events
             });
 
-            logger.info(`Batch tracked ${createdEvents.count} events for user ${batchData.userId}`);
+            logger.info(`Batch tracked ${createdEvents.count} events for user ${batchData.userId} with full device metadata`);
             return createdEvents;
         } catch (error) {
             logger.error('Error tracking batch events:', error);

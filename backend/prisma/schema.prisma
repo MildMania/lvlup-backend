@@ -77,12 +77,39 @@ model Event {
   eventName  String
   properties Json?
   timestamp  DateTime @default(now())
+  
+  // Event metadata (like GameAnalytics)
+  eventUuid     String?  // Unique event identifier from client
+  clientTs      BigInt?  // Client-side Unix timestamp
+  
+  // Device & Platform info
+  platform      String?  // e.g., "android", "ios", "webgl"
+  osVersion     String?  // e.g., "android 13", "iOS 16.0"
+  manufacturer  String?  // e.g., "TECNO", "Apple"
+  device        String?  // e.g., "TECNO BG6", "iPhone 14"
+  deviceId      String?  // Unique device identifier
+  
+  // App info
+  appVersion    String?  // e.g., "0.0.3"
+  appBuild      String?  // e.g., "30087"
+  bundleId      String?  // e.g., "com.mildmania.packperfect"
+  engineVersion String?  // e.g., "unity 2022.3.62"
+  sdkVersion    String?  // e.g., "unity 1.0.0"
+  
+  // Network & Additional
+  connectionType String?  // e.g., "wifi", "wwan", "offline"
+  sessionNum     Int?     // Session number for this user
+  appSignature   String?  // Android app signature
+  channelId      String?  // e.g., "com.android.vending"
+  
   session    Session? @relation(fields: [sessionId], references: [id])
   user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
   game       Game     @relation(fields: [gameId], references: [id], onDelete: Cascade)
 
   @@index([gameId, eventName, timestamp])
   @@index([userId, timestamp])
+  @@index([gameId, platform, timestamp])
+  @@index([gameId, appVersion, timestamp])
   @@map("events")
 }
 

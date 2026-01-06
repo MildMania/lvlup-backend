@@ -431,7 +431,31 @@ export class AnalyticsService {
                     userId: true,
                     sessionId: true,
                     properties: true,
-                    timestamp: true
+                    timestamp: true,
+                    
+                    // Event metadata
+                    eventUuid: true,
+                    clientTs: true,
+                    
+                    // Device & Platform info
+                    platform: true,
+                    osVersion: true,
+                    manufacturer: true,
+                    device: true,
+                    deviceId: true,
+                    
+                    // App info
+                    appVersion: true,
+                    appBuild: true,
+                    bundleId: true,
+                    engineVersion: true,
+                    sdkVersion: true,
+                    
+                    // Network & Additional
+                    connectionType: true,
+                    sessionNum: true,
+                    appSignature: true,
+                    channelId: true,
                 },
                 orderBy: {
                     timestamp: sort === 'desc' ? 'desc' : 'asc'

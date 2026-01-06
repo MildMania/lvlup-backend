@@ -33,6 +33,15 @@ interface Event {
   sessionNum?: number;
   appSignature?: string;
   channelId?: string;
+  
+  // Geographic location
+  country?: string;
+  countryCode?: string;
+  region?: string;
+  city?: string;
+  latitude?: number;
+  longitude?: number;
+  timezone?: string;
 }
 
 interface EventsProps {
@@ -454,6 +463,37 @@ const Events: React.FC<EventsProps> = ({ gameInfo, isCollapsed = false }) => {
                       <div className="detail-item">
                         <span className="detail-label">App Signature:</span>
                         <code className="detail-value">{event.appSignature}</code>
+                      </div>
+                    )}
+                    
+                    {/* Geographic Location */}
+                    {(event.country || event.city || event.region) && (
+                      <div className="detail-item detail-item-full">
+                        <span className="detail-label">Location:</span>
+                        <code className="detail-value">
+                          {[event.city, event.region, event.country].filter(Boolean).join(', ')}
+                        </code>
+                      </div>
+                    )}
+                    
+                    {event.countryCode && (
+                      <div className="detail-item">
+                        <span className="detail-label">Country Code:</span>
+                        <code className="detail-value">{event.countryCode}</code>
+                      </div>
+                    )}
+                    
+                    {(event.latitude !== undefined && event.longitude !== undefined) && (
+                      <div className="detail-item">
+                        <span className="detail-label">Coordinates:</span>
+                        <code className="detail-value">{event.latitude?.toFixed(4)}, {event.longitude?.toFixed(4)}</code>
+                      </div>
+                    )}
+                    
+                    {event.timezone && (
+                      <div className="detail-item">
+                        <span className="detail-label">Timezone:</span>
+                        <code className="detail-value">{event.timezone}</code>
                       </div>
                     )}
                   </div>

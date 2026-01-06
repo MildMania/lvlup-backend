@@ -197,6 +197,15 @@ export class AnalyticsService {
                 sessionNum: eventData.sessionNum ?? deviceInfo.sessionNum ?? null,
                 appSignature: eventData.appSignature ?? deviceInfo.appSignature ?? null,
                 channelId: eventData.channelId ?? deviceInfo.channelId ?? null,
+                
+                // Geographic location
+                country: eventData.country ?? null,
+                countryCode: eventData.countryCode ?? null,
+                region: eventData.region ?? null,
+                city: eventData.city ?? null,
+                latitude: eventData.latitude ?? null,
+                longitude: eventData.longitude ?? null,
+                timezone: eventData.timezone ?? null,
             }));
 
             const createdEvents = await this.prisma.event.createMany({
@@ -456,6 +465,15 @@ export class AnalyticsService {
                     sessionNum: true,
                     appSignature: true,
                     channelId: true,
+                    
+                    // Geographic location
+                    country: true,
+                    countryCode: true,
+                    region: true,
+                    city: true,
+                    latitude: true,
+                    longitude: true,
+                    timezone: true,
                 },
                 orderBy: {
                     timestamp: sort === 'desc' ? 'desc' : 'asc'

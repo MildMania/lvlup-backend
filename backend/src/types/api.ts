@@ -59,6 +59,15 @@ export interface EventData {
     sessionNum?: number;     // Session number for this user
     appSignature?: string;   // Android app signature
     channelId?: string;      // e.g., "com.android.vending"
+    
+    // Geographic location
+    country?: string;        // ISO country code, e.g., "US", "TR"
+    countryCode?: string;    // ISO 3166-1 alpha-2, e.g., "US"
+    region?: string;         // Region/State, e.g., "California", "Istanbul"
+    city?: string;           // City name, e.g., "San Francisco", "Istanbul"
+    latitude?: number;       // Latitude coordinate
+    longitude?: number;      // Longitude coordinate
+    timezone?: string;       // IANA timezone, e.g., "America/Los_Angeles"
 }
 
 // Device and system information (like GameAnalytics)

@@ -379,6 +379,10 @@
   gap: 4px;
 }
 
+.detail-item-full {
+  grid-column: 1 / -1;
+}
+
 .detail-item .detail-label {
   font-size: 11px;
   font-weight: 600;

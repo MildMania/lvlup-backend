@@ -102,6 +102,15 @@ model Event {
   appSignature   String?  // Android app signature
   channelId      String?  // e.g., "com.android.vending"
   
+  // Geographic location
+  country        String?  // ISO country code, e.g., "US", "TR"
+  countryCode    String?  // ISO 3166-1 alpha-2, e.g., "US"
+  region         String?  // Region/State, e.g., "California", "Istanbul"
+  city           String?  // City name, e.g., "San Francisco", "Istanbul"
+  latitude       Float?   // Latitude coordinate
+  longitude      Float?   // Longitude coordinate
+  timezone       String?  // IANA timezone, e.g., "America/Los_Angeles"
+  
   session    Session? @relation(fields: [sessionId], references: [id])
   user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
   game       Game     @relation(fields: [gameId], references: [id], onDelete: Cascade)
@@ -110,6 +119,7 @@ model Event {
   @@index([userId, timestamp])
   @@index([gameId, platform, timestamp])
   @@index([gameId, appVersion, timestamp])
+  @@index([gameId, country, timestamp])
   @@map("events")
 }
 

@@ -1,5 +1,5 @@
 import React, { useEffect, useState, useCallback } from 'react';
-import { Activity, RefreshCw, Filter, Search, Clock, User, Gamepad2 } from 'lucide-react';
+import { Activity, RefreshCw, Filter, Search, Clock, User } from 'lucide-react';
 import './Events.css';
 
 interface Event {

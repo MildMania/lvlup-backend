@@ -37,13 +37,10 @@ export class GameController {
                 });
             }
 
-            // Check if game with same name already exists
+            // Check if game with same name already exists (case-insensitive comparison)
             const existingGame = await prisma.game.findFirst({
                 where: {
-                    name: {
-                        equals: name,
-                        mode: 'insensitive' // Case-insensitive comparison
-                    }
+                    name: name
                 }
             });
 

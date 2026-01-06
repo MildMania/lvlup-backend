@@ -30,13 +30,35 @@ export interface UserProfile {
     language?: string;
 }
 
-// Single event data
+// Single event data - matches Prisma Event model
 export interface EventData {
     eventName: string;
     properties?: Record<string, any>;
     timestamp?: string;
-    eventUuid?: string;    // Unique event identifier
-    clientTs?: number;      // Client Unix timestamp
+    
+    // Event metadata
+    eventUuid?: string;     // Unique event identifier from client
+    clientTs?: number;      // Client-side Unix timestamp
+    
+    // Device & Platform info
+    platform?: string;      // e.g., "android", "ios", "webgl"
+    osVersion?: string;     // e.g., "android 13", "iOS 16.0"
+    manufacturer?: string;  // e.g., "TECNO", "Apple"
+    device?: string;        // e.g., "TECNO BG6", "iPhone 14"
+    deviceId?: string;      // Unique device identifier
+    
+    // App info
+    appVersion?: string;    // e.g., "0.0.3"
+    appBuild?: string;      // e.g., "30087"
+    bundleId?: string;      // e.g., "com.mildmania.packperfect"
+    engineVersion?: string; // e.g., "unity 2022.3.62"
+    sdkVersion?: string;    // e.g., "unity 1.0.0"
+    
+    // Network & Additional
+    connectionType?: string; // e.g., "wifi", "wwan", "offline"
+    sessionNum?: number;     // Session number for this user
+    appSignature?: string;   // Android app signature
+    channelId?: string;      // e.g., "com.android.vending"
 }
 
 // Device and system information (like GameAnalytics)

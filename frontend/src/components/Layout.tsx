@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import Sidebar from './Sidebar';
 import Dashboard from './Dashboard';
 import Analytics from './Analytics';
+import Events from './Events';
 import ReleaseManagement from './ReleaseManagement';
 import { AIChatWidget } from './AIChatWidget';
 import { useGame } from '../contexts/GameContext';
@@ -81,7 +82,7 @@ const Layout: React.FC = () => {
       case 'users':
         return <div className="page-placeholder">Users Page - Coming Soon</div>;
       case 'events':
-        return <div className="page-placeholder">Events Page - Coming Soon</div>;
+        return <Events gameInfo={currentGame} isCollapsed={isSidebarCollapsed} />;
       case 'funnels':
         return <div className="page-placeholder">Funnels Page - Coming Soon</div>;
       case 'releases':

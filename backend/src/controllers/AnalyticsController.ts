@@ -325,4 +325,27 @@ export class AnalyticsController {
             });
         }
     }
+
+    // Get events for a game
+    async getEvents(req: AuthenticatedRequest, res: Response<ApiResponse>) {
+        try {
+            const gameId = req.game!.id;
+            const limit = parseInt(req.query.limit as string) || 100;
+            const offset = parseInt(req.query.offset as string) || 0;
+            const sort = (req.query.sort as string) || 'desc';
+
+            const events = await analyticsService.getEvents(gameId, limit, offset, sort);
+
+            res.status(200).json({
+                success: true,
+                data: events
+            });
+        } catch (error) {
+            logger.error('Error in getEvents controller:', error);
+            res.status(500).json({
+                success: false,
+                error: 'Failed to get events'
+            });
+        }
+    }
 }

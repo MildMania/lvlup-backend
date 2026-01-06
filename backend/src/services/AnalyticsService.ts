@@ -110,11 +110,35 @@ export class AnalyticsService {
                     sessionId: sessionId,
                     eventName: eventData.eventName,
                     properties: eventData.properties || {},
-                    timestamp: eventData.timestamp ? new Date(eventData.timestamp) : new Date()
+                    timestamp: eventData.timestamp ? new Date(eventData.timestamp) : new Date(),
+                    
+                    // Event metadata
+                    eventUuid: eventData.eventUuid ?? null,
+                    clientTs: eventData.clientTs ? BigInt(eventData.clientTs) : null,
+                    
+                    // Device & Platform info
+                    platform: eventData.platform ?? null,
+                    osVersion: eventData.osVersion ?? null,
+                    manufacturer: eventData.manufacturer ?? null,
+                    device: eventData.device ?? null,
+                    deviceId: eventData.deviceId ?? null,
+                    
+                    // App info
+                    appVersion: eventData.appVersion ?? null,
+                    appBuild: eventData.appBuild ?? null,
+                    bundleId: eventData.bundleId ?? null,
+                    engineVersion: eventData.engineVersion ?? null,
+                    sdkVersion: eventData.sdkVersion ?? null,
+                    
+                    // Network & Additional
+                    connectionType: eventData.connectionType ?? null,
+                    sessionNum: eventData.sessionNum ?? null,
+                    appSignature: eventData.appSignature ?? null,
+                    channelId: eventData.channelId ?? null,
                 }
             });
 
-            logger.debug(`Event ${eventData.eventName} tracked for user ${userId}`);
+            logger.debug(`Event ${eventData.eventName} tracked for user ${userId} with full metadata`);
             return event;
         } catch (error) {
             logger.error('Error tracking event:', error);
@@ -141,6 +165,7 @@ export class AnalyticsService {
             const deviceInfo = batchData.deviceInfo || {};
 
             // Create events in batch with comprehensive metadata
+            // Prioritize event-level metadata over batch deviceInfo
             const events = batchData.events.map(eventData => ({
                 gameId: gameId,
                 userId: user.id,
@@ -149,29 +174,29 @@ export class AnalyticsService {
                 properties: eventData.properties || {},
                 timestamp: eventData.timestamp ? new Date(eventData.timestamp) : new Date(),
                 
-                // Event metadata (convert undefined to null for Prisma)
+                // Event metadata
                 eventUuid: eventData.eventUuid ?? null,
                 clientTs: eventData.clientTs ? BigInt(eventData.clientTs) : null,
                 
-                // Device & Platform info (automatically captured)
-                platform: deviceInfo.platform ?? null,
-                osVersion: deviceInfo.osVersion ?? null,
-                manufacturer: deviceInfo.manufacturer ?? null,
-                device: deviceInfo.device ?? null,
-                deviceId: deviceInfo.deviceId ?? null,
+                // Device & Platform info - prefer event-level, fallback to deviceInfo
+                platform: eventData.platform ?? deviceInfo.platform ?? null,
+                osVersion: eventData.osVersion ?? deviceInfo.osVersion ?? null,
+                manufacturer: eventData.manufacturer ?? deviceInfo.manufacturer ?? null,
+                device: eventData.device ?? deviceInfo.device ?? null,
+                deviceId: eventData.deviceId ?? deviceInfo.deviceId ?? null,
                 
-                // App info (automatically captured)
-                appVersion: deviceInfo.appVersion ?? null,
-                appBuild: deviceInfo.appBuild ?? null,
-                bundleId: deviceInfo.bundleId ?? null,
-                engineVersion: deviceInfo.engineVersion ?? null,
-                sdkVersion: deviceInfo.sdkVersion ?? null,
+                // App info - prefer event-level, fallback to deviceInfo
+                appVersion: eventData.appVersion ?? deviceInfo.appVersion ?? null,
+                appBuild: eventData.appBuild ?? deviceInfo.appBuild ?? null,
+                bundleId: eventData.bundleId ?? deviceInfo.bundleId ?? null,
+                engineVersion: eventData.engineVersion ?? deviceInfo.engineVersion ?? null,
+                sdkVersion: eventData.sdkVersion ?? deviceInfo.sdkVersion ?? null,
                 
-                // Network & Additional (automatically captured)
-                connectionType: deviceInfo.connectionType ?? null,
-                sessionNum: deviceInfo.sessionNum ?? null,
-                appSignature: deviceInfo.appSignature ?? null,
-                channelId: deviceInfo.channelId ?? null,
+                // Network & Additional - prefer event-level, fallback to deviceInfo
+                connectionType: eventData.connectionType ?? deviceInfo.connectionType ?? null,
+                sessionNum: eventData.sessionNum ?? deviceInfo.sessionNum ?? null,
+                appSignature: eventData.appSignature ?? deviceInfo.appSignature ?? null,
+                channelId: eventData.channelId ?? deviceInfo.channelId ?? null,
             }));
 
             const createdEvents = await this.prisma.event.createMany({
@@ -390,6 +415,34 @@ export class AnalyticsService {
             };
         } catch (error) {
             logger.error('Error getting analytics:', error);
+            throw error;
+        }
+    }
+
+    async getEvents(gameId: string, limit: number = 100, offset: number = 0, sort: string = 'desc') {
+        try {
+            const events = await this.prisma.event.findMany({
+                where: {
+                    gameId
+                },
+                select: {
+                    id: true,
+                    eventName: true,
+                    userId: true,
+                    sessionId: true,
+                    properties: true,
+                    createdAt: true
+                },
+                orderBy: {
+                    createdAt: sort === 'desc' ? 'desc' : 'asc'
+                },
+                take: limit,
+                skip: offset
+            });
+
+            return events;
+        } catch (error) {
+            logger.error('Error getting events:', error);
             throw error;
         }
     }

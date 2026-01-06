@@ -1,0 +1,18 @@
+{
+  "buildCommand": "npm run build",
+  "outputDirectory": "dist",
+  "devCommand": "npm run dev",
+  "installCommand": "npm install",
+  "framework": "vite",
+  "env": {
+    "VITE_API_BASE_URL": {
+      "type": "plain",
+      "value": "https://lvlup-backend-production.up.railway.app/api"
+    },
+    "VITE_API_KEY": {
+      "type": "secret",
+      "value": "lvl_da7339ff066a4c0295e5b11fc15bb79b"
+    }
+  }
+}
+

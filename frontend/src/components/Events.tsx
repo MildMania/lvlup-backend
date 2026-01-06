@@ -46,7 +46,7 @@ interface EventsProps {
 
 const Events: React.FC<EventsProps> = ({ gameInfo, isCollapsed = false }) => {
   const [events, setEvents] = useState<Event[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(false);
   const [autoRefresh, setAutoRefresh] = useState(true);
   const [refreshInterval, setRefreshInterval] = useState(5); // seconds
   const [searchTerm, setSearchTerm] = useState('');
@@ -56,9 +56,12 @@ const Events: React.FC<EventsProps> = ({ gameInfo, isCollapsed = false }) => {
   const fetchEvents = useCallback(async () => {
     if (!gameInfo || gameInfo.id === 'default') {
       console.log('[Events] No game selected or default game');
+      setLoading(false);
       return;
     }
 
+    setLoading(true); // Always set loading to true at start
+    
     try {
       const apiBaseUrl = import.meta.env.VITE_API_BASE_URL || 'http://localhost:3000/api';
       const url = `${apiBaseUrl}/analytics/events?limit=100&sort=desc`;
@@ -91,7 +94,7 @@ const Events: React.FC<EventsProps> = ({ gameInfo, isCollapsed = false }) => {
     } catch (error) {
       console.error('[Events] Error fetching events:', error);
     } finally {
-      setLoading(false);
+      setLoading(false); // Always reset loading state
     }
   }, [gameInfo]);
 
@@ -110,6 +113,12 @@ const Events: React.FC<EventsProps> = ({ gameInfo, isCollapsed = false }) => {
 
     return () => clearInterval(interval);
   }, [autoRefresh, refreshInterval, fetchEvents]);
+
+  // Manual refresh handler
+  const handleRefresh = async () => {
+    console.log('[Events] Manual refresh triggered');
+    await fetchEvents();
+  };
 
   // Filter events
   const filteredEvents = events.filter(event => {
@@ -235,11 +244,12 @@ const Events: React.FC<EventsProps> = ({ gameInfo, isCollapsed = false }) => {
           {/* Manual refresh */}
           <button
             className="refresh-btn"
-            onClick={() => fetchEvents()}
+            onClick={handleRefresh}
             disabled={loading}
+            title={loading ? "Loading..." : "Refresh events"}
           >
             <RefreshCw size={16} className={loading ? 'spinning' : ''} />
-            Refresh
+            {loading ? 'Loading...' : 'Refresh'}
           </button>
         </div>
       </div>

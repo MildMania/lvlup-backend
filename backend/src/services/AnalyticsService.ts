@@ -464,7 +464,13 @@ export class AnalyticsService {
                 skip: offset
             });
 
-            return events;
+            // Convert BigInt to string for JSON serialization
+            const serializedEvents = events.map(event => ({
+                ...event,
+                clientTs: event.clientTs ? event.clientTs.toString() : null
+            }));
+
+            return serializedEvents;
         } catch (error) {
             logger.error('Error getting events:', error);
             throw error;

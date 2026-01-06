@@ -145,11 +145,20 @@
   font-weight: 600;
   cursor: pointer;
   transition: all 0.2s;
+  min-width: 110px;
+  justify-content: center;
+  white-space: nowrap;
+  flex-shrink: 0;
 }
 
 .refresh-btn:hover:not(:disabled) {
   background: var(--primary-hover);
   transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(99, 102, 241, 0.3);
+}
+
+.refresh-btn:active:not(:disabled) {
+  transform: translateY(0);
 }
 
 .refresh-btn:disabled {

@@ -149,29 +149,29 @@ export class AnalyticsService {
                 properties: eventData.properties || {},
                 timestamp: eventData.timestamp ? new Date(eventData.timestamp) : new Date(),
                 
-                // Event metadata
-                eventUuid: eventData.eventUuid,
+                // Event metadata (convert undefined to null for Prisma)
+                eventUuid: eventData.eventUuid ?? null,
                 clientTs: eventData.clientTs ? BigInt(eventData.clientTs) : null,
                 
                 // Device & Platform info (automatically captured)
-                platform: deviceInfo.platform,
-                osVersion: deviceInfo.osVersion,
-                manufacturer: deviceInfo.manufacturer,
-                device: deviceInfo.device,
-                deviceId: deviceInfo.deviceId,
+                platform: deviceInfo.platform ?? null,
+                osVersion: deviceInfo.osVersion ?? null,
+                manufacturer: deviceInfo.manufacturer ?? null,
+                device: deviceInfo.device ?? null,
+                deviceId: deviceInfo.deviceId ?? null,
                 
                 // App info (automatically captured)
-                appVersion: deviceInfo.appVersion,
-                appBuild: deviceInfo.appBuild,
-                bundleId: deviceInfo.bundleId,
-                engineVersion: deviceInfo.engineVersion,
-                sdkVersion: deviceInfo.sdkVersion,
+                appVersion: deviceInfo.appVersion ?? null,
+                appBuild: deviceInfo.appBuild ?? null,
+                bundleId: deviceInfo.bundleId ?? null,
+                engineVersion: deviceInfo.engineVersion ?? null,
+                sdkVersion: deviceInfo.sdkVersion ?? null,
                 
                 // Network & Additional (automatically captured)
-                connectionType: deviceInfo.connectionType,
-                sessionNum: deviceInfo.sessionNum,
-                appSignature: deviceInfo.appSignature,
-                channelId: deviceInfo.channelId,
+                connectionType: deviceInfo.connectionType ?? null,
+                sessionNum: deviceInfo.sessionNum ?? null,
+                appSignature: deviceInfo.appSignature ?? null,
+                channelId: deviceInfo.channelId ?? null,
             }));
 
             const createdEvents = await this.prisma.event.createMany({

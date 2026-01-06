@@ -301,11 +301,39 @@ const Events: React.FC<EventsProps> = ({ gameInfo, isCollapsed = false }) => {
                     <span className="detail-label">User ID:</span>
                     <code className="detail-value">{event.userId}</code>
                   </div>
+                  
+                  {event.platform && (
+                    <div className="event-detail-item">
+                      <span className="detail-label">Platform:</span>
+                      <code className="detail-value">{event.platform}</code>
+                    </div>
+                  )}
+                  
+                  {event.device && (
+                    <div className="event-detail-item">
+                      <span className="detail-label">Device:</span>
+                      <code className="detail-value">{event.device}</code>
+                    </div>
+                  )}
+                  
+                  {event.osVersion && (
+                    <div className="event-detail-item">
+                      <span className="detail-label">OS:</span>
+                      <code className="detail-value">{event.osVersion}</code>
+                    </div>
+                  )}
+                  
+                  {event.appVersion && (
+                    <div className="event-detail-item">
+                      <span className="detail-label">App Version:</span>
+                      <code className="detail-value">{event.appVersion}{event.appBuild && ` (${event.appBuild})`}</code>
+                    </div>
+                  )}
                 </div>
 
-                {/* Event Details - Collapsible */}
+                {/* Event Details - Collapsible (Technical/Advanced fields) */}
                 <details className="event-details-section">
-                  <summary>Event Details</summary>
+                  <summary>Advanced Details</summary>
                   <div className="details-grid">
                     {event.sessionId && (
                       <div className="detail-item">

@@ -5,6 +5,7 @@ import gameRoutes from './games';
 import dashboardRoutes from './dashboard';
 import aiContextRoutes from './ai-context';
 import aiAnalyticsRoutes from './ai-analytics';
+import healthRoutes from './health';
 
 const router = Router();
 
@@ -24,6 +25,7 @@ router.use('/analytics', dashboardRoutes);
 router.use('/games', gameRoutes);
 router.use('/ai-context', aiContextRoutes);
 router.use('/ai-analytics', aiAnalyticsRoutes);
+router.use(healthRoutes);
 
 // TODO: Add these routes as we implement them
 // router.use('/config', configRoutes);

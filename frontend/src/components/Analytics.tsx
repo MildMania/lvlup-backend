@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import apiClient from '../lib/apiClient';
+import Health from './Health';
 import './Analytics.css';
 
 type AnalyticsTab = 'engagement' | 'progression' | 'health' | 'monetization';
@@ -403,14 +404,26 @@ const ProgressionTab: React.FC<{ gameInfo: any }> = () => {
 };
 
 // Health Tab Component (Placeholder)
-const HealthTab: React.FC<{ gameInfo: any }> = () => {
-  return (
-    <div className="tab-content">
-      <h2>Health & Performance</h2>
-      <p>Performance metrics and error tracking</p>
-      {/* To be implemented */}
-    </div>
-  );
+const HealthTab: React.FC<{ gameInfo: any }> = ({ gameInfo }) => {
+  try {
+    if (!gameInfo || !gameInfo.id) {
+      return (
+        <div className="tab-content">
+          <h2>Health & Performance</h2>
+          <p>No game selected. Please select a game from the sidebar.</p>
+        </div>
+      );
+    }
+    return <Health gameId={gameInfo.id} />;
+  } catch (error) {
+    console.error('Error rendering Health tab:', error);
+    return (
+      <div className="tab-content">
+        <h2>Health & Performance</h2>
+        <p>Error loading health metrics. Please check the console for details.</p>
+      </div>
+    );
+  }
 };
 
 // Monetization Tab Component (Placeholder)

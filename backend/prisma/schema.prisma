@@ -20,6 +20,7 @@ model Game {
   businessEvents    BusinessEvent[]
   checkpoints       Checkpoint[]
   contextMetadata   ContextMetadata[]
+  crashLogs         CrashLog[]
   events            Event[]
   playerCheckpoints PlayerCheckpoint[]
   releases          Release[]
@@ -318,9 +319,63 @@ model ContextMetadata {
   @@map("context_metadata")
 }
 
+model CrashLog {
+  id            String         @id @default(cuid())
+  gameId        String
+  userId        String?
+  sessionId     String?
+  
+  // Crash details
+  crashType     String         // "exception", "crash", "anr"
+  severity      String         @default("ERROR") // "LOW", "MEDIUM", "HIGH", "CRITICAL", "ERROR", "WARNING"
+  message       String
+  stackTrace    String
+  exceptionType String?        // e.g., "NullReferenceException", "IndexOutOfRangeException"
+  
+  // Device & Platform info
+  platform      String?
+  osVersion     String?
+  manufacturer  String?
+  device        String?
+  deviceId      String?
+  
+  // App info
+  appVersion    String?
+  appBuild      String?
+  bundleId      String?
+  engineVersion String?
+  sdkVersion    String?
+  
+  // Context
+  country       String?
+  connectionType String?
+  memoryUsage   Int?           // Memory usage in bytes (using Int instead of BigInt for SQLite)
+  batteryLevel  Float?         // Battery level 0-1
+  diskSpace     Int?           // Available disk space in bytes (using Int instead of BigInt for SQLite)
+  
+  // Additional metadata
+  breadcrumbs   String?        // JSON string of breadcrumbs leading to crash
+  customData    String?        // JSON string of custom key-value pairs
+  
+  timestamp     DateTime       @default(now())
+  resolved      Boolean        @default(false)
+  resolvedAt    DateTime?
+  
+  game          Game           @relation(fields: [gameId], references: [id], onDelete: Cascade)
+
+  @@index([gameId, timestamp])
+  @@index([gameId, platform, timestamp])
+  @@index([gameId, appVersion, timestamp])
+  @@index([gameId, crashType, timestamp])
+  @@index([gameId, severity, timestamp])
+  @@map("crash_logs")
+}
+
 enum TestStatus {
   DRAFT
   RUNNING
   PAUSED
   COMPLETED
 }
+
+

@@ -5,14 +5,14 @@
   left: 0;
   height: 100vh;
   width: 280px;
-  background: linear-gradient(180deg, #1e293b 0%, #0f172a 100%);
-  color: white;
+  background: var(--sidebar-bg);
+  color: var(--text-primary);
   display: flex;
   flex-direction: column;
   transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
   z-index: 1000;
-  box-shadow: 4px 0 20px rgba(0, 0, 0, 0.15);
-  border-right: 1px solid rgba(255, 255, 255, 0.1);
+  box-shadow: var(--card-shadow);
+  border-right: 1px solid var(--border-primary);
 }
 
 .sidebar.collapsed {
@@ -26,8 +26,8 @@
   top: 20px;
   left: 20px;
   z-index: 1001;
-  background: #1e293b;
-  color: white;
+  background: var(--sidebar-bg);
+  color: var(--text-primary);
   border: none;
   border-radius: 8px;
   padding: 8px;
@@ -36,7 +36,7 @@
 }
 
 .mobile-menu-btn:hover {
-  background: #334155;
+  background: var(--bg-tertiary);
 }
 
 .mobile-overlay {
@@ -53,7 +53,7 @@
 /* Header */
 .sidebar-header {
   padding: 24px 20px;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+  border-bottom: 1px solid var(--border-primary);
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -84,7 +84,7 @@
 
 .logo-text span {
   font-size: 12px;
-  color: #94a3b8;
+  color: var(--text-tertiary);
   text-transform: uppercase;
   letter-spacing: 1px;
 }
@@ -93,7 +93,7 @@
 .close-btn {
   background: none;
   border: none;
-  color: #94a3b8;
+  color: var(--text-tertiary);
   cursor: pointer;
   padding: 8px;
   border-radius: 6px;
@@ -105,8 +105,8 @@
 
 .collapse-btn:hover,
 .close-btn:hover {
-  background: rgba(255, 255, 255, 0.1);
-  color: white;
+  background: var(--bg-tertiary);
+  color: var(--text-primary);
 }
 
 .desktop-only {
@@ -118,13 +118,22 @@
 }
 
 /* Game Info */
-/* Game Info */
-.game-info {
+.sidebar .game-info {
   padding: 16px;
   margin: 0 12px 20px 12px;
-  background: rgba(255, 255, 255, 0.05);
+  background: var(--bg-tertiary);
   border-radius: 12px;
-  border: 1px solid rgba(255, 255, 255, 0.1);
+  border: 1px solid var(--border-primary);
+}
+
+[data-theme="light"] .sidebar .game-info {
+  background: #e2e8f0;
+  border: 1px solid #cbd5e1;
+}
+
+[data-theme="dark"] .sidebar .game-info {
+  background: rgba(51, 65, 85, 0.5);
+  border: 1px solid rgba(148, 163, 184, 0.2);
 }
 
 .game-header {
@@ -132,6 +141,7 @@
   align-items: flex-start;
   gap: 12px;
   margin-bottom: 12px;
+  min-width: 0;
 }
 
 .game-icon {
@@ -145,12 +155,15 @@
 .game-details {
   flex: 1;
   min-width: 0;
+  background: transparent;
+  overflow: hidden;
 }
 
 .game-name {
   font-size: 14px;
   font-weight: 600;
-  color: white;
+  color: var(--text-primary);
+  background: transparent;
   margin: 0 0 4px 0;
   white-space: nowrap;
   overflow: hidden;
@@ -159,12 +172,14 @@
 
 .game-id {
   font-size: 10px;
-  color: #94a3b8;
+  color: var(--text-tertiary);
   margin: 0 0 8px 0;
   font-family: 'Monaco', 'Menlo', monospace;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+  max-width: 100%;
+  display: block;
 }
 
 .sidebar.collapsed .game-id {
@@ -173,14 +188,14 @@
 
 .game-description {
   font-size: 12px;
-  color: #cbd5e1;
+  color: var(--text-secondary);
   margin: 0;
   line-height: 1.4;
 }
 
 /* Games Section */
 .games-section {
-  border-top: 1px solid rgba(255, 255, 255, 0.1);
+  border-top: 1px solid var(--border-primary);
   padding-top: 12px;
 }
 
@@ -190,7 +205,7 @@
   justify-content: space-between;
   padding: 8px 0;
   cursor: pointer;
-  color: #94a3b8;
+  color: var(--text-tertiary);
   font-size: 12px;
   font-weight: 500;
   text-transform: uppercase;
@@ -199,7 +214,7 @@
 }
 
 .games-toggle:hover {
-  color: white;
+  color: var(--text-primary);
 }
 
 .games-list {
@@ -230,7 +245,7 @@
   padding: 8px 12px;
   background: none;
   border: none;
-  color: #94a3b8;
+  color: var(--text-tertiary);
   font-size: 12px;
   border-radius: 6px;
   cursor: pointer;
@@ -240,8 +255,8 @@
 }
 
 .game-item:hover {
-  background: rgba(255, 255, 255, 0.1);
-  color: white;
+  background: var(--bg-tertiary);
+  color: var(--text-primary);
 }
 
 .game-item.active {
@@ -273,7 +288,7 @@
 }
 
 .game-item.add-game {
-  border-top: 1px solid rgba(255, 255, 255, 0.1);
+  border-top: 1px solid var(--border-primary);
   margin-top: 4px;
   padding-top: 12px;
   color: #60a5fa;
@@ -313,7 +328,7 @@
   padding: 12px 16px;
   border: none;
   background: none;
-  color: #94a3b8;
+  color: var(--text-tertiary);
   text-decoration: none;
   border-radius: 8px;
   transition: all 0.2s ease;
@@ -327,8 +342,8 @@
 }
 
 .nav-link:hover {
-  background: rgba(255, 255, 255, 0.1);
-  color: white;
+  background: var(--bg-tertiary);
+  color: var(--text-primary);
   transform: translateX(2px);
 }
 
@@ -368,7 +383,7 @@
 /* Footer */
 .sidebar-footer {
   padding: 20px;
-  border-top: 1px solid rgba(255, 255, 255, 0.1);
+  border-top: 1px solid var(--border-primary);
   margin-top: auto;
 }
 
@@ -385,18 +400,19 @@
   gap: 8px;
   width: 100%;
   padding: 8px 12px;
-  background: rgba(255, 255, 255, 0.1);
+  background: var(--bg-tertiary);
   border: none;
   border-radius: 8px;
-  color: #cbd5e1;
+  color: var(--text-secondary);
   font-size: 12px;
   cursor: pointer;
   transition: all 0.2s ease;
 }
 
 .theme-toggle:hover {
-  background: rgba(255, 255, 255, 0.2);
-  color: white;
+  background: var(--bg-tertiary);
+  color: var(--text-primary);
+  opacity: 0.8;
 }
 
 .theme-toggle-collapsed {
@@ -405,23 +421,24 @@
   justify-content: center;
   width: 40px;
   height: 40px;
-  background: rgba(255, 255, 255, 0.1);
+  background: var(--bg-tertiary);
   border: none;
   border-radius: 8px;
-  color: #cbd5e1;
+  color: var(--text-secondary);
   cursor: pointer;
   transition: all 0.2s ease;
   margin: 0 auto;
 }
 
 .theme-toggle-collapsed:hover {
-  background: rgba(255, 255, 255, 0.2);
-  color: white;
+  background: var(--bg-tertiary);
+  color: var(--text-primary);
+  opacity: 0.8;
 }
 
 .version {
   font-size: 12px;
-  color: #64748b;
+  color: var(--text-tertiary);
   margin: 0;
 }
 
@@ -467,12 +484,12 @@
 }
 
 .sidebar-nav::-webkit-scrollbar-thumb {
-  background: rgba(255, 255, 255, 0.2);
+  background: var(--border-primary);
   border-radius: 2px;
 }
 
 .sidebar-nav::-webkit-scrollbar-thumb:hover {
-  background: rgba(255, 255, 255, 0.3);
+  background: var(--text-tertiary);
 }
 
 /* Tooltip for collapsed state */
@@ -486,15 +503,15 @@
   left: 100%;
   top: 50%;
   transform: translateY(-50%);
-  background: #1f2937;
-  color: white;
+  background: var(--bg-secondary);
+  color: var(--text-primary);
   padding: 8px 12px;
   border-radius: 6px;
   font-size: 12px;
   white-space: nowrap;
   z-index: 1000;
   margin-left: 8px;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+  box-shadow: var(--card-shadow);
   opacity: 0;
   animation: tooltip-fade-in 0.2s ease forwards;
 }

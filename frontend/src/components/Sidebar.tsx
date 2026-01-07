@@ -132,6 +132,7 @@ const Sidebar: React.FC<SidebarProps> = ({
               {!isCollapsed && (
                 <div className="game-details">
                   <h3 className="game-name">{gameInfo.name}</h3>
+                  <p className="game-id">{gameInfo.id}</p>
                   {gameInfo.description && (
                     <p className="game-description">{gameInfo.description}</p>
                   )}

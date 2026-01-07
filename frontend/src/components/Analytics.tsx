@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import apiClient from '../lib/apiClient';
 import './Analytics.css';
 
 type AnalyticsTab = 'engagement' | 'progression' | 'health' | 'monetization';
@@ -99,25 +100,19 @@ const EngagementTab: React.FC<{ gameInfo: any }> = ({ gameInfo }) => {
       if (selectedCountries.length > 0) params.append('country', selectedCountries.join(','));
       if (selectedVersions.length > 0) params.append('version', selectedVersions.join(','));
 
-      const url = `http://localhost:3000/api/analytics/cohort/retention?${params.toString()}`;
-      console.log('Fetching cohort data from:', url);
+      console.log('Fetching cohort data with params:', params.toString());
       console.log('API Key:', gameInfo.apiKey);
 
-      const response = await fetch(url, {
-        headers: {
-          'X-API-Key': gameInfo.apiKey
-        }
-      });
+      const response = await apiClient.get(`/analytics/cohort/retention?${params.toString()}`);
 
       console.log('Response status:', response.status);
-      const data = await response.json();
-      console.log('Response data:', data);
+      console.log('Response data:', response.data);
 
-      if (data.success && data.data) {
-        console.log('Setting cohort data:', data.data.length, 'cohorts');
-        setCohortData(data.data);
+      if (response.data.success && response.data.data) {
+        console.log('Setting cohort data:', response.data.data.length, 'cohorts');
+        setCohortData(response.data.data);
       } else {
-        console.error('API returned unsuccessful response:', data);
+        console.error('API returned unsuccessful response:', response.data);
       }
     } catch (error) {
       console.error('Error fetching cohort data:', error);
@@ -130,19 +125,11 @@ const EngagementTab: React.FC<{ gameInfo: any }> = ({ gameInfo }) => {
   useEffect(() => {
     const fetchFilterOptions = async () => {
       try {
-        const response = await fetch(
-          'http://localhost:3000/api/analytics/filters/options',
-          {
-            headers: {
-              'X-API-Key': gameInfo.apiKey
-            }
-          }
-        );
-        const data = await response.json();
-        if (data.success) {
-          setAvailableCountries(['All', ...data.data.countries]);
-          setAvailableVersions(['All', ...data.data.versions]);
-          setAvailablePlatforms(['All', ...data.data.platforms]);
+        const response = await apiClient.get('/analytics/filters/options');
+        if (response.data.success) {
+          setAvailableCountries(['All', ...response.data.data.countries]);
+          setAvailableVersions(['All', ...response.data.data.versions]);
+          setAvailablePlatforms(['All', ...response.data.data.platforms]);
         }
       } catch (error) {
         console.error('Error fetching filter options:', error);

@@ -386,8 +386,8 @@ export class HealthMetricsService {
         memoryUsage: data.memoryUsage || null,
         batteryLevel: data.batteryLevel || null,
         diskSpace: data.diskSpace || null,
-        breadcrumbs: data.breadcrumbs ? JSON.stringify(data.breadcrumbs) : undefined,
-        customData: data.customData ? JSON.stringify(data.customData) : undefined,
+        ...(data.breadcrumbs && { breadcrumbs: JSON.stringify(data.breadcrumbs) }),
+        ...(data.customData && { customData: JSON.stringify(data.customData) }),
       },
     });
   }

@@ -20,9 +20,9 @@ export class HealthMetricsController {
       const filters = {
         startDate: new Date(startDate as string),
         endDate: new Date(endDate as string),
-        platform: platform as string | undefined,
-        country: country as string | undefined,
-        appVersion: appVersion as string | undefined,
+        ...(platform && { platform: platform as string }),
+        ...(country && { country: country as string }),
+        ...(appVersion && { appVersion: appVersion as string }),
       };
 
       const metrics = await healthService.getCrashMetrics(gameId, filters);
@@ -49,9 +49,9 @@ export class HealthMetricsController {
       const filters = {
         startDate: new Date(startDate as string),
         endDate: new Date(endDate as string),
-        platform: platform as string | undefined,
-        country: country as string | undefined,
-        appVersion: appVersion as string | undefined,
+        ...(platform && { platform: platform as string }),
+        ...(country && { country: country as string }),
+        ...(appVersion && { appVersion: appVersion as string }),
       };
 
       const timeline = await healthService.getCrashTimeline(gameId, filters);
@@ -88,11 +88,11 @@ export class HealthMetricsController {
       const filters = {
         startDate: new Date(startDate as string),
         endDate: new Date(endDate as string),
-        platform: platform as string | undefined,
-        country: country as string | undefined,
-        appVersion: appVersion as string | undefined,
-        severity: severity as string | undefined,
-        crashType: crashType as string | undefined,
+        ...(platform && { platform: platform as string }),
+        ...(country && { country: country as string }),
+        ...(appVersion && { appVersion: appVersion as string }),
+        ...(severity && { severity: severity as string }),
+        ...(crashType && { crashType: crashType as string }),
         limit: limit ? parseInt(limit as string) : 50,
         offset: offset ? parseInt(offset as string) : 0,
       };

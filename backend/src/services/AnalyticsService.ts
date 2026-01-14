@@ -103,6 +103,11 @@ export class AnalyticsService {
     // Track single event
     async trackEvent(gameId: string, userId: string, sessionId: string | null, eventData: EventData) {
         try {
+            // Extract levelFunnel fields from properties (new SDK) or top-level (backward compatibility)
+            const properties = eventData.properties || {};
+            const levelFunnel = (properties as any).levelFunnel ?? eventData.levelFunnel ?? null;
+            const levelFunnelVersion = (properties as any).levelFunnelVersion ?? eventData.levelFunnelVersion ?? null;
+            
             const event = await this.prisma.event.create({
                 data: {
                     gameId: gameId,
@@ -146,8 +151,9 @@ export class AnalyticsService {
                     timezone: eventData.timezone ?? null,
                     
                     // Level funnel tracking (for AB testing level designs)
-                    levelFunnel: eventData.levelFunnel ?? null,
-                    levelFunnelVersion: eventData.levelFunnelVersion ?? null,
+                    // Extracted from properties (new SDK format) or top-level (backward compatibility)
+                    levelFunnel: levelFunnel,
+                    levelFunnelVersion: levelFunnelVersion,
                 }
             });
 
@@ -179,51 +185,59 @@ export class AnalyticsService {
 
             // Create events in batch with comprehensive metadata
             // Prioritize event-level metadata over batch deviceInfo
-            const events = batchData.events.map(eventData => ({
-                gameId: gameId,
-                userId: user.id,
-                sessionId: batchData.sessionId || null,
-                eventName: eventData.eventName,
-                properties: eventData.properties || {},
-                timestamp: eventData.timestamp ? new Date(eventData.timestamp) : new Date(),
+            const events = batchData.events.map(eventData => {
+                // Extract levelFunnel fields from properties (new SDK) or top-level (backward compatibility)
+                const properties = eventData.properties || {};
+                const levelFunnel = (properties as any).levelFunnel ?? eventData.levelFunnel ?? null;
+                const levelFunnelVersion = (properties as any).levelFunnelVersion ?? eventData.levelFunnelVersion ?? null;
                 
-                // Event metadata
-                eventUuid: eventData.eventUuid ?? null,
-                clientTs: eventData.clientTs ? BigInt(eventData.clientTs) : null,
-                
-                // Device & Platform info - prefer event-level, fallback to deviceInfo
-                platform: eventData.platform ?? deviceInfo.platform ?? null,
-                osVersion: eventData.osVersion ?? deviceInfo.osVersion ?? null,
-                manufacturer: eventData.manufacturer ?? deviceInfo.manufacturer ?? null,
-                device: eventData.device ?? deviceInfo.device ?? null,
-                deviceId: eventData.deviceId ?? deviceInfo.deviceId ?? null,
-                
-                // App info - prefer event-level, fallback to deviceInfo
-                appVersion: eventData.appVersion ?? deviceInfo.appVersion ?? null,
-                appBuild: eventData.appBuild ?? deviceInfo.appBuild ?? null,
-                bundleId: eventData.bundleId ?? deviceInfo.bundleId ?? null,
-                engineVersion: eventData.engineVersion ?? deviceInfo.engineVersion ?? null,
-                sdkVersion: eventData.sdkVersion ?? deviceInfo.sdkVersion ?? null,
-                
-                // Network & Additional - prefer event-level, fallback to deviceInfo
-                connectionType: eventData.connectionType ?? deviceInfo.connectionType ?? null,
-                sessionNum: eventData.sessionNum ?? deviceInfo.sessionNum ?? null,
-                appSignature: eventData.appSignature ?? deviceInfo.appSignature ?? null,
-                channelId: eventData.channelId ?? deviceInfo.channelId ?? null,
-                
-                // Geographic location
-                country: eventData.country ?? null,
-                countryCode: eventData.countryCode ?? null,
-                region: eventData.region ?? null,
-                city: eventData.city ?? null,
-                latitude: eventData.latitude ?? null,
-                longitude: eventData.longitude ?? null,
-                timezone: eventData.timezone ?? null,
-                
-                // Level funnel tracking (for AB testing level designs)
-                levelFunnel: eventData.levelFunnel ?? null,
-                levelFunnelVersion: eventData.levelFunnelVersion ?? null,
-            }));
+                return {
+                    gameId: gameId,
+                    userId: user.id,
+                    sessionId: batchData.sessionId || null,
+                    eventName: eventData.eventName,
+                    properties: eventData.properties || {},
+                    timestamp: eventData.timestamp ? new Date(eventData.timestamp) : new Date(),
+                    
+                    // Event metadata
+                    eventUuid: eventData.eventUuid ?? null,
+                    clientTs: eventData.clientTs ? BigInt(eventData.clientTs) : null,
+                    
+                    // Device & Platform info - prefer event-level, fallback to deviceInfo
+                    platform: eventData.platform ?? deviceInfo.platform ?? null,
+                    osVersion: eventData.osVersion ?? deviceInfo.osVersion ?? null,
+                    manufacturer: eventData.manufacturer ?? deviceInfo.manufacturer ?? null,
+                    device: eventData.device ?? deviceInfo.device ?? null,
+                    deviceId: eventData.deviceId ?? deviceInfo.deviceId ?? null,
+                    
+                    // App info - prefer event-level, fallback to deviceInfo
+                    appVersion: eventData.appVersion ?? deviceInfo.appVersion ?? null,
+                    appBuild: eventData.appBuild ?? deviceInfo.appBuild ?? null,
+                    bundleId: eventData.bundleId ?? deviceInfo.bundleId ?? null,
+                    engineVersion: eventData.engineVersion ?? deviceInfo.engineVersion ?? null,
+                    sdkVersion: eventData.sdkVersion ?? deviceInfo.sdkVersion ?? null,
+                    
+                    // Network & Additional - prefer event-level, fallback to deviceInfo
+                    connectionType: eventData.connectionType ?? deviceInfo.connectionType ?? null,
+                    sessionNum: eventData.sessionNum ?? deviceInfo.sessionNum ?? null,
+                    appSignature: eventData.appSignature ?? deviceInfo.appSignature ?? null,
+                    channelId: eventData.channelId ?? deviceInfo.channelId ?? null,
+                    
+                    // Geographic location
+                    country: eventData.country ?? null,
+                    countryCode: eventData.countryCode ?? null,
+                    region: eventData.region ?? null,
+                    city: eventData.city ?? null,
+                    latitude: eventData.latitude ?? null,
+                    longitude: eventData.longitude ?? null,
+                    timezone: eventData.timezone ?? null,
+                    
+                    // Level funnel tracking (for AB testing level designs)
+                    // Extracted from properties (new SDK format) or top-level (backward compatibility)
+                    levelFunnel: levelFunnel,
+                    levelFunnelVersion: levelFunnelVersion,
+                };
+            });
 
             const createdEvents = await this.prisma.event.createMany({
                 data: events

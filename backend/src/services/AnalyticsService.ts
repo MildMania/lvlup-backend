@@ -104,9 +104,18 @@ export class AnalyticsService {
     async trackEvent(gameId: string, userId: string, sessionId: string | null, eventData: EventData) {
         try {
             // Extract levelFunnel fields from properties (new SDK) or top-level (backward compatibility)
-            const properties = eventData.properties || {};
+            const properties = { ...(eventData.properties || {}) };
             const levelFunnel = (properties as any).levelFunnel ?? eventData.levelFunnel ?? null;
             const levelFunnelVersion = (properties as any).levelFunnelVersion ?? eventData.levelFunnelVersion ?? null;
+            
+            // Debug logging
+            if (levelFunnel || levelFunnelVersion) {
+                logger.debug(`Extracted levelFunnel: ${levelFunnel}, levelFunnelVersion: ${levelFunnelVersion} from event ${eventData.eventName}`);
+            }
+            
+            // Remove levelFunnel fields from properties since they're stored in dedicated columns
+            delete (properties as any).levelFunnel;
+            delete (properties as any).levelFunnelVersion;
             
             const event = await this.prisma.event.create({
                 data: {
@@ -114,7 +123,7 @@ export class AnalyticsService {
                     userId: userId,
                     sessionId: sessionId,
                     eventName: eventData.eventName,
-                    properties: eventData.properties || {},
+                    properties: properties,
                     timestamp: eventData.timestamp ? new Date(eventData.timestamp) : new Date(),
                     
                     // Event metadata
@@ -187,16 +196,25 @@ export class AnalyticsService {
             // Prioritize event-level metadata over batch deviceInfo
             const events = batchData.events.map(eventData => {
                 // Extract levelFunnel fields from properties (new SDK) or top-level (backward compatibility)
-                const properties = eventData.properties || {};
+                const properties = { ...(eventData.properties || {}) };
                 const levelFunnel = (properties as any).levelFunnel ?? eventData.levelFunnel ?? null;
                 const levelFunnelVersion = (properties as any).levelFunnelVersion ?? eventData.levelFunnelVersion ?? null;
+                
+                // Debug logging
+                if (levelFunnel || levelFunnelVersion) {
+                    logger.debug(`Extracted levelFunnel: ${levelFunnel}, levelFunnelVersion: ${levelFunnelVersion} from event ${eventData.eventName}`);
+                }
+                
+                // Remove levelFunnel fields from properties since they're stored in dedicated columns
+                delete (properties as any).levelFunnel;
+                delete (properties as any).levelFunnelVersion;
                 
                 return {
                     gameId: gameId,
                     userId: user.id,
                     sessionId: batchData.sessionId || null,
                     eventName: eventData.eventName,
-                    properties: eventData.properties || {},
+                    properties: properties,
                     timestamp: eventData.timestamp ? new Date(eventData.timestamp) : new Date(),
                     
                     // Event metadata

@@ -173,16 +173,19 @@ export class LevelFunnelService {
 
             // Calculate metrics for each level
             const levelMetrics: LevelMetrics[] = [];
-            const levelIds = Array.from(levelGroups.keys()).sort((a, b) => a - b);
+            // Sort level IDs and filter out any undefined values
+            const levelIds = Array.from(levelGroups.keys())
+                .filter((id): id is number => id !== undefined && id !== null)
+                .sort((a, b) => a - b);
 
             for (let i = 0; i < levelIds.length; i++) {
-                const levelId = levelIds[i];
-                const nextLevelId = i < levelIds.length - 1 ? levelIds[i + 1] : null;
+                const levelId = levelIds[i]!; // Non-null assertion since we filtered
+                const nextLevelId: number | null = i < levelIds.length - 1 ? levelIds[i + 1]! : null;
                 
                 const metrics = await this.calculateLevelMetrics(
                     levelId,
                     levelGroups.get(levelId)!,
-                    nextLevelId ? levelGroups.get(nextLevelId) : undefined
+                    nextLevelId !== null ? levelGroups.get(nextLevelId) : undefined
                 );
                 
                 levelMetrics.push(metrics);

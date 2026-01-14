@@ -135,6 +135,19 @@ export class AnalyticsService {
                     sessionNum: eventData.sessionNum ?? null,
                     appSignature: eventData.appSignature ?? null,
                     channelId: eventData.channelId ?? null,
+                    
+                    // Geographic location
+                    country: eventData.country ?? null,
+                    countryCode: eventData.countryCode ?? null,
+                    region: eventData.region ?? null,
+                    city: eventData.city ?? null,
+                    latitude: eventData.latitude ?? null,
+                    longitude: eventData.longitude ?? null,
+                    timezone: eventData.timezone ?? null,
+                    
+                    // Level funnel tracking (for AB testing level designs)
+                    levelFunnel: eventData.levelFunnel ?? null,
+                    levelFunnelVersion: eventData.levelFunnelVersion ?? null,
                 }
             });
 
@@ -206,6 +219,10 @@ export class AnalyticsService {
                 latitude: eventData.latitude ?? null,
                 longitude: eventData.longitude ?? null,
                 timezone: eventData.timezone ?? null,
+                
+                // Level funnel tracking (for AB testing level designs)
+                levelFunnel: eventData.levelFunnel ?? null,
+                levelFunnelVersion: eventData.levelFunnelVersion ?? null,
             }));
 
             const createdEvents = await this.prisma.event.createMany({

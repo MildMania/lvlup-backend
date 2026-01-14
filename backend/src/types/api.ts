@@ -68,6 +68,10 @@ export interface EventData {
     latitude?: number;       // Latitude coordinate
     longitude?: number;      // Longitude coordinate
     timezone?: string;       // IANA timezone, e.g., "America/Los_Angeles"
+    
+    // Level funnel tracking (for AB testing level designs)
+    levelFunnel?: string;    // e.g., "live_0.0.1", "test_variant_a"
+    levelFunnelVersion?: number; // e.g., 59, 60
 }
 
 // Device and system information (like GameAnalytics)

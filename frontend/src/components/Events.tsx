@@ -42,6 +42,10 @@ interface Event {
   latitude?: number;
   longitude?: number;
   timezone?: string;
+  
+  // Level funnel tracking
+  levelFunnel?: string;
+  levelFunnelVersion?: number;
 }
 
 interface EventsProps {
@@ -494,6 +498,21 @@ const Events: React.FC<EventsProps> = ({ gameInfo, isCollapsed = false }) => {
                       <div className="detail-item">
                         <span className="detail-label">Timezone:</span>
                         <code className="detail-value">{event.timezone}</code>
+                      </div>
+                    )}
+                    
+                    {/* Level Funnel (AB Test) */}
+                    {event.levelFunnel && (
+                      <div className="detail-item">
+                        <span className="detail-label">Level Funnel:</span>
+                        <code className="detail-value">{event.levelFunnel}</code>
+                      </div>
+                    )}
+                    
+                    {event.levelFunnelVersion !== undefined && event.levelFunnelVersion !== null && (
+                      <div className="detail-item">
+                        <span className="detail-label">Funnel Version:</span>
+                        <code className="detail-value">{event.levelFunnelVersion}</code>
                       </div>
                     )}
                   </div>

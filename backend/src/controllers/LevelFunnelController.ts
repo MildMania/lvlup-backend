@@ -28,10 +28,14 @@ export class LevelFunnelController {
                 });
             }
 
+            // Process dates using standard format (matches retention calculation pattern)
+            const processedStartDate = startDate ? new Date(startDate as string + 'T00:00:00.000Z') : undefined;
+            const processedEndDate = endDate ? new Date(endDate as string + 'T23:59:59.999Z') : undefined;
+
             const filters = {
                 gameId: gameId as string,
-                startDate: startDate ? new Date(startDate as string) : undefined,
-                endDate: endDate ? new Date(endDate as string) : undefined,
+                startDate: processedStartDate,
+                endDate: processedEndDate,
                 country: country as string | undefined,
                 version: version as string | undefined,
                 abTestId: abTestId as string | undefined,
@@ -110,10 +114,14 @@ export class LevelFunnelController {
                 });
             }
 
+            // Process dates using standard format (matches retention calculation pattern)
+            const processedStartDate = startDate ? new Date(startDate as string + 'T00:00:00.000Z') : undefined;
+            const processedEndDate = endDate ? new Date(endDate as string + 'T23:59:59.999Z') : undefined;
+
             const filters = {
                 gameId: gameId as string,
-                startDate: startDate ? new Date(startDate as string) : undefined,
-                endDate: endDate ? new Date(endDate as string) : undefined,
+                startDate: processedStartDate,
+                endDate: processedEndDate,
                 country: country as string | undefined,
                 version: version as string | undefined
             };

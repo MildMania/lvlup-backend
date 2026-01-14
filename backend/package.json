@@ -8,7 +8,9 @@
     "test:watch": "jest --watch",
     "test:coverage": "jest --coverage",
     "dev": "ts-node-dev --respawn --transpile-only src/index.ts",
-    "start": "prisma db push --accept-data-loss && node dist/index.js",
+    "dev:local": "npm run env:local && npm run dev",
+    "dev:prod": "npm run env:prod && npm run dev",
+    "start": "npx prisma migrate deploy && node dist/index.js",
     "start:ts": "ts-node src/index.ts",
     "build": "tsc && prisma generate",
     "generate": "prisma generate",
@@ -17,7 +19,10 @@
     "db:seed": "ts-node prisma/seed.ts",
     "db:reset": "prisma db push --force-reset && npm run db:seed",
     "postinstall": "prisma generate",
-    "deploy": "npm run build"
+    "deploy": "npm run build",
+    "env:local": "cd .. && ./switch-env.sh local",
+    "env:prod": "cd .. && ./switch-env.sh production",
+    "env:status": "cd .. && ./switch-env.sh status"
   },
   "keywords": [],
   "author": "",

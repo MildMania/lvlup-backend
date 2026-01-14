@@ -4,15 +4,25 @@ import Dashboard from './Dashboard';
 import Analytics from './Analytics';
 import Events from './Events';
 import ReleaseManagement from './ReleaseManagement';
+import LevelFunnel from './LevelFunnel';
 import { AIChatWidget } from './AIChatWidget';
 import { useGame } from '../contexts/GameContext';
 import { setApiKey } from '../lib/apiClient';
 import './Layout.css';
 
 const Layout: React.FC = () => {
-  const [currentPage, setCurrentPage] = useState('dashboard');
+  // Load saved page from localStorage or default to dashboard
+  const [currentPage, setCurrentPage] = useState(() => {
+    const savedPage = localStorage.getItem('lvlup-current-page');
+    return savedPage || 'dashboard';
+  });
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
   const { currentGame, availableGames, setCurrentGame, refreshGames } = useGame();
+
+  // Save current page to localStorage whenever it changes
+  useEffect(() => {
+    localStorage.setItem('lvlup-current-page', currentPage);
+  }, [currentPage]);
 
   // Update API key when game changes
   useEffect(() => {
@@ -84,7 +94,7 @@ const Layout: React.FC = () => {
       case 'events':
         return <Events gameInfo={currentGame} isCollapsed={isSidebarCollapsed} />;
       case 'funnels':
-        return <div className="page-placeholder">Funnels Page - Coming Soon</div>;
+        return <LevelFunnel isCollapsed={isSidebarCollapsed} />;
       case 'releases':
         return <ReleaseManagement isCollapsed={isSidebarCollapsed} />;
       case 'settings':

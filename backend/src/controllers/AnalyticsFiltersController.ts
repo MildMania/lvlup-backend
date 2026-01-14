@@ -17,7 +17,7 @@ export class AnalyticsFiltersController {
             const gameId = req.game!.id;
 
             // Get distinct values for each filter
-            const [countries, versions, platforms] = await Promise.all([
+            const [countries, versions, platforms, levelFunnels] = await Promise.all([
                 // Get distinct countries
                 prisma.user.findMany({
                     where: {
@@ -49,15 +49,47 @@ export class AnalyticsFiltersController {
                     select: { platform: true },
                     distinct: ['platform'],
                     orderBy: { platform: 'asc' }
+                }),
+
+                // Get distinct level funnel combinations
+                prisma.event.findMany({
+                    where: {
+                        gameId,
+                        levelFunnel: { not: null },
+                        eventName: {
+                            in: ['level_start', 'level_complete', 'level_failed']
+                        }
+                    },
+                    select: {
+                        levelFunnel: true,
+                        levelFunnelVersion: true
+                    },
+                    distinct: ['levelFunnel', 'levelFunnelVersion']
                 })
             ]);
+
+            // Process level funnel options
+            const levelFunnelOptions = levelFunnels
+                .filter(e => e.levelFunnel)
+                .map(e => ({
+                    funnel: e.levelFunnel!,
+                    version: e.levelFunnelVersion || 1,
+                    label: `${e.levelFunnel} (${e.levelFunnelVersion || 1})`
+                }))
+                .sort((a, b) => {
+                    if (a.funnel !== b.funnel) {
+                        return a.funnel.localeCompare(b.funnel);
+                    }
+                    return a.version - b.version;
+                });
 
             res.status(200).json({
                 success: true,
                 data: {
                     countries: countries.map(c => c.country).filter(Boolean),
                     versions: versions.map(v => v.version).filter(Boolean),
-                    platforms: platforms.map(p => p.platform).filter(Boolean)
+                    platforms: platforms.map(p => p.platform).filter(Boolean),
+                    levelFunnels: levelFunnelOptions
                 }
             });
         } catch (error) {

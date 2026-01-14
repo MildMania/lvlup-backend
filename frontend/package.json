@@ -5,9 +5,14 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
+    "dev:local": "npm run env:local && npm run dev",
+    "dev:prod": "npm run env:prod && npm run dev",
     "build": "tsc -b && vite build",
     "lint": "eslint .",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "env:local": "cd .. && ./switch-env.sh local",
+    "env:prod": "cd .. && ./switch-env.sh production",
+    "env:status": "cd .. && ./switch-env.sh status"
   },
   "dependencies": {
     "@types/node": "^24.7.2",

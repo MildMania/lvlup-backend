@@ -1,0 +1,27 @@
+#!/bin/bash
+
+# Quick switcher - even simpler than switch-env.sh
+# Usage: source ./env (sources the script to set env vars in current shell)
+#        ./env local
+#        ./env prod
+
+SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
+
+case "${1:-}" in
+    local|l)
+        echo "🟢 Switching to LOCAL..."
+        bash "$SCRIPT_DIR/switch-env.sh" local
+        ;;
+    production|prod|p)
+        echo "🔵 Switching to PRODUCTION..."
+        bash "$SCRIPT_DIR/switch-env.sh" production
+        ;;
+    status|s)
+        bash "$SCRIPT_DIR/switch-env.sh" status
+        ;;
+    *)
+        echo "Usage: ./env [local|prod|status]"
+        echo "Shortcuts: l=local, p=prod, s=status"
+        ;;
+esac
+

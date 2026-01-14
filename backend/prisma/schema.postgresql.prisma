@@ -1,0 +1,13 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// This file is used for Railway deployments
+// Local development uses schema.prisma with SQLite provider
+// The provider is automatically switched by ./env local or ./env prod
+

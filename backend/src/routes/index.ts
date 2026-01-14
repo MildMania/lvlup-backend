@@ -6,6 +6,7 @@ import dashboardRoutes from './dashboard';
 import aiContextRoutes from './ai-context';
 import aiAnalyticsRoutes from './ai-analytics';
 import healthRoutes from './health';
+import levelFunnelRoutes from './level-funnel';
 
 const router = Router();
 
@@ -22,6 +23,7 @@ router.get('/health', (req, res) => {
 router.use('/analytics', analyticsRoutes);
 router.use('/analytics', enhancedAnalyticsRoutes);
 router.use('/analytics', dashboardRoutes);
+router.use('/analytics/level-funnel', levelFunnelRoutes);
 router.use('/games', gameRoutes);
 router.use('/ai-context', aiContextRoutes);
 router.use('/ai-analytics', aiAnalyticsRoutes);

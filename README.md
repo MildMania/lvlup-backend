@@ -1,42 +1,130 @@
 # LvlUp Platform Monorepo
 
-This repository now houses two separate projects:
+Backend (Express + Prisma) and Frontend (React + Vite) for game analytics.
 
-- `backend/` – Express + Prisma service powering analytics, engagement metrics, and player journey features.
-- `frontend/` – React + Vite dashboard that consumes the backend APIs.
+## Quick Start
 
-## Getting Started
+### Environment Switching
+```bash
+./env local   # Switch to local dev (SQLite)
+./env prod    # Switch to production (PostgreSQL)
+./env status  # Check current environment
+```
 
-Clone the repo and work with each project independently.
+Then start servers:
+```bash
+cd backend && npm run dev    # Terminal 1
+cd frontend && npm run dev   # Terminal 2
+```
+
+### First Time Setup
+```bash
+./first-time-setup.sh  # Installs dependencies, sets up DB, configures env
+```
+
+---
+
+## Environment Commands
+
+| Command | Description |
+|---------|-------------|
+| `./env local` | Switch to local development (SQLite) |
+| `./env prod` | Switch to production (PostgreSQL on Railway) |
+| `./env status` | Show current environment configuration |
+| `./test-local-setup.sh` | Test your local setup |
+
+### NPM Shortcuts (from backend/ or frontend/)
+```bash
+npm run dev:local   # Switch to local + start dev server
+npm run dev:prod    # Switch to production + start dev server
+npm run env:status  # Check current environment
+```
+
+### VS Code Users
+Press `Cmd+Shift+P` → "Tasks: Run Task" → Select environment
+
+---
+
+## What Gets Switched Automatically?
+
+- ✅ Backend database (SQLite ↔ PostgreSQL)
+- ✅ Frontend API endpoint (localhost ↔ production URL)
+- ✅ API keys for games
+- ✅ Prisma Client regeneration
+
+**After switching, restart your servers.**
+
+---
+
+## Manual Setup (if needed)
 
 ### Backend
-
 ```bash
 cd backend
 npm install
-cp .env.example .env
+# .env will be created automatically by ./env local
 npm run dev
 ```
 
-The backend README (`backend/README.md`) covers schema details, available APIs, and testing instructions.
-
 ### Frontend
-
 ```bash
 cd frontend
 npm install
-cp .env.example .env.local
+# .env.local will be created automatically by ./env local
 npm run dev
 ```
 
-The Vite dev server proxies `/api` requests to `http://localhost:3000` by default. Override this via `VITE_BACKEND_PROXY` if your backend runs elsewhere. See `frontend/README.md` for additional guidance.
+---
 
-## Repository Scripts
+## Documentation
 
-Commands must be executed from inside either `backend/` or `frontend/`. There is no root-level package configuration.
+- `RAILWAY_DEPLOYMENT.md` - **How to deploy to Railway**
+- `backend/README.md` - Backend API details
+- `frontend/README.md` - Frontend setup details
+- `backend/API-EXAMPLES.md` - API usage examples
+- `DATABASE_SETUP.md` - Database setup instructions
 
-## Contributing
+---
 
-- Keep backend- and frontend-specific changes scoped to their respective folders.
-- Update the corresponding README when adding new workflows or dependencies.
+## Deploying to Railway
+
+**Yes, switch to prod BEFORE committing:**
+
+```bash
+./env prod              # 1. Switch to PostgreSQL
+git add .               # 2. Stage changes
+git commit -m "Deploy"  # 3. Commit
+git push origin main    # 4. Railway auto-deploys
+./env local             # 5. Switch back to SQLite
+```
+
+**Why?** Railway uses PostgreSQL. Running `./env prod` updates your schema to use PostgreSQL before pushing.
+
+**See `RAILWAY_DEPLOYMENT.md` for complete guide.**
+
+---
+
+## Troubleshooting
+
+**Servers not connecting?**
+```bash
+./env status           # Check what's active
+./env local            # Switch to local
+cd backend && npm run dev  # Restart backend
+cd frontend && npm run dev # Restart frontend
+```
+
+**Database errors?**
+```bash
+cd backend
+npx prisma generate
+# Restart server
+```
+
+**Test your setup:**
+```bash
+./test-local-setup.sh
+```
+
+
 

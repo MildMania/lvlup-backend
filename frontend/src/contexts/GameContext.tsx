@@ -25,8 +25,26 @@ const defaultGame: GameInfo = {
 };
 
 export const GameProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
-  const [currentGame, setCurrentGame] = useState<GameInfo>(defaultGame);
+  // Initialize from localStorage if available
+  const [currentGame, setCurrentGame] = useState<GameInfo>(() => {
+    const savedGame = localStorage.getItem('lvlup-current-game');
+    if (savedGame) {
+      try {
+        return JSON.parse(savedGame);
+      } catch (e) {
+        console.error('Error parsing saved game:', e);
+      }
+    }
+    return defaultGame;
+  });
   const [availableGames, setAvailableGames] = useState<GameInfo[]>([]);
+
+  // Save to localStorage whenever currentGame changes
+  useEffect(() => {
+    if (currentGame.id !== 'default') {
+      localStorage.setItem('lvlup-current-game', JSON.stringify(currentGame));
+    }
+  }, [currentGame]);
 
   const fetchGames = async () => {
     try {
@@ -40,9 +58,34 @@ export const GameProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         
         if (games && games.length > 0) {
           setAvailableGames(games);
-          // Set first game as current if we don't have a current game set
+          
+          // If current game is default, try to restore from localStorage or use first game
           if (currentGame.id === 'default') {
-            setCurrentGame(games[0]);
+            const savedGame = localStorage.getItem('lvlup-current-game');
+            if (savedGame) {
+              try {
+                const parsedGame = JSON.parse(savedGame);
+                // Check if saved game still exists in available games
+                const gameExists = games.find((g: GameInfo) => g.id === parsedGame.id);
+                if (gameExists) {
+                  setCurrentGame(gameExists);
+                } else {
+                  // Saved game no longer exists, use first game
+                  setCurrentGame(games[0]);
+                }
+              } catch (e) {
+                setCurrentGame(games[0]);
+              }
+            } else {
+              setCurrentGame(games[0]);
+            }
+          } else {
+            // Verify current game still exists in available games
+            const gameExists = games.find((g: GameInfo) => g.id === currentGame.id);
+            if (!gameExists) {
+              // Current game was deleted, switch to first available
+              setCurrentGame(games[0]);
+            }
           }
         } else {
           // No games yet - show empty state
@@ -51,13 +94,11 @@ export const GameProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         }
       } else {
         console.error('Failed to fetch games:', response.statusText);
-        // Set empty state on error too
         setAvailableGames([]);
         setCurrentGame(defaultGame);
       }
     } catch (error) {
       console.error('Error fetching games:', error);
-      // Set empty state on error
       setAvailableGames([]);
       setCurrentGame(defaultGame);
     }

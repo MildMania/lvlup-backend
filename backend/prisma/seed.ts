@@ -2,53 +2,281 @@ import { PrismaClient } from '@prisma/client';
 
 const prisma = new PrismaClient();
 
+// Helper function to generate dates in the past
+const daysAgo = (days: number) => new Date(Date.now() - days * 24 * 60 * 60 * 1000);
+
+// Seed level funnel data for Puzzle Quest Adventures
+async function seedLevelFunnelData(games: any[], daysAgoFn: (days: number) => Date) {
+    console.log('🎮 Seeding level funnel data for Puzzle Quest Adventures...');
+    
+    // Find Puzzle Quest Adventures game
+    const puzzleGame = games.find(g => g.name === 'Puzzle Quest Adventures' || g.name.includes('Puzzle'));
+    
+    if (!puzzleGame) {
+        console.log('⚠️  Puzzle Quest Adventures game not found, skipping level funnel seed');
+        return;
+    }
+
+    // Delete existing level events to avoid conflicts
+    console.log('Clearing existing level events...');
+    await prisma.event.deleteMany({
+        where: {
+            gameId: puzzleGame.id,
+            eventName: { in: ['level_start', 'level_complete', 'level_failed'] }
+        }
+    });
+
+    // Get or create users for this game
+    let puzzleUsers = await prisma.user.findMany({ where: { gameId: puzzleGame.id } });
+    
+    // If no users exist, create some
+    if (puzzleUsers.length === 0) {
+        console.log('Creating 100 test users for level funnel...');
+        const testUsers = [];
+        for (let i = 0; i < 100; i++) {
+            testUsers.push({
+                gameId: puzzleGame.id,
+                externalId: `test_user_${i + 1}`,
+                deviceId: `device_${Math.random().toString(36).substring(7)}`,
+                platform: ['iOS', 'Android', 'WebGL'][Math.floor(Math.random() * 3)],
+                version: ['1.0.0', '1.1.0'][Math.floor(Math.random() * 2)],
+                country: ['US', 'UK', 'DE', 'FR'][Math.floor(Math.random() * 4)],
+                language: 'en',
+                createdAt: daysAgoFn(Math.floor(Math.random() * 30)),
+            });
+        }
+        await prisma.user.createMany({ data: testUsers });
+        puzzleUsers = await prisma.user.findMany({ where: { gameId: puzzleGame.id } });
+    }
+    
+    // Configuration for realistic level funnel
+    const levelConfig = [
+        { level: 1, winRate: 0.90, avgAttempts: 1.1, avgTime: 45, boosterUsage: 0.15, egpRate: 0.10 },
+        { level: 2, winRate: 0.87, avgAttempts: 1.2, avgTime: 52, boosterUsage: 0.20, egpRate: 0.12 },
+        { level: 3, winRate: 0.85, avgAttempts: 1.3, avgTime: 58, boosterUsage: 0.25, egpRate: 0.15 },
+        { level: 4, winRate: 0.82, avgAttempts: 1.4, avgTime: 65, boosterUsage: 0.28, egpRate: 0.18 },
+        { level: 5, winRate: 0.80, avgAttempts: 1.5, avgTime: 70, boosterUsage: 0.30, egpRate: 0.20 },
+        { level: 6, winRate: 0.78, avgAttempts: 1.6, avgTime: 75, boosterUsage: 0.32, egpRate: 0.22 },
+        { level: 7, winRate: 0.75, avgAttempts: 1.7, avgTime: 80, boosterUsage: 0.35, egpRate: 0.25 },
+        { level: 8, winRate: 0.73, avgAttempts: 1.8, avgTime: 85, boosterUsage: 0.38, egpRate: 0.28 },
+        { level: 9, winRate: 0.70, avgAttempts: 2.0, avgTime: 90, boosterUsage: 0.40, egpRate: 0.30 },
+        { level: 10, winRate: 0.68, avgAttempts: 2.2, avgTime: 95, boosterUsage: 0.45, egpRate: 0.32 },
+    ];
+
+    const levelEvents = [];
+    let eventCounter = Date.now(); // Use timestamp for unique IDs
+    
+    // Assign level funnels to users (simulate A/B testing)
+    const levelFunnels = [
+        { funnel: 'live_v1', version: 1 },
+        { funnel: 'live_v1', version: 2 },
+        { funnel: 'live_v2', version: 1 },
+        { funnel: 'test_hard', version: 1 },
+    ];
+
+    // Assign each user to a random funnel
+    const userFunnelAssignments = new Map();
+    puzzleUsers.forEach(user => {
+        const assignment = levelFunnels[Math.floor(Math.random() * levelFunnels.length)];
+        userFunnelAssignments.set(user.id, assignment);
+    });
+
+    console.log('📊 Assigned users to level funnels:', 
+        Array.from(userFunnelAssignments.values()).reduce((acc, curr) => {
+            const key = `${curr.funnel}_${curr.version}`;
+            acc[key] = (acc[key] || 0) + 1;
+            return acc;
+        }, {} as Record<string, number>)
+    );
+
+    for (let userIdx = 0; userIdx < puzzleUsers.length; userIdx++) {
+        const user = puzzleUsers[userIdx];
+        let currentLevel = 1;
+        let hasQuit = false;
+        const baseTime = daysAgoFn(Math.floor(Math.random() * 30));
+        let timeOffset = 0;
+
+        while (!hasQuit && currentLevel <= 10) {
+            const config = levelConfig[currentLevel - 1];
+            const attempts = Math.ceil(config.avgAttempts + (Math.random() - 0.5) * 0.5);
+            
+            for (let attempt = 1; attempt <= attempts; attempt++) {
+                const attemptTime = new Date(baseTime.getTime() + timeOffset * 1000);
+                timeOffset += 10;
+
+                // Level start event
+                levelEvents.push({
+                    id: `event_level_${eventCounter++}`,
+                    gameId: puzzleGame.id,
+                    userId: user.id,
+                    sessionId: null,
+                    eventName: 'level_start',
+                    properties: {
+                        levelId: currentLevel,
+                        levelName: `Level ${currentLevel}`,
+                        attempt: attempt,
+                    },
+                    timestamp: attemptTime,
+                    platform: user.platform,
+                    appVersion: user.version,
+                    country: user.country,
+                    levelFunnel: userFunnelAssignments.get(user.id)?.funnel,
+                    levelFunnelVersion: userFunnelAssignments.get(user.id)?.version,
+                });
+
+                const duration = Math.round(config.avgTime + (Math.random() - 0.5) * 20);
+                const endTime = new Date(attemptTime.getTime() + duration * 1000);
+                timeOffset += duration;
+
+                const willSucceed = attempt === attempts && Math.random() < config.winRate;
+                const usesBoosters = Math.random() < config.boosterUsage;
+                const usesEGP = !willSucceed && Math.random() < config.egpRate;
+
+                if (willSucceed) {
+                    levelEvents.push({
+                        id: `event_level_${eventCounter++}`,
+                        gameId: puzzleGame.id,
+                        userId: user.id,
+                        sessionId: null,
+                        eventName: 'level_complete',
+                        properties: {
+                            levelId: currentLevel,
+                            levelName: `Level ${currentLevel}`,
+                            score: Math.floor(5000 + Math.random() * 5000),
+                            timeSeconds: duration,
+                            stars: Math.floor(Math.random() * 3) + 1,
+                            boosters: usesBoosters ? Math.floor(Math.random() * 3) + 1 : 0,
+                            coinsEarned: Math.floor(100 + Math.random() * 200),
+                            preGameBoosters: Math.random() > 0.7 ? 1 : 0,
+                        },
+                        timestamp: endTime,
+                        platform: user.platform,
+                        appVersion: user.version,
+                        country: user.country,
+                        levelFunnel: userFunnelAssignments.get(user.id)?.funnel,
+                        levelFunnelVersion: userFunnelAssignments.get(user.id)?.version,
+                    });
+                    currentLevel++;
+                    
+                    if (Math.random() > 0.85) {
+                        hasQuit = true;
+                    }
+                } else {
+                    levelEvents.push({
+                        id: `event_level_${eventCounter++}`,
+                        gameId: puzzleGame.id,
+                        userId: user.id,
+                        sessionId: null,
+                        eventName: 'level_failed',
+                        properties: {
+                            levelId: currentLevel,
+                            levelName: `Level ${currentLevel}`,
+                            reason: ['timeout', 'no_moves', 'lost_lives'][Math.floor(Math.random() * 3)],
+                            timeSeconds: duration,
+                            attempts: attempt,
+                            boosters: usesBoosters ? Math.floor(Math.random() * 2) + 1 : 0,
+                            egp: usesEGP,
+                            endGamePurchase: usesEGP,
+                        },
+                        timestamp: endTime,
+                        platform: user.platform,
+                        appVersion: user.version,
+                        country: user.country,
+                        levelFunnel: userFunnelAssignments.get(user.id)?.funnel,
+                        levelFunnelVersion: userFunnelAssignments.get(user.id)?.version,
+                    });
+                }
+            }
+
+            if (!hasQuit && Math.random() > config.winRate) {
+                hasQuit = true;
+            }
+        }
+    }
+
+    console.log(`📝 Generated ${levelEvents.length} level events`);
+
+    // Batch insert level events
+    const levelEventChunks = [];
+    for (let i = 0; i < levelEvents.length; i += 1000) {
+        levelEventChunks.push(levelEvents.slice(i, i + 1000));
+    }
+
+    for (const chunk of levelEventChunks) {
+        await prisma.event.createMany({ 
+            data: chunk
+        });
+    }
+
+    console.log('✅ Seeded level funnel data');
+}
+
 async function main() {
     console.log('🌱 Starting database seeding...');
 
-    // Clean existing data (in correct order to avoid foreign key constraints)
-    await prisma.playerCheckpoint.deleteMany();
-    await prisma.checkpoint.deleteMany();
-    await prisma.testAssignment.deleteMany();
-    await prisma.testVariant.deleteMany();
-    await prisma.aBTest.deleteMany();
-    await prisma.remoteConfig.deleteMany();
-    await prisma.event.deleteMany();
-    await prisma.session.deleteMany();
-    await prisma.user.deleteMany();
-    await prisma.game.deleteMany();
+    // Check if games already exist
+    const existingGames = await prisma.game.findMany();
+    
+    let games;
+    if (existingGames.length > 0) {
+        console.log(`✅ Found ${existingGames.length} existing games, preserving them`);
+        games = existingGames;
+    } else {
+        console.log('No existing games found, creating seed games...');
+        
+        // Clean existing data (in correct order to avoid foreign key constraints)
+        await prisma.playerCheckpoint.deleteMany();
+        await prisma.checkpoint.deleteMany();
+        await prisma.testAssignment.deleteMany();
+        await prisma.testVariant.deleteMany();
+        await prisma.aBTest.deleteMany();
+        await prisma.remoteConfig.deleteMany();
+        await prisma.event.deleteMany();
+        await prisma.session.deleteMany();
+        await prisma.user.deleteMany();
 
-    console.log('✅ Cleared existing data');
+        console.log('✅ Cleared existing data');
 
-    // Create Games
-    const games = await Promise.all([
-        prisma.game.create({
-            data: {
-                name: 'Puzzle Quest Adventures',
-                apiKey: 'pqa_api_key_12345',
-                description: 'A popular match-3 puzzle game with RPG elements',
-            },
-        }),
-        prisma.game.create({
-            data: {
-                name: 'Space Runner 3D',
-                apiKey: 'sr3d_api_key_67890',
-                description: 'An endless runner game set in space',
-            },
-        }),
-        prisma.game.create({
-            data: {
-                name: 'City Builder Pro',
-                apiKey: 'cbp_api_key_11111',
-                description: 'Build and manage your own virtual city',
-            },
-        }),
-    ]);
+        // Create Games
+        games = await Promise.all([
+            prisma.game.create({
+                data: {
+                    name: 'Puzzle Quest Adventures',
+                    apiKey: 'pqa_api_key_12345',
+                    description: 'A popular match-3 puzzle game with RPG elements',
+                },
+            }),
+            prisma.game.create({
+                data: {
+                    name: 'Space Runner 3D',
+                    apiKey: 'sr3d_api_key_67890',
+                    description: 'An endless runner game set in space',
+                },
+            }),
+            prisma.game.create({
+                data: {
+                    name: 'City Builder Pro',
+                    apiKey: 'cbp_api_key_11111',
+                    description: 'Build and manage your own virtual city',
+                },
+            }),
+        ]);
 
-    console.log(`✅ Created ${games.length} games`);
+        console.log(`✅ Created ${games.length} games`);
+    }
 
     // Helper function to generate dates in the past
     const daysAgo = (days: number) => new Date(Date.now() - days * 24 * 60 * 60 * 1000);
     const hoursAgo = (hours: number) => new Date(Date.now() - hours * 60 * 60 * 1000);
+
+    // If games already existed, skip the full seed and just add level events
+    if (existingGames.length > 0) {
+        console.log('⏭️  Skipping full seed, adding only level funnel data...');
+        await seedLevelFunnelData(games, daysAgo);
+        
+        console.log('\n🌱 Database seeding completed successfully!');
+        return;
+    }
 
     // Create Users for each game
     const userBatches = await Promise.all(
@@ -466,3 +694,14 @@ main()
     .finally(async () => {
         await prisma.$disconnect();
     });
+
+
+
+
+
+
+
+
+
+
+

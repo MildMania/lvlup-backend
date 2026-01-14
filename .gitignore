@@ -12,6 +12,13 @@ backend/prisma/migrations/.DS_Store
 # Prisma
 .env
 prisma/.env
+backend/.env.bak
+backend/.env.local
+
+# Frontend environment files
+frontend/.env.local
+frontend/.env.local.backup
+frontend/.env.*.local
 
 # Node.js
 node_modules/

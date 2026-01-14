@@ -110,7 +110,7 @@ export class AnalyticsService {
             
             // Debug logging
             if (levelFunnel || levelFunnelVersion) {
-                logger.debug(`Extracted levelFunnel: ${levelFunnel}, levelFunnelVersion: ${levelFunnelVersion} from event ${eventData.eventName}`);
+                logger.info(`Extracted levelFunnel: ${levelFunnel}, levelFunnelVersion: ${levelFunnelVersion} from event ${eventData.eventName}`);
             }
             
             // Remove levelFunnel fields from properties since they're stored in dedicated columns

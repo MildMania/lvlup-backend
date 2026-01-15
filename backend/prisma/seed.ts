@@ -120,6 +120,7 @@ async function seedLevelFunnelData(games: any[], daysAgoFn: (days: number) => Da
                     platform: user.platform,
                     appVersion: user.version,
                     country: user.country,
+                    countryCode: user.country,
                     levelFunnel: userFunnelAssignments.get(user.id)?.funnel,
                     levelFunnelVersion: userFunnelAssignments.get(user.id)?.version,
                 });
@@ -153,6 +154,7 @@ async function seedLevelFunnelData(games: any[], daysAgoFn: (days: number) => Da
                         platform: user.platform,
                         appVersion: user.version,
                         country: user.country,
+                        countryCode: user.country,
                         levelFunnel: userFunnelAssignments.get(user.id)?.funnel,
                         levelFunnelVersion: userFunnelAssignments.get(user.id)?.version,
                     });
@@ -182,6 +184,7 @@ async function seedLevelFunnelData(games: any[], daysAgoFn: (days: number) => Da
                         platform: user.platform,
                         appVersion: user.version,
                         country: user.country,
+                        countryCode: user.country,
                         levelFunnel: userFunnelAssignments.get(user.id)?.funnel,
                         levelFunnelVersion: userFunnelAssignments.get(user.id)?.version,
                     });

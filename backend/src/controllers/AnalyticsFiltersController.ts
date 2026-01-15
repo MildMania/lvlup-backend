@@ -16,32 +16,32 @@ export class AnalyticsFiltersController {
         try {
             const gameId = req.game!.id;
 
-            // Get distinct values for each filter
+            // Get distinct values for each filter from events
             const [countries, versions, platforms, levelFunnels] = await Promise.all([
-                // Get distinct countries
-                prisma.user.findMany({
+                // Get distinct countries from events
+                prisma.event.findMany({
                     where: {
                         gameId,
-                        country: { not: null }
+                        countryCode: { not: null }
                     },
-                    select: { country: true },
-                    distinct: ['country'],
-                    orderBy: { country: 'asc' }
+                    select: { countryCode: true },
+                    distinct: ['countryCode'],
+                    orderBy: { countryCode: 'asc' }
                 }),
 
-                // Get distinct versions
-                prisma.user.findMany({
+                // Get distinct versions from events
+                prisma.event.findMany({
                     where: {
                         gameId,
-                        version: { not: null }
+                        appVersion: { not: null }
                     },
-                    select: { version: true },
-                    distinct: ['version'],
-                    orderBy: { version: 'asc' }
+                    select: { appVersion: true },
+                    distinct: ['appVersion'],
+                    orderBy: { appVersion: 'asc' }
                 }),
 
-                // Get distinct platforms
-                prisma.user.findMany({
+                // Get distinct platforms from events
+                prisma.event.findMany({
                     where: {
                         gameId,
                         platform: { not: null }
@@ -86,8 +86,8 @@ export class AnalyticsFiltersController {
             res.status(200).json({
                 success: true,
                 data: {
-                    countries: countries.map(c => c.country).filter(Boolean),
-                    versions: versions.map(v => v.version).filter(Boolean),
+                    countries: countries.map(c => c.countryCode).filter(Boolean),
+                    versions: versions.map(v => v.appVersion).filter(Boolean),
                     platforms: platforms.map(p => p.platform).filter(Boolean),
                     levelFunnels: levelFunnelOptions
                 }

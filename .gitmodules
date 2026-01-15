@@ -1,0 +1,4 @@
+# Git submodules configuration
+# Currently no submodules are used in this project
+# The unity-sdk directory is part of the main repository, not a submodule
+

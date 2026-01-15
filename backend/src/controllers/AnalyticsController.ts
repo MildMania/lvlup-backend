@@ -2,6 +2,7 @@ import { Request, Response } from 'express';
 import { AnalyticsService } from '../services/AnalyticsService';
 import { AuthenticatedRequest } from '../middleware/auth';
 import { ApiResponse, BatchEventData, EventData, SessionData, UserProfile } from '../types/api';
+import { requireGameId } from '../utils/gameIdHelper';
 import logger from '../utils/logger';
 
 const analyticsService = new AnalyticsService();
@@ -10,7 +11,7 @@ export class AnalyticsController {
     // Track a single event
     async trackEvent(req: AuthenticatedRequest, res: Response<ApiResponse>) {
         try {
-            const gameId = req.game!.id;
+            const gameId = requireGameId(req);
             const eventData: EventData = req.body;
             const userId = req.body.userId;
             const sessionId = req.body.sessionId || null;
@@ -85,7 +86,7 @@ export class AnalyticsController {
     // Track multiple events in batch
     async trackBatchEvents(req: AuthenticatedRequest, res: Response<ApiResponse>) {
         try {
-            const gameId = req.game!.id;
+            const gameId = requireGameId(req);
             const batchData: BatchEventData = req.body;
 
             // Validate required fields
@@ -151,7 +152,7 @@ export class AnalyticsController {
     // Start a new session
     async startSession(req: AuthenticatedRequest, res: Response<ApiResponse>) {
         try {
-            const gameId = req.game!.id;
+            const gameId = requireGameId(req);
             const userId = req.body.userId;
             const sessionData: SessionData = req.body;
 
@@ -300,7 +301,7 @@ export class AnalyticsController {
     // Get analytics data (for dashboard)
     async getAnalytics(req: AuthenticatedRequest, res: Response<ApiResponse>) {
         try {
-            const gameId = req.game!.id;
+            const gameId = requireGameId(req);
             const startDateStr = req.query.startDate as string || '';
             const endDateStr = req.query.endDate as string || '';
 
@@ -360,7 +361,7 @@ export class AnalyticsController {
     // Get events for a game
     async getEvents(req: AuthenticatedRequest, res: Response<ApiResponse>) {
         try {
-            const gameId = req.game!.id;
+            const gameId = requireGameId(req);
             const limit = parseInt(req.query.limit as string) || 100;
             const offset = parseInt(req.query.offset as string) || 0;
             const sort = (req.query.sort as string) || 'desc';

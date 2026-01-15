@@ -2,6 +2,7 @@ import { Request, Response } from 'express';
 import { AnalyticsMetricsService } from '../services/AnalyticsMetricsService';
 import { AuthenticatedRequest } from '../middleware/auth';
 import { AnalyticsFilterParams, ApiResponse } from '../types/api';
+import { requireGameId } from '../utils/gameIdHelper';
 import logger from '../utils/logger';
 
 const analyticsMetricsService = new AnalyticsMetricsService();
@@ -10,7 +11,7 @@ export class AnalyticsMetricsController {
     // Get retention data with filtering options
     async getRetention(req: AuthenticatedRequest, res: Response<ApiResponse>) {
         try {
-            const gameId = req.game!.id;
+            const gameId = requireGameId(req);
 
             // Extract filter parameters
             const filters: AnalyticsFilterParams = {
@@ -58,7 +59,7 @@ export class AnalyticsMetricsController {
     // Get active users data with filtering options
     async getActiveUsers(req: AuthenticatedRequest, res: Response<ApiResponse>) {
         try {
-            const gameId = req.game!.id;
+            const gameId = requireGameId(req);
 
             // Extract filter parameters
             const filters: AnalyticsFilterParams = {
@@ -100,7 +101,7 @@ export class AnalyticsMetricsController {
     // Get playtime metrics with filtering options
     async getPlaytimeMetrics(req: AuthenticatedRequest, res: Response<ApiResponse>) {
         try {
-            const gameId = req.game!.id;
+            const gameId = requireGameId(req);
 
             // Extract filter parameters
             const filters: AnalyticsFilterParams = {

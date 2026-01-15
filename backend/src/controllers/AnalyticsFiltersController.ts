@@ -14,7 +14,7 @@ export class AnalyticsFiltersController {
      */
     async getFilterOptions(req: AuthenticatedRequest, res: Response<ApiResponse>) {
         try {
-            const gameId = req.game!.id;
+            const gameId = requireGameId(req);
 
             // Get distinct values for each filter from events
             const [countries, versions, platforms, levelFunnels] = await Promise.all([

@@ -24,9 +24,17 @@ export const setApiKey = (apiKey: string) => {
 export const getApiKey = () => currentApiKey;
 
 apiClient.interceptors.request.use((config) => {
-  if (currentApiKey) {
+  // First, check for dashboard authentication token
+  const accessToken = localStorage.getItem('accessToken');
+  
+  if (accessToken) {
+    // Use dashboard authentication (Bearer token)
+    config.headers['Authorization'] = `Bearer ${accessToken}`;
+  } else if (currentApiKey) {
+    // Fall back to API key authentication (for old analytics or game SDKs)
     config.headers['X-API-Key'] = currentApiKey;
   }
+  
   return config;
 });
 

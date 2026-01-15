@@ -63,16 +63,24 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
             async (error) => {
                 const originalRequest = error.config;
 
-                // If token expired, try to refresh
-                if (error.response?.status === 401 && !originalRequest._retry) {
+                // If token expired, try to refresh (but not for login/refresh endpoints)
+                if (
+                    error.response?.status === 401 && 
+                    !originalRequest._retry &&
+                    !originalRequest.url?.includes('/auth/login') &&
+                    !originalRequest.url?.includes('/auth/refresh')
+                ) {
                     originalRequest._retry = true;
 
                     try {
                         await refreshToken();
                         return axios(originalRequest);
                     } catch (refreshError) {
-                        // Refresh failed, logout
-                        await logout();
+                        // Refresh failed, clear auth state
+                        setUser(null);
+                        setAccessToken(null);
+                        localStorage.removeItem('accessToken');
+                        // Don't logout here to avoid redirect loop
                         return Promise.reject(refreshError);
                     }
                 }

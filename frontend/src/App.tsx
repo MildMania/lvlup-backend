@@ -1,17 +1,68 @@
 import './App.css';
-import Layout from './components/Layout';
+import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
+import { AuthProvider } from './contexts/AuthContext';
 import { ThemeProvider } from './contexts/ThemeContext';
 import { GameProvider } from './contexts/GameContext';
+import Login from './components/Login';
+import Dashboard from './components/Dashboard';
+import TeamManagement from './components/TeamManagement';
+import UserManagement from './components/UserManagement';
+import ProtectedRoute from './components/ProtectedRoute';
+import Layout from './components/Layout';
 
 function App() {
   return (
-    <ThemeProvider>
-      <GameProvider>
-        <div className="app">
-          <Layout />
-        </div>
-      </GameProvider>
-    </ThemeProvider>
+    <BrowserRouter>
+      <ThemeProvider>
+        <AuthProvider>
+          <GameProvider>
+            <Routes>
+              {/* Public routes */}
+              <Route path="/login" element={<Login />} />
+              
+              {/* Protected routes */}
+              <Route
+                path="/dashboard"
+                element={
+                  <ProtectedRoute>
+                    <Dashboard />
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="/teams"
+                element={
+                  <ProtectedRoute>
+                    <TeamManagement />
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="/users"
+                element={
+                  <ProtectedRoute>
+                    <UserManagement />
+                  </ProtectedRoute>
+                }
+              />
+              
+              {/* Analytics dashboard (existing) */}
+              <Route
+                path="/analytics"
+                element={
+                  <ProtectedRoute>
+                    <Layout />
+                  </ProtectedRoute>
+                }
+              />
+              
+              {/* Default redirect */}
+              <Route path="/" element={<Navigate to="/login" replace />} />
+            </Routes>
+          </GameProvider>
+        </AuthProvider>
+      </ThemeProvider>
+    </BrowserRouter>
   );
 }
 

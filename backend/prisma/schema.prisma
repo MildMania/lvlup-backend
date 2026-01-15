@@ -3,7 +3,7 @@ generator client {
 }
 
 datasource db {
-  provider = "postgresql"
+  provider = "sqlite"
   url      = env("DATABASE_URL")
 }
 
@@ -423,6 +423,8 @@ model DashboardUser {
   // Relations
   teamMemberships   TeamMember[]
   gameAccesses      GameAccess[]
+  sentInvitations   Invitation[]      @relation("InvitedBy")
+  receivedInvitation Invitation?      @relation("InvitedUser")
   refreshTokens     RefreshToken[]
   twoFactorAuth     TwoFactorAuth?
   auditLogs         AuditLog[]
@@ -446,6 +448,7 @@ model Team {
   // Relations
   members     TeamMember[]
   gameAccesses GameAccess[]
+  invitations Invitation[]
   
   @@map("teams")
 }

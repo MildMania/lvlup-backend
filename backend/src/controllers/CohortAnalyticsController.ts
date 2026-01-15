@@ -14,7 +14,7 @@ export class CohortAnalyticsController {
      */
     async getCohortRetention(req: AuthenticatedRequest, res: Response<ApiResponse>) {
         try {
-            const gameId = req.game!.id;
+            const gameId = requireGameId(req);
 
             // Extract filter parameters
             const filters: any = {
@@ -65,7 +65,7 @@ export class CohortAnalyticsController {
      */
     async getCohortPlaytime(req: AuthenticatedRequest, res: Response<ApiResponse>) {
         try {
-            const gameId = req.game!.id;
+            const gameId = requireGameId(req);
             const filters: any = {
                 startDate: req.query.startDate as string,
                 endDate: req.query.endDate as string,
@@ -98,7 +98,7 @@ export class CohortAnalyticsController {
      */
     async getCohortSessionCount(req: AuthenticatedRequest, res: Response<ApiResponse>) {
         try {
-            const gameId = req.game!.id;
+            const gameId = requireGameId(req);
             const filters: any = {
                 startDate: req.query.startDate as string,
                 endDate: req.query.endDate as string,
@@ -131,7 +131,7 @@ export class CohortAnalyticsController {
      */
     async getCohortSessionLength(req: AuthenticatedRequest, res: Response<ApiResponse>) {
         try {
-            const gameId = req.game!.id;
+            const gameId = requireGameId(req);
             const filters: any = {
                 startDate: req.query.startDate as string,
                 endDate: req.query.endDate as string,

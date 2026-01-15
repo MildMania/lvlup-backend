@@ -12,7 +12,7 @@ export class PlayerJourneyController {
      */
     async createCheckpoint(req: AuthenticatedRequest, res: Response<ApiResponse>) {
         try {
-            const gameId = req.game!.id;
+            const gameId = requireGameId(req);
 
             // Extract checkpoint data from request body
             const checkpointData = {
@@ -43,7 +43,7 @@ export class PlayerJourneyController {
      */
     async getCheckpoints(req: AuthenticatedRequest, res: Response<ApiResponse>) {
         try {
-            const gameId = req.game!.id;
+            const gameId = requireGameId(req);
 
             // Implement get checkpoints functionality
             // This would be added to the PlayerJourneyService
@@ -66,7 +66,7 @@ export class PlayerJourneyController {
      */
     async recordCheckpoint(req: AuthenticatedRequest, res: Response<ApiResponse>) {
         try {
-            const gameId = req.game!.id;
+            const gameId = requireGameId(req);
 
             // Extract player checkpoint data from request body
             const playerCheckpointData = {
@@ -96,7 +96,7 @@ export class PlayerJourneyController {
      */
     async getJourneyProgress(req: AuthenticatedRequest, res: Response<ApiResponse>) {
         try {
-            const gameId = req.game!.id;
+            const gameId = requireGameId(req);
 
             // Extract filter parameters
             const filters: any = {
@@ -149,7 +149,7 @@ export class PlayerJourneyController {
      */
     async getUserJourney(req: AuthenticatedRequest, res: Response<ApiResponse>) {
         try {
-            const gameId = req.game!.id;
+            const gameId = requireGameId(req);
             const userId = req.params.userId;
 
             if (!userId) {

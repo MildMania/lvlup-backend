@@ -2,6 +2,7 @@ import { Request, Response } from 'express';
 import { EngagementMetricsService } from '../services/EngagementMetricsService';
 import { AuthenticatedRequest } from '../middleware/auth';
 import { AnalyticsFilterParams, ApiResponse } from '../types/api';
+import { requireGameId } from '../utils/gameIdHelper';
 import logger from '../utils/logger';
 
 const engagementMetricsService = new EngagementMetricsService();
@@ -12,7 +13,7 @@ export class EngagementMetricsController {
      */
     async getSessionCounts(req: AuthenticatedRequest, res: Response<ApiResponse>) {
         try {
-            const gameId = req.game!.id;
+            const gameId = requireGameId(req);
 
             // Extract filter parameters
             const filters: any = {
@@ -67,7 +68,7 @@ export class EngagementMetricsController {
      */
     async getSessionLengths(req: AuthenticatedRequest, res: Response<ApiResponse>) {
         try {
-            const gameId = req.game!.id;
+            const gameId = requireGameId(req);
 
             // Extract filter parameters
             const filters: any = {

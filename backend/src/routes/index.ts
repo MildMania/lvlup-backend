@@ -16,6 +16,7 @@ import gameAccessRoutes from './game-access';
 
 const router = Router();
 
+
 // Health check endpoint
 router.get('/health', (req, res) => {
     res.status(200).json({
@@ -25,21 +26,21 @@ router.get('/health', (req, res) => {
     });
 });
 
-// Authentication & Authorization Routes
+// Authentication & Authorization Routes (most specific first)
 router.use('/auth', authRoutes);
 router.use('/teams', teamRoutes);
 router.use('/users', userRoutes);
-router.use('/', gameAccessRoutes); // Includes /games/:gameId/access and /users/:userId/games
 
-// API Routes
+// API Routes - Order matters! More specific paths first
+router.use('/analytics/level-funnel', levelFunnelRoutes);
 router.use('/analytics', analyticsRoutes);
 router.use('/analytics', enhancedAnalyticsRoutes);
 router.use('/analytics', dashboardRoutes);
-router.use('/analytics/level-funnel', levelFunnelRoutes);
-router.use('/games', gameRoutes);
+router.use('/games', healthRoutes); // Health routes like /games/:gameId/health/*
+router.use('/games', gameRoutes); // General game routes
 router.use('/ai-context', aiContextRoutes);
 router.use('/ai-analytics', aiAnalyticsRoutes);
-router.use(healthRoutes);
+router.use('/', gameAccessRoutes); // Includes /games/:gameId/access and /users/:userId/games
 
 // TODO: Add these routes as we implement them
 // router.use('/config', configRoutes);

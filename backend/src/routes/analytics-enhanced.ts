@@ -1,9 +1,10 @@
 import { Router } from 'express';
-import { EngagementMetricsController } from '../controllers/EngagementMetricsController';
-import { PlayerJourneyController } from '../controllers/PlayerJourneyController';
 import { CohortAnalyticsController } from '../controllers/CohortAnalyticsController';
+import { PlayerJourneyController } from '../controllers/PlayerJourneyController';
+import { EngagementMetricsController } from '../controllers/EngagementMetricsController';
+import { HealthMetricsController } from '../controllers/HealthMetricsController';
 import { AnalyticsFiltersController } from '../controllers/AnalyticsFiltersController';
-import { authenticateApiKey } from '../middleware/auth';
+import { authenticateEither } from '../middleware/authenticateEither';
 
 /**
  * Enhanced Analytics Routes for Engagement Metrics and Player Journey
@@ -14,8 +15,8 @@ const playerJourneyController = new PlayerJourneyController();
 const cohortAnalyticsController = new CohortAnalyticsController();
 const analyticsFiltersController = new AnalyticsFiltersController();
 
-// Apply authentication middleware to all routes
-router.use(authenticateApiKey);
+// Apply authentication middleware to all routes - accepts both API key and dashboard auth
+router.use(authenticateEither);
 
 // Filter Options Endpoint
 /**

@@ -1,18 +1,18 @@
 import { Router } from 'express';
 import { AnalyticsController } from '../controllers/AnalyticsController';
 import { AnalyticsMetricsController } from '../controllers/AnalyticsMetricsController';
-import { authenticateApiKey } from '../middleware/auth';
+import { authenticateEither } from '../middleware/authenticateEither';
 
 /**
  * Analytics routes for tracking game events, sessions, and retrieving analytics data
- * All routes require API key authentication via X-API-Key header or api_key query parameter
+ * Routes accept BOTH API key authentication (for games) and dashboard authentication (for dashboard users)
  */
 const router = Router();
 const analyticsController = new AnalyticsController();
 const analyticsMetricsController = new AnalyticsMetricsController();
 
-// Apply authentication middleware to all routes
-router.use(authenticateApiKey);
+// Apply authentication middleware to all routes - accepts both API key and dashboard auth
+router.use(authenticateEither);
 
 // Event tracking endpoints
 /**

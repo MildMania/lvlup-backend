@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import { AnalyticsMetricsController } from '../controllers/AnalyticsMetricsController';
-import { authenticateApiKey, AuthenticatedRequest } from '../middleware/auth';
+import { authenticateEither } from '../middleware/authenticateEither';
+import { AuthenticatedRequest } from '../middleware/auth';
 import { AnalyticsService } from '../services/AnalyticsService';
 import { AnalyticsMetricsService } from '../services/AnalyticsMetricsService';
 import { PlayerJourneyService } from '../services/PlayerJourneyService';
@@ -9,9 +10,17 @@ const router = Router();
 const analyticsMetricsController = new AnalyticsMetricsController();
 
 // Dashboard summary endpoint
-router.get('/dashboard/summary', authenticateApiKey, async (req: AuthenticatedRequest, res) => {
+router.get('/dashboard/summary', authenticateEither, async (req: AuthenticatedRequest, res) => {
     try {
-        const gameId = req.game!.id;
+        // Get gameId from query params (dashboard auth) or from authenticated game (API key auth)
+        const gameId = (req.query.gameId as string) || req.game?.id;
+        
+        if (!gameId) {
+            return res.status(400).json({
+                success: false,
+                error: 'gameId is required as a query parameter',
+            });
+        }
 
         // Get date range from query parameters or default to last 30 days
         const { startDate: startDateParam, endDate: endDateParam } = req.query;
@@ -87,9 +96,17 @@ router.get('/dashboard/summary', authenticateApiKey, async (req: AuthenticatedRe
 });
 
 // Player journey funnel endpoint
-router.get('/player-journey/funnel', authenticateApiKey, async (req: AuthenticatedRequest, res) => {
+router.get('/player-journey/funnel', authenticateEither, async (req: AuthenticatedRequest, res) => {
     try {
-        const gameId = req.game!.id;
+        // Get gameId from query params (dashboard auth) or from authenticated game (API key auth)
+        const gameId = (req.query.gameId as string) || req.game?.id;
+        
+        if (!gameId) {
+            return res.status(400).json({
+                success: false,
+                error: 'gameId is required as a query parameter',
+            });
+        }
 
         // Get date range from query parameters or default to last 30 days
         const { startDate: startDateParam, endDate: endDateParam } = req.query;
@@ -143,7 +160,7 @@ router.get('/player-journey/funnel', authenticateApiKey, async (req: Authenticat
 });
 
 // Retention analysis endpoint - use existing analytics controller
-router.get('/retention/cohorts', authenticateApiKey, (req, res) => {
+router.get('/retention/cohorts', authenticateEither, (req, res) => {
     // Set default date range for retention analysis (last 30 days)
     const endDate = new Date();
     const startDate = new Date();

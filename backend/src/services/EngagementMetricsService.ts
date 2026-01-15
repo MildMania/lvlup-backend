@@ -70,9 +70,14 @@ export class EngagementMetricsService {
             const userFilters: any = {};
 
             if (filters?.country) {
-                userFilters.country = Array.isArray(filters.country)
-                    ? { in: filters.country }
-                    : filters.country;
+                // Filter users by their events' countryCode
+                userFilters.events = {
+                    some: {
+                        countryCode: Array.isArray(filters.country)
+                            ? { in: filters.country }
+                            : filters.country
+                    }
+                };
             }
 
             // Process each day in the date range
@@ -238,9 +243,14 @@ export class EngagementMetricsService {
             const userFilters: any = {};
 
             if (filters?.country) {
-                userFilters.country = Array.isArray(filters.country)
-                    ? { in: filters.country }
-                    : filters.country;
+                // Filter users by their events' countryCode
+                userFilters.events = {
+                    some: {
+                        countryCode: Array.isArray(filters.country)
+                            ? { in: filters.country }
+                            : filters.country
+                    }
+                };
             }
 
             // Process each day in the date range

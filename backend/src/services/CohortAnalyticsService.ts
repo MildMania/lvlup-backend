@@ -54,9 +54,14 @@ export class CohortAnalyticsService {
 
             // Add optional filters
             if (filters?.country) {
-                userFilters.country = Array.isArray(filters.country)
-                    ? { in: filters.country }
-                    : filters.country;
+                // Filter users by their events' countryCode
+                userFilters.events = {
+                    some: {
+                        countryCode: Array.isArray(filters.country)
+                            ? { in: filters.country }
+                            : filters.country
+                    }
+                };
             }
 
             if (filters?.platform) {

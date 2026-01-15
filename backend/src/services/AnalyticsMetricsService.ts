@@ -48,9 +48,14 @@ export class AnalyticsMetricsService {
 
             // Add optional filters
             if (filters?.country) {
-                userFilters.country = Array.isArray(filters.country)
-                    ? { in: filters.country }
-                    : filters.country;
+                // Filter users by their events' countryCode
+                userFilters.events = {
+                    some: {
+                        countryCode: Array.isArray(filters.country)
+                            ? { in: filters.country }
+                            : filters.country
+                    }
+                };
             }
 
             if (filters?.platform) {
@@ -201,13 +206,11 @@ export class AnalyticsMetricsService {
                         }
                     };
 
-                    // Join with user to apply country filter if needed
+                    // Use countryCode from event directly
                     if (filters?.country) {
-                        baseFilters.user = {
-                            country: Array.isArray(filters.country)
-                                ? { in: filters.country }
-                                : filters.country
-                        };
+                        baseFilters.countryCode = Array.isArray(filters.country)
+                            ? { in: filters.country }
+                            : filters.country;
                     }
 
                     // Add session filters if platform or version is specified
@@ -319,10 +322,15 @@ export class AnalyticsMetricsService {
                 }
 
                 if (filters?.country) {
-                    sessionFilters.user = {
-                        country: Array.isArray(filters.country)
-                            ? { in: filters.country }
-                            : filters.country
+                    // Filter sessions by events with matching countryCode
+                    // We need to use a subquery approach or filter events after
+                    // For now, we'll add this to the session filter via events
+                    sessionFilters.events = {
+                        some: {
+                            countryCode: Array.isArray(filters.country)
+                                ? { in: filters.country }
+                                : filters.country
+                        }
                     };
                 }
 

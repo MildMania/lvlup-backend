@@ -61,9 +61,9 @@ export class LevelFunnelService {
                 // Support multiple countries (comma-separated)
                 const countries = country.split(',').map(c => c.trim()).filter(c => c);
                 if (countries.length > 1) {
-                    whereClause.country = { in: countries };
+                    whereClause.countryCode = { in: countries };
                 } else if (countries.length === 1) {
-                    whereClause.country = countries[0];
+                    whereClause.countryCode = countries[0];
                 }
             }
             if (version) {

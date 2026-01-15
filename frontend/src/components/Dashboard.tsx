@@ -22,6 +22,7 @@ import type {
   DashboardSummary 
 } from '../types/analytics';
 import { useTheme } from '../contexts/ThemeContext';
+import { useGame } from '../contexts/GameContext';
 import { AIChatWidget } from './AIChatWidget';
 import './Dashboard.css';
 
@@ -126,6 +127,7 @@ interface DashboardProps {
 }
 
 const Dashboard: React.FC<DashboardProps> = ({ gameInfo, isCollapsed = false }) => {
+  const { currentGame } = useGame();
   const [activeUsers, setActiveUsers] = useState<ActiveUserPoint[]>([]);
   const [retention, setRetention] = useState<RetentionPoint[]>([]);
   const [playtime, setPlaytime] = useState<PlaytimePoint[]>([]);
@@ -171,7 +173,7 @@ const Dashboard: React.FC<DashboardProps> = ({ gameInfo, isCollapsed = false }) 
       // Subsequent changes - only update data, don't show full loading
       updateDashboardData();
     }
-  }, [selectedDateRange, gameInfo?.id]); // Re-fetch when game changes
+  }, [selectedDateRange, currentGame?.id]); // Re-fetch when game changes
 
   // Update data without full loading state
   const updateDashboardData = async () => {
@@ -179,13 +181,19 @@ const Dashboard: React.FC<DashboardProps> = ({ gameInfo, isCollapsed = false }) 
       setUpdating(true);
       setError(null);
 
+      // Skip if no valid game is selected
+      if (!currentGame || currentGame.id === 'default') {
+        setUpdating(false);
+        return;
+      }
+
       // Get date range from helper function
       const { startDate: startDateStr, endDate: endDateStr } = getDateRange();
 
       // Fetch data in background while keeping existing data visible
       const [summaryData, retentionData] = await Promise.allSettled([
-        AnalyticsService.getDashboardSummary(startDateStr, endDateStr),
-        AnalyticsService.getDashboardRetention(startDateStr, endDateStr)
+        AnalyticsService.getDashboardSummary(currentGame.id, startDateStr, endDateStr),
+        AnalyticsService.getDashboardRetention(currentGame.id, startDateStr, endDateStr)
       ]);
 
       // Handle successful responses
@@ -199,13 +207,13 @@ const Dashboard: React.FC<DashboardProps> = ({ gameInfo, isCollapsed = false }) 
 
       // Fetch chart data
         const [activeUsersResult, playtimeResult, playerJourneyResult] = await Promise.allSettled([
-          AnalyticsService.getActiveUsers(startDateStr, endDateStr),
+          AnalyticsService.getActiveUsers(currentGame.id, startDateStr, endDateStr),
           fetchPlaytime(new URLSearchParams({
-            gameId: gameInfo?.id || '1',
+            gameId: currentGame.id,
             startDate: startDateStr,
             endDate: endDateStr
           })),
-          AnalyticsService.getPlayerJourney(startDateStr, endDateStr)
+          AnalyticsService.getPlayerJourney(currentGame.id, startDateStr, endDateStr)
         ]);
       
       if (activeUsersResult.status === 'fulfilled') {
@@ -318,13 +326,19 @@ const Dashboard: React.FC<DashboardProps> = ({ gameInfo, isCollapsed = false }) 
       setLoading(true);
       setError(null);
 
+      // Skip if no valid game is selected
+      if (!currentGame || currentGame.id === 'default') {
+        setLoading(false);
+        return;
+      }
+
       // Get date range from helper function
       const { startDate: startDateStr, endDate: endDateStr } = getDateRange();
 
       // Fetch data that we have endpoints for - now with date range
       const [summaryData, retentionData] = await Promise.allSettled([
-        AnalyticsService.getDashboardSummary(startDateStr, endDateStr),
-        AnalyticsService.getDashboardRetention(startDateStr, endDateStr)
+        AnalyticsService.getDashboardSummary(currentGame.id, startDateStr, endDateStr),
+        AnalyticsService.getDashboardRetention(currentGame.id, startDateStr, endDateStr)
       ]);
 
       // Handle successful responses
@@ -338,10 +352,10 @@ const Dashboard: React.FC<DashboardProps> = ({ gameInfo, isCollapsed = false }) 
       }
 
       // Fetch data with date range parameters
-      const activeUsersPromise = AnalyticsService.getActiveUsers(startDateStr, endDateStr);
+      const activeUsersPromise = AnalyticsService.getActiveUsers(currentGame.id, startDateStr, endDateStr);
       
       const playtimeParams = new URLSearchParams({
-        gameId: '1',
+        gameId: currentGame.id,
         startDate: startDateStr,
         endDate: endDateStr
       });
@@ -349,7 +363,7 @@ const Dashboard: React.FC<DashboardProps> = ({ gameInfo, isCollapsed = false }) 
       const playtimePromise = fetchPlaytime(playtimeParams);
       
       // Fetch player journey with date range
-      const playerJourneyPromise = AnalyticsService.getPlayerJourney(startDateStr, endDateStr);
+      const playerJourneyPromise = AnalyticsService.getPlayerJourney(currentGame.id, startDateStr, endDateStr);
       
       // Wait for all data fetches to complete
       const [activeUsersResult, playtimeResult, playerJourneyResult] = await Promise.allSettled([

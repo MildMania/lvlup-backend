@@ -77,7 +77,7 @@ const Events: React.FC<EventsProps> = ({ gameInfo, isCollapsed = false }) => {
     
     try {
       const apiBaseUrl = import.meta.env.VITE_API_BASE_URL || 'http://localhost:3000/api';
-      const url = `${apiBaseUrl}/analytics/events?limit=100&sort=desc`;
+      const url = `${apiBaseUrl}/analytics/events?gameId=${gameInfo.id}&limit=100&sort=desc`;
       
       console.log('[Events] Fetching events from:', url);
       console.log('[Events] Using API Key:', gameInfo.apiKey ? `${gameInfo.apiKey.substring(0, 10)}...` : 'MISSING');

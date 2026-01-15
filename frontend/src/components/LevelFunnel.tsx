@@ -111,7 +111,7 @@ export default function LevelFunnel({ isCollapsed = false }: LevelFunnelProps) {
     useEffect(() => {
         const fetchFilterOptions = async () => {
             try {
-                const response = await apiClient.get('/analytics/filters/options');
+                const response = await apiClient.get(`/analytics/filters/options?gameId=${currentGame.id}`);
                 if (response.data.success) {
                     setAvailableCountries(['All', ...response.data.data.countries]);
                     setAvailableVersions(['All', ...response.data.data.versions]);

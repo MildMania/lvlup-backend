@@ -2,6 +2,7 @@ import { Response } from 'express';
 import { AuthenticatedRequest } from '../middleware/auth';
 import { PrismaClient } from '@prisma/client';
 import { ApiResponse } from '../types/api';
+import { requireGameId } from '../utils/gameIdHelper';
 
 const prisma = new PrismaClient();
 

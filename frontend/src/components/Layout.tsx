@@ -1,33 +1,35 @@
 import React, { useState, useEffect } from 'react';
+import { Routes, Route, useNavigate, useLocation } from 'react-router-dom';
 import Sidebar from './Sidebar';
 import Dashboard from './Dashboard';
 import Analytics from './Analytics';
 import Events from './Events';
 import ReleaseManagement from './ReleaseManagement';
 import LevelFunnel from './LevelFunnel';
+import TeamManagement from './TeamManagement';
+import UserManagement from './UserManagement';
 import { AIChatWidget } from './AIChatWidget';
 import { useGame } from '../contexts/GameContext';
 import { setApiKey } from '../lib/apiClient';
 import './Layout.css';
 
 const Layout: React.FC = () => {
-  // Load saved page from localStorage or default to dashboard
-  const [currentPage, setCurrentPage] = useState(() => {
-    const savedPage = localStorage.getItem('lvlup-current-page');
-    return savedPage || 'dashboard';
-  });
+  const navigate = useNavigate();
+  const location = useLocation();
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
   const { currentGame, availableGames, setCurrentGame, refreshGames } = useGame();
 
-  // Save current page to localStorage whenever it changes
-  useEffect(() => {
-    localStorage.setItem('lvlup-current-page', currentPage);
-  }, [currentPage]);
+  // Determine current page from URL path
+  const currentPage = location.pathname.substring(1) || 'dashboard';
 
   // Update API key when game changes
   useEffect(() => {
     setApiKey(currentGame.apiKey);
   }, [currentGame]);
+
+  const handlePageChange = (page: string) => {
+    navigate(`/${page}`);
+  };
 
   const handleGameChange = (gameId: string) => {
     const game = availableGames.find(g => g.id === gameId);
@@ -83,32 +85,11 @@ const Layout: React.FC = () => {
     }
   };
 
-  const renderPage = () => {
-    switch (currentPage) {
-      case 'dashboard':
-        return <Dashboard gameInfo={currentGame} isCollapsed={isSidebarCollapsed} />;
-      case 'analytics':
-        return <Analytics gameInfo={currentGame} isCollapsed={isSidebarCollapsed} />;
-      case 'users':
-        return <div className="page-placeholder">Users Page - Coming Soon</div>;
-      case 'events':
-        return <Events gameInfo={currentGame} isCollapsed={isSidebarCollapsed} />;
-      case 'funnels':
-        return <LevelFunnel isCollapsed={isSidebarCollapsed} />;
-      case 'releases':
-        return <ReleaseManagement isCollapsed={isSidebarCollapsed} />;
-      case 'settings':
-        return <div className="page-placeholder">Settings Page - Coming Soon</div>;
-      default:
-        return <Dashboard gameInfo={currentGame} isCollapsed={isSidebarCollapsed} />;
-    }
-  };
-
   return (
     <div className="layout">
       <Sidebar 
         currentPage={currentPage} 
-        onPageChange={setCurrentPage}
+        onPageChange={handlePageChange}
         gameInfo={currentGame}
         availableGames={availableGames}
         onGameChange={handleGameChange}
@@ -117,7 +98,17 @@ const Layout: React.FC = () => {
         onGameDelete={handleGameDelete}
       />
       <main className="main-content">
-        {renderPage()}
+        <Routes>
+          <Route path="/dashboard" element={<Dashboard gameInfo={currentGame} isCollapsed={isSidebarCollapsed} />} />
+          <Route path="/analytics" element={<Analytics gameInfo={currentGame} isCollapsed={isSidebarCollapsed} />} />
+          <Route path="/teams" element={<TeamManagement />} />
+          <Route path="/users" element={<UserManagement />} />
+          <Route path="/events" element={<Events gameInfo={currentGame} isCollapsed={isSidebarCollapsed} />} />
+          <Route path="/funnels" element={<LevelFunnel isCollapsed={isSidebarCollapsed} />} />
+          <Route path="/releases" element={<ReleaseManagement isCollapsed={isSidebarCollapsed} />} />
+          <Route path="/settings" element={<div className="page-placeholder">Settings Page - Coming Soon</div>} />
+          <Route path="/" element={<Dashboard gameInfo={currentGame} isCollapsed={isSidebarCollapsed} />} />
+        </Routes>
       </main>
       <AIChatWidget />
     </div>

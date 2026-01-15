@@ -2,6 +2,7 @@ import { Request, Response } from 'express';
 import { PlayerJourneyService } from '../services/PlayerJourneyService';
 import { AuthenticatedRequest } from '../middleware/auth';
 import { ApiResponse } from '../types/api';
+import { requireGameId } from '../utils/gameIdHelper';
 import logger from '../utils/logger';
 
 const playerJourneyService = new PlayerJourneyService();

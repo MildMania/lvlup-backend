@@ -1,5 +1,7 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import type { ReactNode } from 'react';
+import { useAuth } from './AuthContext';
+import apiClient from '../lib/apiClient';
 
 interface GameInfo {
   id: string;
@@ -25,6 +27,8 @@ const defaultGame: GameInfo = {
 };
 
 export const GameProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
+  const { user } = useAuth();
+  
   // Initialize from localStorage if available
   const [currentGame, setCurrentGame] = useState<GameInfo>(() => {
     const savedGame = localStorage.getItem('lvlup-current-game');
@@ -48,11 +52,10 @@ export const GameProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
 
   const fetchGames = async () => {
     try {
-      const apiBaseUrl = import.meta.env.VITE_API_BASE_URL || 'http://localhost:3000/api';
-      const response = await fetch(`${apiBaseUrl}/games`);
+      const response = await apiClient.get('/games');
       
-      if (response.ok) {
-        const responseData = await response.json();
+      if (response.status === 200) {
+        const responseData = response.data;
         // Backend returns {success: true, data: [...games]}
         const games = responseData.data || responseData;
         
@@ -92,13 +95,12 @@ export const GameProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
           setAvailableGames([]);
           setCurrentGame(defaultGame);
         }
-      } else {
-        console.error('Failed to fetch games:', response.statusText);
-        setAvailableGames([]);
-        setCurrentGame(defaultGame);
       }
-    } catch (error) {
-      console.error('Error fetching games:', error);
+    } catch (error: any) {
+      // Silently fail on 401 (user not authenticated yet)
+      if (error?.response?.status !== 401) {
+        console.error('Error fetching games:', error);
+      }
       setAvailableGames([]);
       setCurrentGame(defaultGame);
     }
@@ -109,8 +111,11 @@ export const GameProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   };
 
   useEffect(() => {
-    fetchGames();
-  }, []);
+    // Only fetch games if user is authenticated
+    if (user) {
+      fetchGames();
+    }
+  }, [user]);
 
   return (
     <GameContext.Provider value={{ currentGame, availableGames, setCurrentGame, refreshGames }}>

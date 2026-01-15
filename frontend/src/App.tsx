@@ -4,9 +4,6 @@ import { AuthProvider } from './contexts/AuthContext';
 import { ThemeProvider } from './contexts/ThemeContext';
 import { GameProvider } from './contexts/GameContext';
 import Login from './components/Login';
-import Dashboard from './components/Dashboard';
-import TeamManagement from './components/TeamManagement';
-import UserManagement from './components/UserManagement';
 import ProtectedRoute from './components/ProtectedRoute';
 import Layout from './components/Layout';
 
@@ -20,35 +17,9 @@ function App() {
               {/* Public routes */}
               <Route path="/login" element={<Login />} />
               
-              {/* Protected routes */}
+              {/* Protected routes - all wrapped with Layout for consistent sidebar */}
               <Route
-                path="/dashboard"
-                element={
-                  <ProtectedRoute>
-                    <Dashboard />
-                  </ProtectedRoute>
-                }
-              />
-              <Route
-                path="/teams"
-                element={
-                  <ProtectedRoute>
-                    <TeamManagement />
-                  </ProtectedRoute>
-                }
-              />
-              <Route
-                path="/users"
-                element={
-                  <ProtectedRoute>
-                    <UserManagement />
-                  </ProtectedRoute>
-                }
-              />
-              
-              {/* Analytics dashboard (existing) */}
-              <Route
-                path="/analytics"
+                path="/*"
                 element={
                   <ProtectedRoute>
                     <Layout />
@@ -57,7 +28,7 @@ function App() {
               />
               
               {/* Default redirect */}
-              <Route path="/" element={<Navigate to="/login" replace />} />
+              <Route path="/" element={<Navigate to="/dashboard" replace />} />
             </Routes>
           </GameProvider>
         </AuthProvider>

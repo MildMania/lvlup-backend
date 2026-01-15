@@ -2,6 +2,7 @@ import { Response } from 'express';
 import { AuthenticatedRequest } from '../middleware/auth';
 import { CohortAnalyticsService } from '../services/CohortAnalyticsService';
 import { ApiResponse } from '../types/api';
+import { requireGameId } from '../utils/gameIdHelper';
 
 const cohortAnalyticsService = new CohortAnalyticsService();
 

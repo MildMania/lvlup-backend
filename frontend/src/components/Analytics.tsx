@@ -94,6 +94,7 @@ const EngagementTab: React.FC<{ gameInfo: any }> = ({ gameInfo }) => {
     setLoading(true);
     try {
       const params = new URLSearchParams({
+        gameId: gameInfo.id,
         startDate: filters.startDate,
         endDate: filters.endDate,
         days: selectedDays.sort((a, b) => a - b).join(',')
@@ -128,6 +129,7 @@ const EngagementTab: React.FC<{ gameInfo: any }> = ({ gameInfo }) => {
     setLoading(true);
     try {
       const params = new URLSearchParams({
+        gameId: gameInfo.id,
         startDate: filters.startDate,
         endDate: filters.endDate,
         days: selectedDays.sort((a, b) => a - b).join(',')
@@ -182,7 +184,7 @@ const EngagementTab: React.FC<{ gameInfo: any }> = ({ gameInfo }) => {
   useEffect(() => {
     const fetchFilterOptions = async () => {
       try {
-        const response = await apiClient.get('/analytics/filters/options');
+        const response = await apiClient.get(`/analytics/filters/options?gameId=${gameInfo.id}`);
         if (response.data.success) {
           setAvailableCountries(['All', ...response.data.data.countries]);
           setAvailableVersions(['All', ...response.data.data.versions]);

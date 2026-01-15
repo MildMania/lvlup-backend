@@ -42,9 +42,9 @@ export const fetchPlaytime = async (params: URLSearchParams) => {
 // Enhanced Analytics Service
 export class AnalyticsService {
   // Dashboard Overview
-  static async getDashboardSummary(startDate?: string, endDate?: string): Promise<DashboardSummary> {
+  static async getDashboardSummary(gameId: string, startDate?: string, endDate?: string): Promise<DashboardSummary> {
     try {
-      const params = startDate && endDate ? { startDate, endDate } : {};
+      const params = startDate && endDate ? { gameId, startDate, endDate } : { gameId };
       const response = await apiClient.get<ApiResponse<DashboardSummary>>('/analytics/dashboard', {
         params
       });
@@ -63,24 +63,24 @@ export class AnalyticsService {
     return response.data.data;
   }
 
-  static async getActiveUsers(startDate: string, endDate: string): Promise<ActiveUserPoint[]> {
+  static async getActiveUsers(gameId: string, startDate: string, endDate: string): Promise<ActiveUserPoint[]> {
     const response = await apiClient.get<ApiResponse<ActiveUserPoint[]>>('/analytics/metrics/active-users', {
-      params: { startDate, endDate }
+      params: { gameId, startDate, endDate }
     });
     return response.data.data;
   }
 
   // Retention Analysis
-  static async getRetentionCohorts(startDate: string, endDate: string): Promise<RetentionData[]> {
+  static async getRetentionCohorts(gameId: string, startDate: string, endDate: string): Promise<RetentionData[]> {
     const response = await apiClient.get<ApiResponse<RetentionData[]>>('/analytics/metrics/retention', {
-      params: { startDate, endDate }
+      params: { gameId, startDate, endDate }
     });
     return response.data.data;
   }
 
   // Player Journey
-  static async getPlayerJourney(startDate?: string, endDate?: string): Promise<PlayerJourneyData[]> {
-    const params = startDate && endDate ? { startDate, endDate } : {};
+  static async getPlayerJourney(gameId: string, startDate?: string, endDate?: string): Promise<PlayerJourneyData[]> {
+    const params = startDate && endDate ? { gameId, startDate, endDate } : { gameId };
     const response = await apiClient.get<ApiResponse<PlayerJourneyData[]>>('/analytics/player-journey/funnel', {
       params
     });
@@ -88,9 +88,9 @@ export class AnalyticsService {
   }
 
   // Dashboard retention cohorts for charts
-  static async getDashboardRetention(startDate?: string, endDate?: string): Promise<RetentionPoint[]> {
+  static async getDashboardRetention(gameId: string, startDate?: string, endDate?: string): Promise<RetentionPoint[]> {
     try {
-      const params = startDate && endDate ? { startDate, endDate } : {};
+      const params = startDate && endDate ? { gameId, startDate, endDate } : { gameId };
       const response = await apiClient.get<ApiResponse<RetentionPoint[]>>('/analytics/retention/cohorts', {
         params
       });

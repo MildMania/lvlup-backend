@@ -16,6 +16,10 @@ async function createSuperAdmin() {
 
     if (existing) {
         console.log('✅ Super admin already exists:', email);
+        console.log('📧 Email:', email);
+        console.log('🔑 Password:', password);
+        console.log('');
+        console.log('⚠️  If you forgot the password, you can reset it via the database');
         return existing;
     }
 
@@ -63,9 +67,13 @@ async function createSuperAdmin() {
     });
 
     console.log('✅ Super admin created successfully!');
+    console.log('');
     console.log('📧 Email:', email);
     console.log('🔑 Password:', password);
+    console.log('');
     console.log('⚠️  Please change the password after first login!');
+    console.log('');
+    console.log('🌐 Login at: http://localhost:5173/login');
 
     return superAdmin;
 }

@@ -1,0 +1,391 @@
+{
+  "info": {
+    "name": "LvlUp Authentication API",
+    "description": "Complete API collection for testing the LvlUp authentication system",
+    "version": "1.0.0"
+  },
+  "baseUrl": "http://localhost:3000/api",
+  "auth": {
+    "type": "bearer",
+    "token": "{{accessToken}}"
+  },
+  "requests": [
+    {
+      "name": "1. Login as Super Admin",
+      "method": "POST",
+      "url": "{{baseUrl}}/auth/login",
+      "headers": {
+        "Content-Type": "application/json"
+      },
+      "body": {
+        "email": "admin@lvlup.com",
+        "password": "Admin123!@#"
+      },
+      "note": "Save the accessToken from response for subsequent requests"
+    },
+    {
+      "name": "2. Get Current User",
+      "method": "GET",
+      "url": "{{baseUrl}}/auth/me",
+      "headers": {
+        "Authorization": "Bearer {{accessToken}}"
+      }
+    },
+    {
+      "name": "3. Create a Team",
+      "method": "POST",
+      "url": "{{baseUrl}}/teams",
+      "headers": {
+        "Authorization": "Bearer {{accessToken}}",
+        "Content-Type": "application/json"
+      },
+      "body": {
+        "name": "Development Team",
+        "description": "Main development team for the project",
+        "slug": "dev-team"
+      },
+      "note": "Save the team ID from response"
+    },
+    {
+      "name": "4. List User's Teams",
+      "method": "GET",
+      "url": "{{baseUrl}}/teams",
+      "headers": {
+        "Authorization": "Bearer {{accessToken}}"
+      }
+    },
+    {
+      "name": "5. Create New User",
+      "method": "POST",
+      "url": "{{baseUrl}}/users",
+      "headers": {
+        "Authorization": "Bearer {{accessToken}}",
+        "Content-Type": "application/json"
+      },
+      "body": {
+        "email": "developer@example.com",
+        "password": "DevPass123!",
+        "firstName": "Jane",
+        "lastName": "Developer",
+        "teamId": "{{teamId}}",
+        "role": "EDITOR"
+      },
+      "note": "Replace {{teamId}} with actual team ID from step 3"
+    },
+    {
+      "name": "6. List All Users",
+      "method": "GET",
+      "url": "{{baseUrl}}/users",
+      "headers": {
+        "Authorization": "Bearer {{accessToken}}"
+      }
+    },
+    {
+      "name": "7. Grant Game Access to User",
+      "method": "POST",
+      "url": "{{baseUrl}}/games/{{gameId}}/access",
+      "headers": {
+        "Authorization": "Bearer {{accessToken}}",
+        "Content-Type": "application/json"
+      },
+      "body": {
+        "userId": "{{userId}}",
+        "accessLevel": "EDITOR"
+      },
+      "note": "Replace {{gameId}} and {{userId}} with actual IDs"
+    },
+    {
+      "name": "8. Grant Game Access to Team",
+      "method": "POST",
+      "url": "{{baseUrl}}/games/{{gameId}}/access",
+      "headers": {
+        "Authorization": "Bearer {{accessToken}}",
+        "Content-Type": "application/json"
+      },
+      "body": {
+        "teamId": "{{teamId}}",
+        "accessLevel": "OWNER"
+      }
+    },
+    {
+      "name": "9. Grant All Games Access",
+      "method": "POST",
+      "url": "{{baseUrl}}/games/any/access",
+      "headers": {
+        "Authorization": "Bearer {{accessToken}}",
+        "Content-Type": "application/json"
+      },
+      "body": {
+        "userId": "{{userId}}",
+        "allGames": true,
+        "accessLevel": "VIEWER"
+      }
+    },
+    {
+      "name": "10. Get User's Accessible Games",
+      "method": "GET",
+      "url": "{{baseUrl}}/users/{{userId}}/games",
+      "headers": {
+        "Authorization": "Bearer {{accessToken}}"
+      }
+    },
+    {
+      "name": "11. Get Game Access List",
+      "method": "GET",
+      "url": "{{baseUrl}}/games/{{gameId}}/access",
+      "headers": {
+        "Authorization": "Bearer {{accessToken}}"
+      }
+    },
+    {
+      "name": "12. Add Member to Team",
+      "method": "POST",
+      "url": "{{baseUrl}}/teams/{{teamId}}/members",
+      "headers": {
+        "Authorization": "Bearer {{accessToken}}",
+        "Content-Type": "application/json"
+      },
+      "body": {
+        "userId": "{{userId}}",
+        "role": "GAME_OWNER"
+      }
+    },
+    {
+      "name": "13. Update Member Role",
+      "method": "PUT",
+      "url": "{{baseUrl}}/teams/{{teamId}}/members/{{userId}}",
+      "headers": {
+        "Authorization": "Bearer {{accessToken}}",
+        "Content-Type": "application/json"
+      },
+      "body": {
+        "role": "ADMIN"
+      }
+    },
+    {
+      "name": "14. Get Team Members",
+      "method": "GET",
+      "url": "{{baseUrl}}/teams/{{teamId}}/members",
+      "headers": {
+        "Authorization": "Bearer {{accessToken}}"
+      }
+    },
+    {
+      "name": "15. Change Password",
+      "method": "PUT",
+      "url": "{{baseUrl}}/auth/change-password",
+      "headers": {
+        "Authorization": "Bearer {{accessToken}}",
+        "Content-Type": "application/json"
+      },
+      "body": {
+        "currentPassword": "Admin123!@#",
+        "newPassword": "NewAdmin123!@#"
+      }
+    },
+    {
+      "name": "16. Update Profile",
+      "method": "PUT",
+      "url": "{{baseUrl}}/auth/me",
+      "headers": {
+        "Authorization": "Bearer {{accessToken}}",
+        "Content-Type": "application/json"
+      },
+      "body": {
+        "firstName": "Updated",
+        "lastName": "Name"
+      }
+    },
+    {
+      "name": "17. Get User Sessions",
+      "method": "GET",
+      "url": "{{baseUrl}}/auth/sessions",
+      "headers": {
+        "Authorization": "Bearer {{accessToken}}"
+      }
+    },
+    {
+      "name": "18. Refresh Access Token",
+      "method": "POST",
+      "url": "{{baseUrl}}/auth/refresh",
+      "note": "Requires refresh token cookie from login"
+    },
+    {
+      "name": "19. Unlock User Account",
+      "method": "POST",
+      "url": "{{baseUrl}}/users/{{userId}}/unlock",
+      "headers": {
+        "Authorization": "Bearer {{accessToken}}"
+      }
+    },
+    {
+      "name": "20. Reset User Password (Admin)",
+      "method": "POST",
+      "url": "{{baseUrl}}/users/{{userId}}/reset-password",
+      "headers": {
+        "Authorization": "Bearer {{accessToken}}",
+        "Content-Type": "application/json"
+      },
+      "body": {
+        "newPassword": "NewPass123!"
+      }
+    },
+    {
+      "name": "21. Deactivate User",
+      "method": "DELETE",
+      "url": "{{baseUrl}}/users/{{userId}}",
+      "headers": {
+        "Authorization": "Bearer {{accessToken}}"
+      }
+    },
+    {
+      "name": "22. Activate User",
+      "method": "POST",
+      "url": "{{baseUrl}}/users/{{userId}}/activate",
+      "headers": {
+        "Authorization": "Bearer {{accessToken}}"
+      }
+    },
+    {
+      "name": "23. Remove Team Member",
+      "method": "DELETE",
+      "url": "{{baseUrl}}/teams/{{teamId}}/members/{{userId}}",
+      "headers": {
+        "Authorization": "Bearer {{accessToken}}"
+      }
+    },
+    {
+      "name": "24. Revoke Game Access",
+      "method": "DELETE",
+      "url": "{{baseUrl}}/games/access/{{accessId}}",
+      "headers": {
+        "Authorization": "Bearer {{accessToken}}"
+      }
+    },
+    {
+      "name": "25. Update Access Level",
+      "method": "PUT",
+      "url": "{{baseUrl}}/games/access/{{accessId}}",
+      "headers": {
+        "Authorization": "Bearer {{accessToken}}",
+        "Content-Type": "application/json"
+      },
+      "body": {
+        "accessLevel": "OWNER"
+      }
+    },
+    {
+      "name": "26. Get User Stats",
+      "method": "GET",
+      "url": "{{baseUrl}}/users/stats",
+      "headers": {
+        "Authorization": "Bearer {{accessToken}}"
+      }
+    },
+    {
+      "name": "27. Get User by ID",
+      "method": "GET",
+      "url": "{{baseUrl}}/users/{{userId}}",
+      "headers": {
+        "Authorization": "Bearer {{accessToken}}"
+      }
+    },
+    {
+      "name": "28. Update User",
+      "method": "PUT",
+      "url": "{{baseUrl}}/users/{{userId}}",
+      "headers": {
+        "Authorization": "Bearer {{accessToken}}",
+        "Content-Type": "application/json"
+      },
+      "body": {
+        "firstName": "Updated",
+        "lastName": "User",
+        "isActive": true
+      }
+    },
+    {
+      "name": "29. Update Team",
+      "method": "PUT",
+      "url": "{{baseUrl}}/teams/{{teamId}}",
+      "headers": {
+        "Authorization": "Bearer {{accessToken}}",
+        "Content-Type": "application/json"
+      },
+      "body": {
+        "name": "Updated Team Name",
+        "description": "Updated description"
+      }
+    },
+    {
+      "name": "30. Delete Team",
+      "method": "DELETE",
+      "url": "{{baseUrl}}/teams/{{teamId}}",
+      "headers": {
+        "Authorization": "Bearer {{accessToken}}"
+      }
+    },
+    {
+      "name": "31. Logout",
+      "method": "POST",
+      "url": "{{baseUrl}}/auth/logout",
+      "headers": {
+        "Authorization": "Bearer {{accessToken}}"
+      }
+    }
+  ],
+  "variables": {
+    "baseUrl": "http://localhost:3000/api",
+    "accessToken": "",
+    "teamId": "",
+    "userId": "",
+    "gameId": "",
+    "accessId": ""
+  },
+  "testScenarios": [
+    {
+      "name": "Complete User Onboarding Flow",
+      "steps": [
+        "1. Login as Super Admin",
+        "3. Create a Team",
+        "5. Create New User",
+        "7. Grant Game Access to User",
+        "10. Get User's Accessible Games"
+      ]
+    },
+    {
+      "name": "Team Management Flow",
+      "steps": [
+        "1. Login as Super Admin",
+        "3. Create a Team",
+        "12. Add Member to Team",
+        "14. Get Team Members",
+        "13. Update Member Role",
+        "23. Remove Team Member"
+      ]
+    },
+    {
+      "name": "Access Control Flow",
+      "steps": [
+        "1. Login as Super Admin",
+        "7. Grant Game Access to User",
+        "11. Get Game Access List",
+        "25. Update Access Level",
+        "24. Revoke Game Access"
+      ]
+    },
+    {
+      "name": "User Management Flow",
+      "steps": [
+        "1. Login as Super Admin",
+        "5. Create New User",
+        "27. Get User by ID",
+        "28. Update User",
+        "20. Reset User Password (Admin)",
+        "21. Deactivate User",
+        "22. Activate User"
+      ]
+    }
+  ]
+}
+

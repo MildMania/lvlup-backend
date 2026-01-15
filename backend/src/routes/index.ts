@@ -8,6 +8,12 @@ import aiAnalyticsRoutes from './ai-analytics';
 import healthRoutes from './health';
 import levelFunnelRoutes from './level-funnel';
 
+// Authentication & Authorization routes
+import authRoutes from './auth';
+import teamRoutes from './teams';
+import userRoutes from './users';
+import gameAccessRoutes from './game-access';
+
 const router = Router();
 
 // Health check endpoint
@@ -18,6 +24,12 @@ router.get('/health', (req, res) => {
         service: 'lvlup-backend'
     });
 });
+
+// Authentication & Authorization Routes
+router.use('/auth', authRoutes);
+router.use('/teams', teamRoutes);
+router.use('/users', userRoutes);
+router.use('/', gameAccessRoutes); // Includes /games/:gameId/access and /users/:userId/games
 
 // API Routes
 router.use('/analytics', analyticsRoutes);

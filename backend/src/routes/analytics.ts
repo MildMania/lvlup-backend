@@ -49,6 +49,13 @@ router.post('/sessions', (req, res) => analyticsController.startSession(req, res
  */
 router.put('/sessions/:sessionId', (req, res) => analyticsController.endSession(req, res));
 
+/**
+ * POST /analytics/sessions/:sessionId/heartbeat - Send session heartbeat
+ * @param {string} sessionId - The ID of the session
+ * @description Updates the lastHeartbeat timestamp to keep session alive
+ */
+router.post('/sessions/:sessionId/heartbeat', (req, res) => analyticsController.sessionHeartbeat(req, res));
+
 // Basic analytics data endpoints (for dashboard)
 /**
  * GET /analytics/dashboard - Get general analytics data

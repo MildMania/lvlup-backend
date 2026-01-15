@@ -113,3 +113,4 @@ coverage/
 backend/prisma/dev.db
 backend/prisma/*.db
 backend/prisma/*.db-journal
+lvlup-unity-sdk/

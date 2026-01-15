@@ -266,6 +266,37 @@ export class AnalyticsController {
         }
     }
 
+    // Send session heartbeat
+    async sessionHeartbeat(req: AuthenticatedRequest, res: Response<ApiResponse>) {
+        try {
+            const sessionId = req.params.sessionId;
+
+            if (!sessionId) {
+                return res.status(400).json({
+                    success: false,
+                    error: 'Session ID is required'
+                });
+            }
+
+            await analyticsService.updateSessionHeartbeat(sessionId);
+
+            res.status(200).json({
+                success: true,
+                data: {
+                    sessionId,
+                    timestamp: new Date().toISOString()
+                }
+            });
+        } catch (error) {
+            logger.error('Error in sessionHeartbeat controller:', error);
+            res.status(500).json({
+                success: false,
+                error: 'Failed to update session heartbeat'
+            });
+        }
+    }
+
+
     // Get analytics data (for dashboard)
     async getAnalytics(req: AuthenticatedRequest, res: Response<ApiResponse>) {
         try {

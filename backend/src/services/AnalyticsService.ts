@@ -100,6 +100,23 @@ export class AnalyticsService {
         }
     }
 
+    // Update session heartbeat
+    async updateSessionHeartbeat(sessionId: string) {
+        try {
+            await this.prisma.session.update({
+                where: { id: sessionId },
+                data: {
+                    lastHeartbeat: new Date()
+                }
+            });
+
+            logger.debug(`Updated heartbeat for session ${sessionId}`);
+        } catch (error) {
+            logger.error('Error updating session heartbeat:', error);
+            throw error;
+        }
+    }
+
     // Track single event
     async trackEvent(gameId: string, userId: string, sessionId: string | null, eventData: EventData) {
         try {

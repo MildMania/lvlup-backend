@@ -5,6 +5,7 @@ import morgan from 'morgan';
 import dotenv from 'dotenv';
 import apiRoutes from './routes';
 import logger from './utils/logger';
+import { sessionHeartbeatService } from './services/SessionHeartbeatService';
 
 // Load environment variables
 dotenv.config();
@@ -148,4 +149,21 @@ app.use((err: any, req: Request, res: Response, next: any) => {
 // Start server
 app.listen(PORT, '0.0.0.0', () => {
     logger.info(`LvlUp server running at http://0.0.0.0:${PORT}`);
+    
+    // Start session heartbeat monitoring service
+    sessionHeartbeatService.start();
+    logger.info('Session heartbeat service started');
+});
+
+// Graceful shutdown
+process.on('SIGTERM', () => {
+    logger.info('SIGTERM signal received: closing HTTP server');
+    sessionHeartbeatService.stop();
+    process.exit(0);
+});
+
+process.on('SIGINT', () => {
+    logger.info('SIGINT signal received: closing HTTP server');
+    sessionHeartbeatService.stop();
+    process.exit(0);
 });

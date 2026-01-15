@@ -56,20 +56,22 @@ model User {
 }
 
 model Session {
-  id        String    @id @default(cuid())
-  gameId    String
-  userId    String
-  startTime DateTime  @default(now())
-  endTime   DateTime?
-  duration  Int?
-  platform  String?
-  version   String?
-  events    Event[]
-  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
-  game      Game      @relation(fields: [gameId], references: [id], onDelete: Cascade)
+  id            String    @id @default(cuid())
+  gameId        String
+  userId        String
+  startTime     DateTime  @default(now())
+  endTime       DateTime?
+  duration      Int?
+  lastHeartbeat DateTime? // Track last heartbeat for automatic session closure
+  platform      String?
+  version       String?
+  events        Event[]
+  user          User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  game          Game      @relation(fields: [gameId], references: [id], onDelete: Cascade)
 
   @@index([gameId, userId, startTime])
   @@index([gameId, startTime])
+  @@index([endTime, lastHeartbeat]) // Index for heartbeat cleanup queries
   @@map("sessions")
 }
 

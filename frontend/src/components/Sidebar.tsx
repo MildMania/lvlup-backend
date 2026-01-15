@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { 
   BarChart3, 
   Users, 
@@ -17,7 +17,8 @@ import {
   Moon,
   Sun,
   GitBranch,
-  Trash2
+  Trash2,
+  UsersRound
 } from 'lucide-react';
 import { useTheme } from '../contexts/ThemeContext';
 import AddGameModal from './AddGameModal';
@@ -50,25 +51,50 @@ const Sidebar: React.FC<SidebarProps> = ({
   onGameAdded,
   onGameDelete
 }) => {
-  const [isCollapsed, setIsCollapsed] = useState(false);
+  // Initialize collapsed state from localStorage
+  const [isCollapsed, setIsCollapsed] = useState(() => {
+    const saved = localStorage.getItem('lvlup-sidebar-collapsed');
+    return saved === 'true';
+  });
   const [isMobileOpen, setIsMobileOpen] = useState(false);
-  const [isGamesExpanded, setIsGamesExpanded] = useState(true);
+  // Initialize games expanded state from localStorage
+  const [isGamesExpanded, setIsGamesExpanded] = useState(() => {
+    const saved = localStorage.getItem('lvlup-games-expanded');
+    return saved !== 'false'; // Default to true if not set
+  });
+  // Initialize settings expanded state from localStorage
+  const [isSettingsExpanded, setIsSettingsExpanded] = useState(() => {
+    const saved = localStorage.getItem('lvlup-settings-expanded');
+    return saved !== 'false'; // Default to true if not set
+  });
   const [isAddGameModalOpen, setIsAddGameModalOpen] = useState(false);
   const { isDarkMode, toggleTheme } = useTheme();
+
+  // Notify parent of initial collapsed state
+  useEffect(() => {
+    if (onCollapseChange) {
+      onCollapseChange(isCollapsed);
+    }
+  }, []); // Run only once on mount
 
   const menuItems = [
     { id: 'dashboard', label: 'Dashboard', icon: BarChart3 },
     { id: 'analytics', label: 'Analytics', icon: TrendingUp },
-    { id: 'users', label: 'Users', icon: Users },
     { id: 'events', label: 'Events', icon: Activity },
     { id: 'funnels', label: 'Funnels', icon: Target },
     { id: 'releases', label: 'Releases', icon: GitBranch },
-    { id: 'settings', label: 'Settings', icon: Settings },
+  ];
+
+  const settingsItems = [
+    { id: 'teams', label: 'Teams', icon: UsersRound },
+    { id: 'users', label: 'Users', icon: Users },
+    { id: 'settings', label: 'General', icon: Settings },
   ];
 
   const toggleCollapse = () => {
     const newCollapsedState = !isCollapsed;
     setIsCollapsed(newCollapsedState);
+    localStorage.setItem('lvlup-sidebar-collapsed', String(newCollapsedState));
     onCollapseChange?.(newCollapsedState);
   };
 
@@ -145,7 +171,11 @@ const Sidebar: React.FC<SidebarProps> = ({
               <div className="games-section">
                 <div 
                   className="games-toggle"
-                  onClick={() => setIsGamesExpanded(!isGamesExpanded)}
+                  onClick={() => {
+                    const newState = !isGamesExpanded;
+                    setIsGamesExpanded(newState);
+                    localStorage.setItem('lvlup-games-expanded', String(newState));
+                  }}
                 >
                   <span>Games</span>
                   {isGamesExpanded ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
@@ -222,6 +252,71 @@ const Sidebar: React.FC<SidebarProps> = ({
                 </li>
               );
             })}
+
+            {/* Settings Section with Submenu */}
+            {!isCollapsed ? (
+              <li className="nav-item settings-section">
+                <div 
+                  className="settings-toggle"
+                  onClick={() => {
+                    const newState = !isSettingsExpanded;
+                    setIsSettingsExpanded(newState);
+                    localStorage.setItem('lvlup-settings-expanded', String(newState));
+                  }}
+                >
+                  <div className="settings-toggle-content">
+                    <Settings className="nav-icon" size={20} />
+                    <span className="nav-label">Settings</span>
+                  </div>
+                  {isSettingsExpanded ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
+                </div>
+                
+                {isSettingsExpanded && (
+                  <ul className="settings-submenu">
+                    {settingsItems.map((item) => {
+                      const IconComponent = item.icon;
+                      return (
+                        <li key={item.id} className="submenu-item">
+                          <button
+                            className={`nav-link submenu-link ${currentPage === item.id ? 'active' : ''}`}
+                            onClick={() => {
+                              onPageChange(item.id);
+                              if (window.innerWidth <= 768) {
+                                setIsMobileOpen(false);
+                              }
+                            }}
+                          >
+                            <IconComponent className="nav-icon" size={18} />
+                            <span className="nav-label">{item.label}</span>
+                          </button>
+                        </li>
+                      );
+                    })}
+                  </ul>
+                )}
+              </li>
+            ) : (
+              // Collapsed sidebar - show Settings items as regular menu items
+              settingsItems.map((item) => {
+                const IconComponent = item.icon;
+                return (
+                  <li key={item.id} className="nav-item">
+                    <button
+                      className={`nav-link ${currentPage === item.id ? 'active' : ''}`}
+                      onClick={() => {
+                        onPageChange(item.id);
+                        if (window.innerWidth <= 768) {
+                          setIsMobileOpen(false);
+                        }
+                      }}
+                      title={item.label}
+                    >
+                      <IconComponent className="nav-icon" size={20} />
+                    </button>
+                  </li>
+                );
+              })
+            )}
           </ul>
         </nav>
 

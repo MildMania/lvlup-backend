@@ -1,9 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import axios from 'axios';
-import { Users, Plus, ArrowLeft, Trash2, Edit } from 'lucide-react';
-
-const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3000/api';
+import apiClient from '../lib/apiClient';
+import { Users, Plus, Trash2, Edit, AlertCircle } from 'lucide-react';
+import './TeamManagement.css';
 
 interface Team {
     id: string;
@@ -16,7 +15,11 @@ interface Team {
     };
 }
 
-const TeamManagement: React.FC = () => {
+interface TeamManagementProps {
+    isCollapsed?: boolean;
+}
+
+const TeamManagement: React.FC<TeamManagementProps> = ({ isCollapsed = false }) => {
     const [teams, setTeams] = useState<Team[]>([]);
     const [loading, setLoading] = useState(true);
     const [showCreateForm, setShowCreateForm] = useState(false);
@@ -34,7 +37,7 @@ const TeamManagement: React.FC = () => {
 
     const fetchTeams = async () => {
         try {
-            const response = await axios.get(`${API_URL}/teams`);
+            const response = await apiClient.get('/teams');
             setTeams(response.data.data);
         } catch (err: any) {
             setError(err.response?.data?.error || 'Failed to fetch teams');
@@ -48,7 +51,7 @@ const TeamManagement: React.FC = () => {
         setError('');
 
         try {
-            await axios.post(`${API_URL}/teams`, formData);
+            await apiClient.post('/teams', formData);
             setShowCreateForm(false);
             setFormData({ name: '', slug: '', description: '' });
             fetchTeams();
@@ -66,184 +69,147 @@ const TeamManagement: React.FC = () => {
 
     if (loading) {
         return (
-            <div className="min-h-screen flex items-center justify-center">
-                <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600"></div>
+            <div className="loading-spinner">
+                <div className="spinner"></div>
             </div>
         );
     }
 
     return (
-        <div className="min-h-screen bg-gray-50">
-            {/* Navigation */}
-            <nav className="bg-white shadow-sm">
-                <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-                    <div className="flex justify-between h-16">
-                        <div className="flex items-center">
-                            <button
-                                onClick={() => navigate('/dashboard')}
-                                className="mr-4 text-gray-500 hover:text-gray-700"
-                            >
-                                <ArrowLeft className="h-5 w-5" />
-                            </button>
-                            <h1 className="text-xl font-bold text-gray-900">
-                                Team Management
-                            </h1>
-                        </div>
-                    </div>
-                </div>
-            </nav>
-
-            {/* Content */}
-            <div className="max-w-7xl mx-auto py-6 sm:px-6 lg:px-8">
-                <div className="px-4 py-6 sm:px-0">
-                    {/* Header */}
-                    <div className="flex justify-between items-center mb-6">
-                        <div>
-                            <h2 className="text-2xl font-bold text-gray-900">Teams</h2>
-                            <p className="mt-1 text-sm text-gray-600">
-                                Manage your organization's teams
-                            </p>
-                        </div>
-                        <button
-                            onClick={() => setShowCreateForm(true)}
-                            className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md text-white bg-blue-600 hover:bg-blue-700"
-                        >
-                            <Plus className="h-4 w-4 mr-2" />
-                            Create Team
-                        </button>
-                    </div>
-
-                    {error && (
-                        <div className="mb-4 rounded-md bg-red-50 p-4">
-                            <p className="text-sm text-red-800">{error}</p>
-                        </div>
-                    )}
-
-                    {/* Create Form */}
-                    {showCreateForm && (
-                        <div className="mb-6 bg-white shadow rounded-lg p-6">
-                            <h3 className="text-lg font-medium text-gray-900 mb-4">
-                                Create New Team
-                            </h3>
-                            <form onSubmit={handleCreate} className="space-y-4">
-                                <div>
-                                    <label className="block text-sm font-medium text-gray-700">
-                                        Team Name
-                                    </label>
-                                    <input
-                                        type="text"
-                                        required
-                                        value={formData.name}
-                                        onChange={(e) => {
-                                            setFormData({
-                                                ...formData,
-                                                name: e.target.value,
-                                                slug: generateSlug(e.target.value),
-                                            });
-                                        }}
-                                        className="mt-1 block w-full border border-gray-300 rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-blue-500 focus:border-blue-500"
-                                    />
-                                </div>
-                                <div>
-                                    <label className="block text-sm font-medium text-gray-700">
-                                        Slug
-                                    </label>
-                                    <input
-                                        type="text"
-                                        required
-                                        value={formData.slug}
-                                        onChange={(e) =>
-                                            setFormData({ ...formData, slug: e.target.value })
-                                        }
-                                        className="mt-1 block w-full border border-gray-300 rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-blue-500 focus:border-blue-500"
-                                    />
-                                </div>
-                                <div>
-                                    <label className="block text-sm font-medium text-gray-700">
-                                        Description
-                                    </label>
-                                    <textarea
-                                        value={formData.description}
-                                        onChange={(e) =>
-                                            setFormData({
-                                                ...formData,
-                                                description: e.target.value,
-                                            })
-                                        }
-                                        rows={3}
-                                        className="mt-1 block w-full border border-gray-300 rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-blue-500 focus:border-blue-500"
-                                    />
-                                </div>
-                                <div className="flex justify-end space-x-3">
-                                    <button
-                                        type="button"
-                                        onClick={() => setShowCreateForm(false)}
-                                        className="px-4 py-2 border border-gray-300 rounded-md text-sm font-medium text-gray-700 hover:bg-gray-50"
-                                    >
-                                        Cancel
-                                    </button>
-                                    <button
-                                        type="submit"
-                                        className="px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-blue-600 hover:bg-blue-700"
-                                    >
-                                        Create Team
-                                    </button>
-                                </div>
-                            </form>
-                        </div>
-                    )}
-
-                    {/* Teams List */}
-                    {teams.length === 0 ? (
-                        <div className="text-center py-12 bg-white rounded-lg shadow">
-                            <Users className="mx-auto h-12 w-12 text-gray-400" />
-                            <h3 className="mt-2 text-sm font-medium text-gray-900">
-                                No teams
-                            </h3>
-                            <p className="mt-1 text-sm text-gray-500">
-                                Get started by creating a new team.
-                            </p>
-                        </div>
-                    ) : (
-                        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
-                            {teams.map((team) => (
-                                <div
-                                    key={team.id}
-                                    className="bg-white overflow-hidden shadow rounded-lg hover:shadow-md transition-shadow"
-                                >
-                                    <div className="p-6">
-                                        <div className="flex items-center justify-between mb-4">
-                                            <Users className="h-8 w-8 text-blue-600" />
-                                            <button className="text-gray-400 hover:text-gray-600">
-                                                <Edit className="h-4 w-4" />
-                                            </button>
-                                        </div>
-                                        <h3 className="text-lg font-medium text-gray-900 mb-1">
-                                            {team.name}
-                                        </h3>
-                                        <p className="text-sm text-gray-500 mb-4">
-                                            @{team.slug}
-                                        </p>
-                                        {team.description && (
-                                            <p className="text-sm text-gray-600 mb-4">
-                                                {team.description}
-                                            </p>
-                                        )}
-                                        <div className="flex justify-between text-sm text-gray-500">
-                                            <span>
-                                                {team._count?.members || 0} members
-                                            </span>
-                                            <span>
-                                                {team._count?.gameAccesses || 0} games
-                                            </span>
-                                        </div>
-                                    </div>
-                                </div>
-                            ))}
-                        </div>
-                    )}
-                </div>
+        <div className={`team-management ${isCollapsed ? 'sidebar-collapsed' : ''}`}>
+            <div className="team-header">
+                <h1>Team Management</h1>
+                <p>Manage your organization's teams and members</p>
             </div>
+
+            <div className="team-actions">
+                <div></div>
+                <button
+                    onClick={() => setShowCreateForm(true)}
+                    className="btn btn-primary"
+                >
+                    <Plus size={18} />
+                    Create Team
+                </button>
+            </div>
+
+            {error && (
+                <div className="error-banner">
+                    <AlertCircle size={20} />
+                    <span>{error}</span>
+                </div>
+            )}
+
+            {showCreateForm && (
+                <div className="team-form-card">
+                    <h3>Create New Team</h3>
+                    <form onSubmit={handleCreate}>
+                        <div className="form-group">
+                            <label>Team Name</label>
+                            <input
+                                type="text"
+                                required
+                                value={formData.name}
+                                onChange={(e) => {
+                                    setFormData({
+                                        ...formData,
+                                        name: e.target.value,
+                                        slug: generateSlug(e.target.value),
+                                    });
+                                }}
+                                placeholder="e.g., Engineering Team"
+                            />
+                        </div>
+                        <div className="form-group">
+                            <label>Slug</label>
+                            <input
+                                type="text"
+                                required
+                                value={formData.slug}
+                                onChange={(e) =>
+                                    setFormData({ ...formData, slug: e.target.value })
+                                }
+                                placeholder="e.g., engineering-team"
+                            />
+                        </div>
+                        <div className="form-group">
+                            <label>Description (Optional)</label>
+                            <textarea
+                                value={formData.description}
+                                onChange={(e) =>
+                                    setFormData({
+                                        ...formData,
+                                        description: e.target.value,
+                                    })
+                                }
+                                placeholder="Describe the team's purpose and responsibilities"
+                            />
+                        </div>
+                        <div className="form-actions">
+                            <button
+                                type="button"
+                                onClick={() => setShowCreateForm(false)}
+                                className="btn btn-secondary"
+                            >
+                                Cancel
+                            </button>
+                            <button
+                                type="submit"
+                                className="btn btn-primary"
+                            >
+                                Create Team
+                            </button>
+                        </div>
+                    </form>
+                </div>
+            )}
+
+            {teams.length === 0 ? (
+                <div className="empty-state">
+                    <Users className="empty-state-icon" />
+                    <h3>No teams yet</h3>
+                    <p>Get started by creating your first team</p>
+                </div>
+            ) : (
+                <div className="teams-grid">
+                    {teams.map((team) => (
+                        <div key={team.id} className="team-card">
+                            <div className="team-card-header">
+                                <div className="team-icon">
+                                    <Users size={24} />
+                                </div>
+                                <div className="team-actions-buttons">
+                                    <button className="icon-btn">
+                                        <Edit size={16} />
+                                    </button>
+                                    <button className="icon-btn">
+                                        <Trash2 size={16} />
+                                    </button>
+                                </div>
+                            </div>
+                            <h3>{team.name}</h3>
+                            <p className="team-slug">@{team.slug}</p>
+                            {team.description && (
+                                <p className="team-description">{team.description}</p>
+                            )}
+                            <div className="team-stats">
+                                <div className="team-stat">
+                                    <div className="team-stat-value">
+                                        {team._count?.members || 0}
+                                    </div>
+                                    <div className="team-stat-label">Members</div>
+                                </div>
+                                <div className="team-stat">
+                                    <div className="team-stat-value">
+                                        {team._count?.gameAccesses || 0}
+                                    </div>
+                                    <div className="team-stat-label">Games</div>
+                                </div>
+                            </div>
+                        </div>
+                    ))}
+                </div>
+            )}
         </div>
     );
 };

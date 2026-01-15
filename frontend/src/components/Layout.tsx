@@ -101,8 +101,8 @@ const Layout: React.FC = () => {
         <Routes>
           <Route path="/dashboard" element={<Dashboard gameInfo={currentGame} isCollapsed={isSidebarCollapsed} />} />
           <Route path="/analytics" element={<Analytics gameInfo={currentGame} isCollapsed={isSidebarCollapsed} />} />
-          <Route path="/teams" element={<TeamManagement />} />
-          <Route path="/users" element={<UserManagement />} />
+          <Route path="/teams" element={<TeamManagement isCollapsed={isSidebarCollapsed} />} />
+          <Route path="/users" element={<UserManagement isCollapsed={isSidebarCollapsed} />} />
           <Route path="/events" element={<Events gameInfo={currentGame} isCollapsed={isSidebarCollapsed} />} />
           <Route path="/funnels" element={<LevelFunnel isCollapsed={isSidebarCollapsed} />} />
           <Route path="/releases" element={<ReleaseManagement isCollapsed={isSidebarCollapsed} />} />

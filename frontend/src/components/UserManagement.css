@@ -1,0 +1,259 @@
+/* UserManagement.css */
+
+.user-management {
+  padding: 32px;
+  background: var(--bg-primary);
+  min-height: 100vh;
+  margin-left: 280px;
+  transition: margin-left 0.3s cubic-bezier(0.4, 0, 0.2, 1), background-color 0.3s ease;
+}
+
+.user-management.sidebar-collapsed {
+  margin-left: 80px;
+}
+
+.user-header {
+  margin-bottom: 32px;
+}
+
+.user-header h1 {
+  font-size: 2rem;
+  font-weight: 800;
+  color: var(--text-primary);
+  margin-bottom: 8px;
+}
+
+.user-header p {
+  color: var(--text-secondary);
+  font-size: 0.95rem;
+}
+
+.user-actions {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 24px;
+}
+
+.users-table-container {
+  background: var(--bg-secondary);
+  border-radius: 16px;
+  box-shadow: var(--card-shadow);
+  border: 1px solid var(--border-secondary);
+  overflow: hidden;
+}
+
+.users-table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.users-table thead {
+  background: var(--bg-tertiary);
+  border-bottom: 1px solid var(--border-secondary);
+}
+
+.users-table th {
+  padding: 16px 20px;
+  text-align: left;
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: var(--text-tertiary);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.users-table tbody tr {
+  border-bottom: 1px solid var(--border-secondary);
+  transition: background 0.2s ease;
+}
+
+.users-table tbody tr:hover {
+  background: var(--bg-tertiary);
+}
+
+.users-table tbody tr:last-child {
+  border-bottom: none;
+}
+
+.users-table td {
+  padding: 16px 20px;
+}
+
+.user-info {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.user-avatar {
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, #3b82f6, #1d4ed8);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: white;
+  font-weight: 600;
+  font-size: 0.875rem;
+}
+
+.user-details {
+  flex: 1;
+}
+
+.user-name {
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: var(--text-primary);
+  margin-bottom: 2px;
+}
+
+.user-email {
+  font-size: 0.75rem;
+  color: var(--text-tertiary);
+}
+
+.user-teams {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.team-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 4px 10px;
+  border-radius: 12px;
+  font-size: 0.75rem;
+  font-weight: 500;
+  background: rgba(59, 130, 246, 0.1);
+  color: #3b82f6;
+}
+
+.status-badges {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.status-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 10px;
+  border-radius: 12px;
+  font-size: 0.75rem;
+  font-weight: 500;
+  width: fit-content;
+}
+
+.status-badge.active {
+  background: rgba(16, 185, 129, 0.1);
+  color: #10b981;
+}
+
+.status-badge.inactive {
+  background: rgba(107, 114, 128, 0.1);
+  color: #6b7280;
+}
+
+.status-badge.locked {
+  background: rgba(239, 68, 68, 0.1);
+  color: #ef4444;
+}
+
+.user-actions-cell {
+  display: flex;
+  gap: 8px;
+}
+
+.action-btn {
+  width: 32px;
+  height: 32px;
+  border-radius: 6px;
+  border: none;
+  background: var(--bg-tertiary);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.action-btn:hover {
+  transform: translateY(-2px);
+}
+
+.action-btn.unlock {
+  color: #3b82f6;
+}
+
+.action-btn.unlock:hover {
+  background: rgba(59, 130, 246, 0.1);
+}
+
+.action-btn.deactivate {
+  color: #ef4444;
+}
+
+.action-btn.deactivate:hover {
+  background: rgba(239, 68, 68, 0.1);
+}
+
+.action-btn.activate {
+  color: #10b981;
+}
+
+.action-btn.activate:hover {
+  background: rgba(16, 185, 129, 0.1);
+}
+
+.empty-users-state {
+  text-align: center;
+  padding: 64px 32px;
+  background: var(--bg-secondary);
+  border-radius: 16px;
+  box-shadow: var(--card-shadow);
+}
+
+.empty-users-icon {
+  width: 64px;
+  height: 64px;
+  margin: 0 auto 16px;
+  color: var(--text-tertiary);
+}
+
+.empty-users-state h3 {
+  font-size: 1.25rem;
+  font-weight: 600;
+  color: var(--text-primary);
+  margin-bottom: 8px;
+}
+
+.empty-users-state p {
+  color: var(--text-secondary);
+  font-size: 0.875rem;
+}
+
+@media (max-width: 768px) {
+  .user-management {
+    margin-left: 0;
+    padding: 20px;
+  }
+
+  .users-table-container {
+    overflow-x: auto;
+  }
+
+  .users-table {
+    min-width: 800px;
+  }
+
+  .user-actions {
+    flex-direction: column;
+    gap: 16px;
+  }
+}
+

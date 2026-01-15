@@ -135,7 +135,7 @@ const Dashboard: React.FC<DashboardProps> = ({ gameInfo, isCollapsed = false }) 
   const [loading, setLoading] = useState(true);
   const [updating, setUpdating] = useState(false); // For incremental updates
   const [error, setError] = useState<string | null>(null);
-  const [selectedDateRange, setSelectedDateRange] = useState('30');
+  const [selectedDateRange, setSelectedDateRange] = useState('7');
   const [isCustomRange, setIsCustomRange] = useState(false);
   const [customStartDate, setCustomStartDate] = useState('');
   const [customEndDate, setCustomEndDate] = useState('');
@@ -493,7 +493,14 @@ const Dashboard: React.FC<DashboardProps> = ({ gameInfo, isCollapsed = false }) 
                         <input
                           type="date"
                           value={customStartDate}
-                          onChange={(e) => setCustomStartDate(e.target.value)}
+                          onChange={(e) => {
+                            const newStartDate = e.target.value;
+                            setCustomStartDate(newStartDate);
+                            // If new start date is after end date, adjust end date
+                            if (customEndDate && newStartDate > customEndDate) {
+                              setCustomEndDate(newStartDate);
+                            }
+                          }}
                           className="date-input"
                           disabled={loading || updating}
                         />
@@ -503,7 +510,14 @@ const Dashboard: React.FC<DashboardProps> = ({ gameInfo, isCollapsed = false }) 
                         <input
                           type="date"
                           value={customEndDate}
-                          onChange={(e) => setCustomEndDate(e.target.value)}
+                          onChange={(e) => {
+                            const newEndDate = e.target.value;
+                            setCustomEndDate(newEndDate);
+                            // If new end date is before start date, adjust start date
+                            if (customStartDate && newEndDate < customStartDate) {
+                              setCustomStartDate(newEndDate);
+                            }
+                          }}
                           className="date-input"
                           disabled={loading || updating}
                         />

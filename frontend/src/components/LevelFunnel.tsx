@@ -38,7 +38,7 @@ export default function LevelFunnel({ isCollapsed = false }: LevelFunnelProps) {
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
     const [filters, setFilters] = useState<Filters>({
-        startDate: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
+        startDate: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
         endDate: new Date().toISOString().split('T')[0]
     });
 
@@ -269,7 +269,16 @@ export default function LevelFunnel({ isCollapsed = false }: LevelFunnelProps) {
                         <input
                             type="date"
                             value={filters.startDate}
-                            onChange={(e) => setFilters({ ...filters, startDate: e.target.value })}
+                            onChange={(e) => {
+                                const newStartDate = e.target.value;
+                                setFilters(prev => {
+                                    // If new start date is after end date, adjust end date
+                                    if (prev.endDate && newStartDate > prev.endDate) {
+                                        return { ...prev, startDate: newStartDate, endDate: newStartDate };
+                                    }
+                                    return { ...prev, startDate: newStartDate };
+                                });
+                            }}
                         />
                     </div>
                     <div className="filter-group">
@@ -277,7 +286,16 @@ export default function LevelFunnel({ isCollapsed = false }: LevelFunnelProps) {
                         <input
                             type="date"
                             value={filters.endDate}
-                            onChange={(e) => setFilters({ ...filters, endDate: e.target.value })}
+                            onChange={(e) => {
+                                const newEndDate = e.target.value;
+                                setFilters(prev => {
+                                    // If new end date is before start date, adjust start date
+                                    if (prev.startDate && newEndDate < prev.startDate) {
+                                        return { ...prev, startDate: newEndDate, endDate: newEndDate };
+                                    }
+                                    return { ...prev, endDate: newEndDate };
+                                });
+                            }}
                         />
                     </div>
                     <div className="filter-group multi-select-group" ref={countryDropdownRef}>

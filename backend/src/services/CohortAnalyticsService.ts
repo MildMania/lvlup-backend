@@ -197,4 +197,324 @@ export class CohortAnalyticsService {
     async disconnect() {
         await this.prisma.$disconnect();
     }
+
+    /**
+     * Calculate cohort playtime metrics (average daily playtime per cohort)
+     */
+    async calculateCohortPlaytime(
+        gameId: string,
+        startDate: Date,
+        endDate: Date,
+        filters?: CohortAnalyticsParams
+    ): Promise<CohortData[]> {
+        try {
+            const retentionDays = filters?.days || [0, 1, 2, 3, 4, 5, 6, 7, 14, 30];
+            
+            const userFilters: any = {
+                gameId: gameId,
+                createdAt: { gte: startDate, lte: endDate }
+            };
+
+            if (filters?.country) {
+                userFilters.events = {
+                    some: {
+                        countryCode: Array.isArray(filters.country)
+                            ? { in: filters.country }
+                            : filters.country
+                    }
+                };
+            }
+
+            const users = await this.prisma.user.findMany({
+                where: userFilters,
+                select: { id: true, createdAt: true }
+            });
+
+            if (users.length === 0) return [];
+
+            const cohortMap = new Map<string, string[]>();
+            for (const user of users) {
+                const timestamp = typeof user.createdAt === 'bigint' ? Number(user.createdAt) : user.createdAt;
+                const installDate = new Date(timestamp);
+                const dateKey = installDate.toISOString().split('T')[0];
+                if (dateKey) {
+                    if (!cohortMap.has(dateKey)) cohortMap.set(dateKey, []);
+                    cohortMap.get(dateKey)!.push(user.id);
+                }
+            }
+
+            const cohortData: CohortData[] = [];
+
+            for (const [installDate, userIds] of cohortMap.entries()) {
+                const installDateObj = new Date(installDate + 'T00:00:00.000Z');
+                const retentionByDay: { [day: number]: number } = {};
+
+                for (const day of retentionDays) {
+                    const targetDate = new Date(installDateObj);
+                    targetDate.setDate(targetDate.getDate() + day);
+                    const targetDateStart = new Date(targetDate);
+                    targetDateStart.setHours(0, 0, 0, 0);
+                    const targetDateEnd = new Date(targetDate);
+                    targetDateEnd.setHours(23, 59, 59, 999);
+
+                    if (targetDateStart > new Date()) {
+                        retentionByDay[day] = -1;
+                        continue;
+                    }
+
+                    const sessionFilters: any = {
+                        userId: { in: userIds },
+                        gameId: gameId,
+                        startTime: { gte: targetDateStart, lte: targetDateEnd },
+                        endTime: { not: null },
+                        duration: { not: null }
+                    };
+
+                    if (filters?.platform) {
+                        sessionFilters.platform = Array.isArray(filters.platform) ? { in: filters.platform } : filters.platform;
+                    }
+                    if (filters?.version) {
+                        sessionFilters.version = Array.isArray(filters.version) ? { in: filters.version } : filters.version;
+                    }
+
+                    const sessions = await this.prisma.session.findMany({
+                        where: sessionFilters,
+                        select: { userId: true, duration: true }
+                    });
+
+                    if (sessions.length === 0) {
+                        retentionByDay[day] = 0;
+                        continue;
+                    }
+
+                    const userPlaytime = new Map<string, number>();
+                    for (const session of sessions) {
+                        const current = userPlaytime.get(session.userId) || 0;
+                        userPlaytime.set(session.userId, current + (session.duration || 0));
+                    }
+
+                    const totalPlaytime = Array.from(userPlaytime.values()).reduce((sum, val) => sum + val, 0);
+                    const avgPlaytime = totalPlaytime / userPlaytime.size / 60; // Convert to minutes
+                    retentionByDay[day] = Math.round(avgPlaytime * 10) / 10;
+                }
+
+                cohortData.push({ installDate, installCount: userIds.length, retentionByDay });
+            }
+
+            cohortData.sort((a, b) => a.installDate.localeCompare(b.installDate));
+            return cohortData;
+        } catch (error) {
+            console.error('Error calculating cohort playtime:', error);
+            throw new Error('Failed to calculate cohort playtime');
+        }
+    }
+
+    /**
+     * Calculate cohort session count metrics (average sessions per user per day)
+     */
+    async calculateCohortSessionCount(
+        gameId: string,
+        startDate: Date,
+        endDate: Date,
+        filters?: CohortAnalyticsParams
+    ): Promise<CohortData[]> {
+        try {
+            const retentionDays = filters?.days || [0, 1, 2, 3, 4, 5, 6, 7, 14, 30];
+            
+            const userFilters: any = {
+                gameId: gameId,
+                createdAt: { gte: startDate, lte: endDate }
+            };
+
+            if (filters?.country) {
+                userFilters.events = {
+                    some: {
+                        countryCode: Array.isArray(filters.country)
+                            ? { in: filters.country }
+                            : filters.country
+                    }
+                };
+            }
+
+            const users = await this.prisma.user.findMany({
+                where: userFilters,
+                select: { id: true, createdAt: true }
+            });
+
+            if (users.length === 0) return [];
+
+            const cohortMap = new Map<string, string[]>();
+            for (const user of users) {
+                const timestamp = typeof user.createdAt === 'bigint' ? Number(user.createdAt) : user.createdAt;
+                const installDate = new Date(timestamp);
+                const dateKey = installDate.toISOString().split('T')[0];
+                if (dateKey) {
+                    if (!cohortMap.has(dateKey)) cohortMap.set(dateKey, []);
+                    cohortMap.get(dateKey)!.push(user.id);
+                }
+            }
+
+            const cohortData: CohortData[] = [];
+
+            for (const [installDate, userIds] of cohortMap.entries()) {
+                const installDateObj = new Date(installDate + 'T00:00:00.000Z');
+                const retentionByDay: { [day: number]: number } = {};
+
+                for (const day of retentionDays) {
+                    const targetDate = new Date(installDateObj);
+                    targetDate.setDate(targetDate.getDate() + day);
+                    const targetDateStart = new Date(targetDate);
+                    targetDateStart.setHours(0, 0, 0, 0);
+                    const targetDateEnd = new Date(targetDate);
+                    targetDateEnd.setHours(23, 59, 59, 999);
+
+                    if (targetDateStart > new Date()) {
+                        retentionByDay[day] = -1;
+                        continue;
+                    }
+
+                    const sessionFilters: any = {
+                        userId: { in: userIds },
+                        gameId: gameId,
+                        startTime: { gte: targetDateStart, lte: targetDateEnd }
+                    };
+
+                    if (filters?.platform) {
+                        sessionFilters.platform = Array.isArray(filters.platform) ? { in: filters.platform } : filters.platform;
+                    }
+                    if (filters?.version) {
+                        sessionFilters.version = Array.isArray(filters.version) ? { in: filters.version } : filters.version;
+                    }
+
+                    const userSessions = await this.prisma.session.groupBy({
+                        by: ['userId'],
+                        _count: { id: true },
+                        where: sessionFilters
+                    });
+
+                    if (userSessions.length === 0) {
+                        retentionByDay[day] = 0;
+                        continue;
+                    }
+
+                    const totalSessions = userSessions.reduce((sum: number, u: any) => sum + u._count.id, 0);
+                    const avgSessions = totalSessions / userSessions.length;
+                    retentionByDay[day] = Math.round(avgSessions * 100) / 100;
+                }
+
+                cohortData.push({ installDate, installCount: userIds.length, retentionByDay });
+            }
+
+            cohortData.sort((a, b) => a.installDate.localeCompare(b.installDate));
+            return cohortData;
+        } catch (error) {
+            console.error('Error calculating cohort session count:', error);
+            throw new Error('Failed to calculate cohort session count');
+        }
+    }
+
+    /**
+     * Calculate cohort session length metrics (average session duration per day)
+     */
+    async calculateCohortSessionLength(
+        gameId: string,
+        startDate: Date,
+        endDate: Date,
+        filters?: CohortAnalyticsParams
+    ): Promise<CohortData[]> {
+        try {
+            const retentionDays = filters?.days || [0, 1, 2, 3, 4, 5, 6, 7, 14, 30];
+            
+            const userFilters: any = {
+                gameId: gameId,
+                createdAt: { gte: startDate, lte: endDate }
+            };
+
+            if (filters?.country) {
+                userFilters.events = {
+                    some: {
+                        countryCode: Array.isArray(filters.country)
+                            ? { in: filters.country }
+                            : filters.country
+                    }
+                };
+            }
+
+            const users = await this.prisma.user.findMany({
+                where: userFilters,
+                select: { id: true, createdAt: true }
+            });
+
+            if (users.length === 0) return [];
+
+            const cohortMap = new Map<string, string[]>();
+            for (const user of users) {
+                const timestamp = typeof user.createdAt === 'bigint' ? Number(user.createdAt) : user.createdAt;
+                const installDate = new Date(timestamp);
+                const dateKey = installDate.toISOString().split('T')[0];
+                if (dateKey) {
+                    if (!cohortMap.has(dateKey)) cohortMap.set(dateKey, []);
+                    cohortMap.get(dateKey)!.push(user.id);
+                }
+            }
+
+            const cohortData: CohortData[] = [];
+
+            for (const [installDate, userIds] of cohortMap.entries()) {
+                const installDateObj = new Date(installDate + 'T00:00:00.000Z');
+                const retentionByDay: { [day: number]: number } = {};
+
+                for (const day of retentionDays) {
+                    const targetDate = new Date(installDateObj);
+                    targetDate.setDate(targetDate.getDate() + day);
+                    const targetDateStart = new Date(targetDate);
+                    targetDateStart.setHours(0, 0, 0, 0);
+                    const targetDateEnd = new Date(targetDate);
+                    targetDateEnd.setHours(23, 59, 59, 999);
+
+                    if (targetDateStart > new Date()) {
+                        retentionByDay[day] = -1;
+                        continue;
+                    }
+
+                    const sessionFilters: any = {
+                        userId: { in: userIds },
+                        gameId: gameId,
+                        startTime: { gte: targetDateStart, lte: targetDateEnd },
+                        endTime: { not: null },
+                        duration: { not: null }
+                    };
+
+                    if (filters?.platform) {
+                        sessionFilters.platform = Array.isArray(filters.platform) ? { in: filters.platform } : filters.platform;
+                    }
+                    if (filters?.version) {
+                        sessionFilters.version = Array.isArray(filters.version) ? { in: filters.version } : filters.version;
+                    }
+
+                    const sessions = await this.prisma.session.findMany({
+                        where: sessionFilters,
+                        select: { duration: true }
+                    });
+
+                    if (sessions.length === 0) {
+                        retentionByDay[day] = 0;
+                        continue;
+                    }
+
+                    const totalDuration = sessions.reduce((sum, s) => sum + (s.duration || 0), 0);
+                    const avgDuration = totalDuration / sessions.length / 60; // Convert to minutes
+                    retentionByDay[day] = Math.round(avgDuration * 10) / 10;
+                }
+
+                cohortData.push({ installDate, installCount: userIds.length, retentionByDay });
+            }
+
+            cohortData.sort((a, b) => a.installDate.localeCompare(b.installDate));
+            return cohortData;
+        } catch (error) {
+            console.error('Error calculating cohort session length:', error);
+            throw new Error('Failed to calculate cohort session length');
+        }
+    }
 }

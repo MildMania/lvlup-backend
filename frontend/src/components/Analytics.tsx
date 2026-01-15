@@ -66,13 +66,15 @@ const Analytics: React.FC<AnalyticsProps> = ({ gameInfo, isCollapsed = false }) 
 // Engagement Tab Component
 const EngagementTab: React.FC<{ gameInfo: any }> = ({ gameInfo }) => {
   const [cohortData, setCohortData] = useState<any[]>([]);
+  const [metricData, setMetricData] = useState<any[]>([]);
   const [loading, setLoading] = useState(false);
+  const [selectedMetric, setSelectedMetric] = useState<'retention' | 'playtime' | 'session-count' | 'session-length'>('retention');
   const [showDaySelector, setShowDaySelector] = useState(false);
   const [showPlatformSelector, setShowPlatformSelector] = useState(false);
   const [showCountrySelector, setShowCountrySelector] = useState(false);
   const [showVersionSelector, setShowVersionSelector] = useState(false);
   const [filters, setFilters] = useState({
-    startDate: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
+    startDate: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
     endDate: new Date().toISOString().split('T')[0]
   });
   const [selectedPlatforms, setSelectedPlatforms] = useState<string[]>([]);
@@ -122,6 +124,60 @@ const EngagementTab: React.FC<{ gameInfo: any }> = ({ gameInfo }) => {
     }
   };
 
+  const fetchMetricData = async () => {
+    setLoading(true);
+    try {
+      const params = new URLSearchParams({
+        startDate: filters.startDate,
+        endDate: filters.endDate,
+        days: selectedDays.sort((a, b) => a - b).join(',')
+      });
+
+      if (selectedPlatforms.length > 0) params.append('platform', selectedPlatforms.join(','));
+      if (selectedCountries.length > 0) params.append('country', selectedCountries.join(','));
+      if (selectedVersions.length > 0) params.append('version', selectedVersions.join(','));
+
+      let endpoint = '';
+      switch (selectedMetric) {
+        case 'playtime':
+          endpoint = '/analytics/cohort/playtime';
+          break;
+        case 'session-count':
+          endpoint = '/analytics/cohort/session-count';
+          break;
+        case 'session-length':
+          endpoint = '/analytics/cohort/session-length';
+          break;
+        default:
+          return fetchCohortData();
+      }
+
+      console.log('Fetching metric data from:', endpoint, 'with params:', params.toString());
+
+      const response = await apiClient.get(`${endpoint}?${params.toString()}`);
+
+      console.log('Response status:', response.status);
+      console.log('Response data:', response.data);
+
+      if (response.data.success && response.data.data) {
+        console.log('Setting metric data:', response.data.data.length, 'records');
+        // Transform the data to match the expected format
+        const transformedData = response.data.data.map((item: any) => ({
+          date: item.installDate,
+          userCount: item.installCount,
+          metricsByDay: item.retentionByDay
+        }));
+        setMetricData(transformedData);
+      } else {
+        console.error('API returned unsuccessful response:', response.data);
+      }
+    } catch (error) {
+      console.error('Error fetching metric data:', error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
   // Fetch filter options on mount
   useEffect(() => {
     const fetchFilterOptions = async () => {
@@ -141,8 +197,12 @@ const EngagementTab: React.FC<{ gameInfo: any }> = ({ gameInfo }) => {
   }, [gameInfo.id]);
 
   useEffect(() => {
-    fetchCohortData();
-  }, [gameInfo.id, filters, selectedDays, selectedPlatforms, selectedCountries, selectedVersions]);
+    if (selectedMetric === 'retention') {
+      fetchCohortData();
+    } else {
+      fetchMetricData();
+    }
+  }, [gameInfo.id, filters, selectedDays, selectedPlatforms, selectedCountries, selectedVersions, selectedMetric]);
 
   const toggleDay = (day: number) => {
     setSelectedDays(prev => 
@@ -185,7 +245,18 @@ const EngagementTab: React.FC<{ gameInfo: any }> = ({ gameInfo }) => {
   };
 
   const handleFilterChange = (key: string, value: string) => {
-    setFilters(prev => ({ ...prev, [key]: value }));
+    setFilters(prev => {
+      const newFilters = { ...prev, [key]: value };
+      
+      // Ensure end date is not earlier than start date
+      if (key === 'startDate' && newFilters.endDate && value > newFilters.endDate) {
+        newFilters.endDate = value;
+      } else if (key === 'endDate' && newFilters.startDate && value < newFilters.startDate) {
+        newFilters.startDate = value;
+      }
+      
+      return newFilters;
+    });
   };
 
   const getRetentionColor = (value: number) => {
@@ -199,10 +270,53 @@ const EngagementTab: React.FC<{ gameInfo: any }> = ({ gameInfo }) => {
     return 'retention-10';
   };
 
+  // Calculate color for metric values based on percentile within each day
+  const getMetricColor = (day: number, value: number | undefined) => {
+    if (value === undefined || value === null || value < 0) return 'not-available';
+    if (value === 0) return 'metric-very-low';
+
+    // Get all values for this specific day across all cohorts
+    const dayValues = metricData
+      .map((row: any) => row.metricsByDay?.[day])
+      .filter((v: any) => v !== undefined && v !== null && v >= 0 && v > 0);
+
+    if (dayValues.length === 0) return '';
+
+    // Sort values to determine percentiles
+    const sortedValues = [...dayValues].sort((a, b) => a - b);
+    const valueIndex = sortedValues.indexOf(value);
+    const percentile = (valueIndex / (sortedValues.length - 1)) * 100;
+
+    // Assign color based on percentile (higher is better - darker blue)
+    if (percentile >= 90) return 'metric-top';
+    if (percentile >= 75) return 'metric-high';
+    if (percentile >= 50) return 'metric-good';
+    if (percentile >= 25) return 'metric-medium';
+    if (percentile >= 10) return 'metric-low';
+    return 'metric-very-low';
+  };
+
   return (
     <div className="tab-content">
       <h2>Engagement Analytics</h2>
       <p>Cohort retention analysis and user engagement metrics</p>
+
+      {/* Metric Selector */}
+      <div className="analytics-filters" style={{ marginBottom: '20px' }}>
+        <div className="filter-group">
+          <label>Metric</label>
+          <select
+            value={selectedMetric}
+            onChange={(e) => setSelectedMetric(e.target.value as 'retention' | 'playtime' | 'session-count' | 'session-length')}
+            style={{ padding: '8px', borderRadius: '4px', border: '1px solid #ddd' }}
+          >
+            <option value="retention">Retention Cohort</option>
+            <option value="playtime">Avg Daily Playtime</option>
+            <option value="session-count">Avg Session Count</option>
+            <option value="session-length">Avg Session Length</option>
+          </select>
+        </div>
+      </div>
 
       {/* Filters */}
       <div className="analytics-filters">
@@ -340,12 +454,12 @@ const EngagementTab: React.FC<{ gameInfo: any }> = ({ gameInfo }) => {
         </div>
       </div>
 
-      {/* Cohort Table */}
+      {/* Data Table */}
       {loading ? (
         <div className="loading-container">
           <div className="loading-spinner">⟳ Loading...</div>
         </div>
-      ) : (
+      ) : selectedMetric === 'retention' ? (
         <div className="cohort-table-container">
           <table className="cohort-table">
             <thead>
@@ -378,6 +492,55 @@ const EngagementTab: React.FC<{ gameInfo: any }> = ({ gameInfo }) => {
                           className={`retention-cell ${isNotAvailable ? 'not-available' : getRetentionColor(value)}`}
                         >
                           {isNotAvailable ? 'N/A' : `${value}%`}
+                        </td>
+                      );
+                    })}
+                  </tr>
+                ))
+              )}
+            </tbody>
+          </table>
+        </div>
+      ) : (
+        <div className="cohort-table-container">
+          <table className="cohort-table">
+            <thead>
+              <tr>
+                <th>Date</th>
+                <th>Users</th>
+                {selectedDays.map(day => (
+                  <th key={day}>Day {day}</th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {metricData.length === 0 ? (
+                <tr>
+                  <td colSpan={selectedDays.length + 2} style={{ textAlign: 'center', padding: '2rem' }}>
+                    No data available for the selected period
+                  </td>
+                </tr>
+              ) : (
+                metricData.map((row: any) => (
+                  <tr key={row.date}>
+                    <td className="install-date">{row.date}</td>
+                    <td className="install-count">{row.userCount || 0}</td>
+                    {selectedDays.map(day => {
+                      const value = row.metricsByDay?.[day];
+                      const isNotAvailable = value === undefined || value === null || value < 0;
+                      const formattedValue = isNotAvailable
+                        ? 'N/A'
+                        : selectedMetric === 'playtime' 
+                        ? `${value.toFixed(1)}m`
+                        : selectedMetric === 'session-count'
+                        ? value.toFixed(2)
+                        : `${value.toFixed(1)}m`;
+                      
+                      const colorClass = getMetricColor(day, value);
+                      
+                      return (
+                        <td key={day} className={`retention-cell ${colorClass}`}>
+                          {formattedValue}
                         </td>
                       );
                     })}

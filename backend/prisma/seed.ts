@@ -33,14 +33,18 @@ async function seedLevelFunnelData(games: any[], daysAgoFn: (days: number) => Da
     if (puzzleUsers.length === 0) {
         console.log('Creating 100 test users for level funnel...');
         const testUsers = [];
+        const platforms = ['iOS', 'Android', 'WebGL'];
+        const versions = ['1.0.0', '1.1.0'];
+        const countries = ['US', 'UK', 'DE', 'FR'];
+        
         for (let i = 0; i < 100; i++) {
             testUsers.push({
                 gameId: puzzleGame.id,
                 externalId: `test_user_${i + 1}`,
                 deviceId: `device_${Math.random().toString(36).substring(7)}`,
-                platform: ['iOS', 'Android', 'WebGL'][Math.floor(Math.random() * 3)],
-                version: ['1.0.0', '1.1.0'][Math.floor(Math.random() * 2)],
-                country: ['US', 'UK', 'DE', 'FR'][Math.floor(Math.random() * 4)],
+                platform: platforms[Math.floor(Math.random() * platforms.length)] as string,
+                version: versions[Math.floor(Math.random() * versions.length)] as string,
+                country: countries[Math.floor(Math.random() * countries.length)] as string,
                 language: 'en',
                 createdAt: daysAgoFn(Math.floor(Math.random() * 30)),
             });
@@ -91,6 +95,8 @@ async function seedLevelFunnelData(games: any[], daysAgoFn: (days: number) => Da
 
     for (let userIdx = 0; userIdx < puzzleUsers.length; userIdx++) {
         const user = puzzleUsers[userIdx];
+        if (!user) continue; // Skip if user is undefined
+        
         let currentLevel = 1;
         let hasQuit = false;
         const baseTime = daysAgoFn(Math.floor(Math.random() * 30));
@@ -98,6 +104,8 @@ async function seedLevelFunnelData(games: any[], daysAgoFn: (days: number) => Da
 
         while (!hasQuit && currentLevel <= 10) {
             const config = levelConfig[currentLevel - 1];
+            if (!config) break; // Skip if config is undefined
+            
             const attempts = Math.ceil(config.avgAttempts + (Math.random() - 0.5) * 0.5);
             
             for (let attempt = 1; attempt <= attempts; attempt++) {
@@ -287,6 +295,11 @@ async function main() {
             const users = [];
             const userCount = 1000 + gameIndex * 500; // 1000, 1500, 2000 users per game
 
+            const platforms = ['iOS', 'Android', 'WebGL'];
+            const versions = ['1.0.0', '1.1.0', '1.2.0', '1.3.0'];
+            const countries = ['US', 'UK', 'DE', 'FR', 'JP', 'KR', 'BR', 'IN'];
+            const languages = ['en', 'de', 'fr', 'ja', 'ko', 'pt', 'hi'];
+
             for (let i = 0; i < userCount; i++) {
                 const createdAt = daysAgo(Math.floor(Math.random() * 60)); // Users joined over last 60 days
 
@@ -294,10 +307,10 @@ async function main() {
                     gameId: game.id,
                     externalId: `user_${game.name.toLowerCase().replace(/\s+/g, '_')}_${i + 1}`,
                     deviceId: `device_${Math.random().toString(36).substring(7)}`,
-                    platform: ['iOS', 'Android', 'WebGL'][Math.floor(Math.random() * 3)] || null,
-                    version: ['1.0.0', '1.1.0', '1.2.0', '1.3.0'][Math.floor(Math.random() * 4)] || null,
-                    country: ['US', 'UK', 'DE', 'FR', 'JP', 'KR', 'BR', 'IN'][Math.floor(Math.random() * 8)] || null,
-                    language: ['en', 'de', 'fr', 'ja', 'ko', 'pt', 'hi'][Math.floor(Math.random() * 7)] || null,
+                    platform: platforms[Math.floor(Math.random() * platforms.length)] as string,
+                    version: versions[Math.floor(Math.random() * versions.length)] as string,
+                    country: countries[Math.floor(Math.random() * countries.length)] as string,
+                    language: languages[Math.floor(Math.random() * languages.length)] as string,
                     createdAt,
                 });
             }

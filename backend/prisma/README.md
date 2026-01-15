@@ -20,7 +20,52 @@ We use `prisma db push` instead of migrations to handle the schema synchronizati
 2. **Simplicity**: For this project size, `db push` is simpler and faster.
 3. **No migration conflicts**: Avoids provider mismatch errors like P3019.
 
-### Commands
+## How to Seed the Local Database
+
+### Step 1: Make sure you're using the local environment
+
+```bash
+cd /Users/emre/Desktop/MM-Projects/lvlup-backend
+./switch-env.sh local
+```
+
+This will configure your project to use SQLite (local database).
+
+### Step 2: Push the schema to create/update database tables
+
+```bash
+cd backend
+npm run db:push
+```
+
+This creates the database file (`dev.db`) and all tables.
+
+### Step 3: Seed the database with test data
+
+```bash
+npm run db:seed
+```
+
+This will:
+- Create 3 test games (Puzzle Quest Adventures, Space Runner 3D, City Builder Pro)
+- Create 1000-2000 users per game
+- Generate realistic sessions and events
+- Create level funnel data with A/B test variants
+- Set up checkpoints, player progression, remote configs, and A/B tests
+
+**Note:** The seed script is smart - if games already exist, it will preserve them and only add level funnel data.
+
+### Step 4: (Optional) Reset and reseed
+
+If you want to start fresh:
+
+```bash
+npm run db:reset
+```
+
+This will drop all data and reseed from scratch.
+
+## Commands Reference
 
 ```bash
 # Sync schema to database (creates/updates tables)
@@ -34,6 +79,31 @@ npm run db:seed
 
 # Reset database and reseed
 npm run db:reset
+```
+
+## Troubleshooting
+
+### "Database connection error" when seeding
+
+**For SQLite (local):**
+- Make sure you ran `./switch-env.sh local` from the project root
+- The database file will be created automatically at `backend/prisma/dev.db`
+
+**For PostgreSQL:**
+- Make sure your PostgreSQL server is running
+- Check your `DATABASE_URL` in `.env` file
+- Verify connection: `psql $DATABASE_URL`
+
+### "Table does not exist" errors
+
+Run `npm run db:push` to create/update all tables first.
+
+### TypeScript compilation errors in seed
+
+The seed file has been fixed to handle strict TypeScript settings. If you still see errors, try:
+```bash
+npm install
+npm run generate
 ```
 
 ## Deployment

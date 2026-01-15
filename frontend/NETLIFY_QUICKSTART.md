@@ -13,8 +13,10 @@
 
 ### 2. Set Environment Variable
 In Netlify dashboard → **Site settings** → **Environment variables**:
-- **Key**: `VITE_API_URL`
-- **Value**: `https://your-railway-backend.railway.app/api`
+- **Key**: `VITE_API_BASE_URL`
+- **Value**: `https://lvlup-backend-production.up.railway.app/api`
+  - ⚠️ **Important**: No trailing slash!
+  - Must end with `/api`
 
 ### 3. Deploy
 Click **Deploy site** button. Done! 🎉
@@ -73,7 +75,15 @@ Netlify automatically deploys when you:
 
 ### Build fails?
 - Check environment variables are set in Netlify dashboard
-- Verify `VITE_API_URL` has the correct Railway URL
+- Verify `VITE_API_BASE_URL` has the correct Railway URL
+- Example: `https://lvlup-backend-production.up.railway.app/api`
+
+### Backend not connecting?
+- **Must redeploy after setting env vars!** Go to Deploys → Trigger deploy
+- Check browser console (F12) for errors
+- Verify env var: Run `console.log(import.meta.env.VITE_API_BASE_URL)` in browser console
+- Test backend: Open `https://lvlup-backend-production.up.railway.app/api/health` in browser
+- See [NETLIFY_BACKEND_CONNECTION_FIX.md](./NETLIFY_BACKEND_CONNECTION_FIX.md) for detailed troubleshooting
 
 ### CORS errors?
 - Update Railway backend `CORS_ORIGIN` with Netlify URL

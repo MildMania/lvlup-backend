@@ -43,16 +43,16 @@ In Netlify dashboard → Site settings → Environment variables, add:
 
 ```bash
 # Backend API URL (Railway)
-VITE_API_URL=https://your-railway-app.railway.app/api
+VITE_API_BASE_URL=https://your-railway-app.railway.app/api
 
 # Or if you have a custom domain
-VITE_API_URL=https://api.yourdomain.com/api
+VITE_API_BASE_URL=https://api.yourdomain.com/api
 ```
 
 **How to add:**
 1. Go to **Site settings** → **Environment variables**
 2. Click **Add a variable**
-3. Key: `VITE_API_URL`
+3. Key: `VITE_API_BASE_URL`
 4. Value: Your Railway backend URL
 5. Click **Save**
 
@@ -127,7 +127,7 @@ Then update Railway `CORS_ORIGIN` to your custom domain.
 ## Post-Migration Checklist
 
 - [ ] Repository connected to Netlify
-- [ ] Environment variables set (`VITE_API_URL`)
+- [ ] Environment variables set (`VITE_API_BASE_URL`)
 - [ ] First deployment successful
 - [ ] Site is accessible at Netlify URL
 - [ ] Backend CORS updated with Netlify domain

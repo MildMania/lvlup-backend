@@ -18,9 +18,11 @@ import {
   Sun,
   GitBranch,
   Trash2,
-  UsersRound
+  UsersRound,
+  LogOut
 } from 'lucide-react';
 import { useTheme } from '../contexts/ThemeContext';
+import { useAuth } from '../contexts/AuthContext';
 import AddGameModal from './AddGameModal';
 import './Sidebar.css';
 
@@ -69,6 +71,7 @@ const Sidebar: React.FC<SidebarProps> = ({
   });
   const [isAddGameModalOpen, setIsAddGameModalOpen] = useState(false);
   const { isDarkMode, toggleTheme } = useTheme();
+  const { logout } = useAuth();
 
   // Notify parent of initial collapsed state
   useEffect(() => {
@@ -76,6 +79,17 @@ const Sidebar: React.FC<SidebarProps> = ({
       onCollapseChange(isCollapsed);
     }
   }, []); // Run only once on mount
+
+  const handleLogout = async () => {
+    if (window.confirm('Are you sure you want to log out?')) {
+      try {
+        await logout();
+        window.location.href = '/login';
+      } catch (error) {
+        console.error('Logout failed:', error);
+      }
+    }
+  };
 
   const menuItems = [
     { id: 'dashboard', label: 'Dashboard', icon: BarChart3 },
@@ -332,17 +346,35 @@ const Sidebar: React.FC<SidebarProps> = ({
                 {isDarkMode ? <Sun size={16} /> : <Moon size={16} />}
                 <span>{isDarkMode ? 'Light Mode' : 'Dark Mode'}</span>
               </button>
+              <button 
+                className="logout-btn"
+                onClick={handleLogout}
+                aria-label="Log out"
+              >
+                <LogOut size={16} />
+                <span>Log Out</span>
+              </button>
               <p className="version">v1.0.0</p>
             </div>
           )}
           {isCollapsed && (
-            <button 
-              className="theme-toggle-collapsed"
-              onClick={toggleTheme}
-              aria-label={isDarkMode ? 'Switch to light mode' : 'Switch to dark mode'}
-            >
-              {isDarkMode ? <Sun size={20} /> : <Moon size={20} />}
-            </button>
+            <>
+              <button 
+                className="theme-toggle-collapsed"
+                onClick={toggleTheme}
+                aria-label={isDarkMode ? 'Switch to light mode' : 'Switch to dark mode'}
+              >
+                {isDarkMode ? <Sun size={20} /> : <Moon size={20} />}
+              </button>
+              <button 
+                className="logout-btn-collapsed"
+                onClick={handleLogout}
+                aria-label="Log out"
+                title="Log out"
+              >
+                <LogOut size={20} />
+              </button>
+            </>
           )}
         </div>
       </div>

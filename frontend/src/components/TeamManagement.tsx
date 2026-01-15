@@ -1,5 +1,4 @@
 import React, { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
 import apiClient from '../lib/apiClient';
 import { Users, Plus, Trash2, Edit, AlertCircle } from 'lucide-react';
 import './TeamManagement.css';
@@ -23,13 +22,13 @@ const TeamManagement: React.FC<TeamManagementProps> = ({ isCollapsed = false }) 
     const [teams, setTeams] = useState<Team[]>([]);
     const [loading, setLoading] = useState(true);
     const [showCreateForm, setShowCreateForm] = useState(false);
+    const [editingTeam, setEditingTeam] = useState<Team | null>(null);
     const [formData, setFormData] = useState({
         name: '',
         slug: '',
         description: '',
     });
     const [error, setError] = useState('');
-    const navigate = useNavigate();
 
     useEffect(() => {
         fetchTeams();
@@ -37,9 +36,18 @@ const TeamManagement: React.FC<TeamManagementProps> = ({ isCollapsed = false }) 
 
     const fetchTeams = async () => {
         try {
-            const response = await apiClient.get('/teams');
-            setTeams(response.data.data);
+            console.log('[TeamManagement] Fetching teams...');
+            const response = await apiClient.get('/teams/all');
+            console.log('[TeamManagement] API response:', response.data);
+            
+            // Backend returns { success: true, data: { teams: [...], total: number } }
+            const teamsData = response.data.data.teams || response.data.data;
+            console.log('[TeamManagement] Teams data:', teamsData);
+            
+            setTeams(Array.isArray(teamsData) ? teamsData : []);
         } catch (err: any) {
+            console.error('[TeamManagement] Error fetching teams:', err);
+            console.error('[TeamManagement] Error response:', err.response?.data);
             setError(err.response?.data?.error || 'Failed to fetch teams');
         } finally {
             setLoading(false);
@@ -51,13 +59,83 @@ const TeamManagement: React.FC<TeamManagementProps> = ({ isCollapsed = false }) 
         setError('');
 
         try {
-            await apiClient.post('/teams', formData);
+            console.log('[TeamManagement] Creating team:', formData);
+            const response = await apiClient.post('/teams', formData);
+            console.log('[TeamManagement] Team created successfully:', response.data);
+            
             setShowCreateForm(false);
             setFormData({ name: '', slug: '', description: '' });
-            fetchTeams();
+            
+            // Refetch teams to show the new one
+            await fetchTeams();
         } catch (err: any) {
+            console.error('[TeamManagement] Error creating team:', err);
+            console.error('[TeamManagement] Error response:', err.response?.data);
             setError(err.response?.data?.error || 'Failed to create team');
         }
+    };
+
+    const handleEdit = (team: Team) => {
+        setEditingTeam(team);
+        setFormData({
+            name: team.name,
+            slug: team.slug,
+            description: team.description || '',
+        });
+        setShowCreateForm(false);
+    };
+
+    const handleUpdate = async (e: React.FormEvent) => {
+        e.preventDefault();
+        if (!editingTeam) return;
+        
+        setError('');
+
+        try {
+            console.log('[TeamManagement] Updating team:', editingTeam.id, formData);
+            const response = await apiClient.put(`/teams/${editingTeam.id}`, formData);
+            console.log('[TeamManagement] Team updated successfully:', response.data);
+            
+            setEditingTeam(null);
+            setFormData({ name: '', slug: '', description: '' });
+            
+            // Refetch teams to show the updated one
+            await fetchTeams();
+        } catch (err: any) {
+            console.error('[TeamManagement] Error updating team:', err);
+            console.error('[TeamManagement] Error response:', err.response?.data);
+            setError(err.response?.data?.error || 'Failed to update team');
+        }
+    };
+
+    const handleDelete = async (team: Team) => {
+        // Prevent deletion of System Administrators team
+        if (team.slug === 'system-admins' || team.name === 'System Administrators') {
+            setError('Cannot delete System Administrators team');
+            return;
+        }
+
+        if (!window.confirm(`Are you sure you want to delete "${team.name}"? This action cannot be undone.`)) {
+            return;
+        }
+
+        try {
+            console.log('[TeamManagement] Deleting team:', team.id);
+            await apiClient.delete(`/teams/${team.id}`);
+            console.log('[TeamManagement] Team deleted successfully');
+            
+            // Refetch teams
+            await fetchTeams();
+        } catch (err: any) {
+            console.error('[TeamManagement] Error deleting team:', err);
+            console.error('[TeamManagement] Error response:', err.response?.data);
+            setError(err.response?.data?.error || 'Failed to delete team');
+        }
+    };
+
+    const handleCancelEdit = () => {
+        setEditingTeam(null);
+        setFormData({ name: '', slug: '', description: '' });
     };
 
     const generateSlug = (name: string) => {
@@ -100,10 +178,10 @@ const TeamManagement: React.FC<TeamManagementProps> = ({ isCollapsed = false }) 
                 </div>
             )}
 
-            {showCreateForm && (
+            {(showCreateForm || editingTeam) && (
                 <div className="team-form-card">
-                    <h3>Create New Team</h3>
-                    <form onSubmit={handleCreate}>
+                    <h3>{editingTeam ? 'Edit Team' : 'Create New Team'}</h3>
+                    <form onSubmit={editingTeam ? handleUpdate : handleCreate}>
                         <div className="form-group">
                             <label>Team Name</label>
                             <input
@@ -114,7 +192,7 @@ const TeamManagement: React.FC<TeamManagementProps> = ({ isCollapsed = false }) 
                                     setFormData({
                                         ...formData,
                                         name: e.target.value,
-                                        slug: generateSlug(e.target.value),
+                                        slug: editingTeam ? formData.slug : generateSlug(e.target.value),
                                     });
                                 }}
                                 placeholder="e.g., Engineering Team"
@@ -148,7 +226,7 @@ const TeamManagement: React.FC<TeamManagementProps> = ({ isCollapsed = false }) 
                         <div className="form-actions">
                             <button
                                 type="button"
-                                onClick={() => setShowCreateForm(false)}
+                                onClick={editingTeam ? handleCancelEdit : () => setShowCreateForm(false)}
                                 className="btn btn-secondary"
                             >
                                 Cancel
@@ -157,7 +235,7 @@ const TeamManagement: React.FC<TeamManagementProps> = ({ isCollapsed = false }) 
                                 type="submit"
                                 className="btn btn-primary"
                             >
-                                Create Team
+                                {editingTeam ? 'Update Team' : 'Create Team'}
                             </button>
                         </div>
                     </form>
@@ -172,42 +250,56 @@ const TeamManagement: React.FC<TeamManagementProps> = ({ isCollapsed = false }) 
                 </div>
             ) : (
                 <div className="teams-grid">
-                    {teams.map((team) => (
-                        <div key={team.id} className="team-card">
-                            <div className="team-card-header">
-                                <div className="team-icon">
-                                    <Users size={24} />
+                    {teams.map((team) => {
+                        const isSystemTeam = team.slug === 'system-admins' || team.name === 'System Administrators';
+                        
+                        return (
+                            <div key={team.id} className="team-card">
+                                <div className="team-card-header">
+                                    <div className="team-icon">
+                                        <Users size={24} />
+                                    </div>
+                                    <div className="team-actions-buttons">
+                                        <button 
+                                            className="icon-btn"
+                                            onClick={() => handleEdit(team)}
+                                            title="Edit team"
+                                        >
+                                            <Edit size={16} />
+                                        </button>
+                                        {!isSystemTeam && (
+                                            <button 
+                                                className="icon-btn icon-btn-danger"
+                                                onClick={() => handleDelete(team)}
+                                                title="Delete team"
+                                            >
+                                                <Trash2 size={16} />
+                                            </button>
+                                        )}
+                                    </div>
                                 </div>
-                                <div className="team-actions-buttons">
-                                    <button className="icon-btn">
-                                        <Edit size={16} />
-                                    </button>
-                                    <button className="icon-btn">
-                                        <Trash2 size={16} />
-                                    </button>
+                                <h3>{team.name}</h3>
+                                <p className="team-slug">@{team.slug}</p>
+                                {team.description && (
+                                    <p className="team-description">{team.description}</p>
+                                )}
+                                <div className="team-stats">
+                                    <div className="team-stat">
+                                        <div className="team-stat-value">
+                                            {team._count?.members || 0}
+                                        </div>
+                                        <div className="team-stat-label">Members</div>
+                                    </div>
+                                    <div className="team-stat">
+                                        <div className="team-stat-value">
+                                            {team._count?.gameAccesses || 0}
+                                        </div>
+                                        <div className="team-stat-label">Games</div>
+                                    </div>
                                 </div>
                             </div>
-                            <h3>{team.name}</h3>
-                            <p className="team-slug">@{team.slug}</p>
-                            {team.description && (
-                                <p className="team-description">{team.description}</p>
-                            )}
-                            <div className="team-stats">
-                                <div className="team-stat">
-                                    <div className="team-stat-value">
-                                        {team._count?.members || 0}
-                                    </div>
-                                    <div className="team-stat-label">Members</div>
-                                </div>
-                                <div className="team-stat">
-                                    <div className="team-stat-value">
-                                        {team._count?.gameAccesses || 0}
-                                    </div>
-                                    <div className="team-stat-label">Games</div>
-                                </div>
-                            </div>
-                        </div>
-                    ))}
+                        );
+                    })}
                 </div>
             )}
         </div>
@@ -215,4 +307,3 @@ const TeamManagement: React.FC<TeamManagementProps> = ({ isCollapsed = false }) 
 };
 
 export default TeamManagement;
-

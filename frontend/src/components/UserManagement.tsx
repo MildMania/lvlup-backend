@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import apiClient from '../lib/apiClient';
-import { UserPlus, Shield, Lock, Unlock, AlertCircle, User as UserIcon } from 'lucide-react';
+import { UserPlus, Shield, Lock, Unlock, AlertCircle, User as UserIcon, Edit } from 'lucide-react';
 import './UserManagement.css';
 
 interface User {
@@ -35,6 +35,7 @@ const UserManagement: React.FC<UserManagementProps> = ({ isCollapsed = false }) 
     const [teams, setTeams] = useState<Team[]>([]);
     const [loading, setLoading] = useState(true);
     const [showCreateForm, setShowCreateForm] = useState(false);
+    const [editingUser, setEditingUser] = useState<User | null>(null);
     const [formData, setFormData] = useState({
         email: '',
         password: '',
@@ -44,7 +45,6 @@ const UserManagement: React.FC<UserManagementProps> = ({ isCollapsed = false }) 
         role: 'VIEWER',
     });
     const [error, setError] = useState('');
-    const navigate = useNavigate();
 
     useEffect(() => {
         fetchData();
@@ -54,10 +54,12 @@ const UserManagement: React.FC<UserManagementProps> = ({ isCollapsed = false }) 
         try {
             const [usersRes, teamsRes] = await Promise.all([
                 apiClient.get('/users'),
-                apiClient.get('/teams'),
+                apiClient.get('/teams/all'),
             ]);
             setUsers(usersRes.data.data.users);
-            setTeams(teamsRes.data.data);
+            // Backend returns { success: true, data: { teams: [...], total: number } }
+            const teamsData = teamsRes.data.data.teams || teamsRes.data.data;
+            setTeams(Array.isArray(teamsData) ? teamsData : []);
         } catch (err: any) {
             setError(err.response?.data?.error || 'Failed to fetch data');
         } finally {
@@ -84,6 +86,80 @@ const UserManagement: React.FC<UserManagementProps> = ({ isCollapsed = false }) 
         } catch (err: any) {
             setError(err.response?.data?.error || 'Failed to create user');
         }
+    };
+
+    const handleEdit = (user: User) => {
+        setEditingUser(user);
+        // Get the user's first team membership for now (backend limitation)
+        const teamMembership = user.teamMemberships?.[0];
+        
+        console.log('[UserManagement] Editing user:', user);
+        console.log('[UserManagement] User team memberships:', user.teamMemberships);
+        
+        setFormData({
+            email: user.email,
+            password: '', // Don't show password
+            firstName: user.firstName,
+            lastName: user.lastName,
+            teamId: teamMembership?.team ? teams.find(t => t.name === teamMembership.team.name)?.id || '' : '',
+            role: teamMembership?.role || 'VIEWER',
+        });
+        setShowCreateForm(false);
+        setError(''); // Clear any previous errors
+    };
+
+    const handleUpdate = async (e: React.FormEvent) => {
+        e.preventDefault();
+        if (!editingUser) return;
+        
+        setError('');
+
+        try {
+            console.log('[UserManagement] Updating user:', editingUser.id);
+            console.log('[UserManagement] Form data:', formData);
+            
+            // Backend currently only supports updating firstName, lastName, and isActive
+            // Email, password, team, and role updates need backend enhancement
+            const updateData: any = {
+                firstName: formData.firstName,
+                lastName: formData.lastName,
+            };
+
+            const response = await apiClient.put(`/users/${editingUser.id}`, updateData);
+            console.log('[UserManagement] Update response:', response.data);
+            
+            setEditingUser(null);
+            setFormData({
+                email: '',
+                password: '',
+                firstName: '',
+                lastName: '',
+                teamId: '',
+                role: 'VIEWER',
+            });
+            
+            // Show success message
+            setError('');
+            
+            // Refetch data
+            await fetchData();
+        } catch (err: any) {
+            console.error('[UserManagement] Error updating user:', err);
+            console.error('[UserManagement] Error response:', err.response?.data);
+            setError(err.response?.data?.error || 'Failed to update user');
+        }
+    };
+
+    const handleCancelEdit = () => {
+        setEditingUser(null);
+        setFormData({
+            email: '',
+            password: '',
+            firstName: '',
+            lastName: '',
+            teamId: '',
+            role: 'VIEWER',
+        });
     };
 
     const handleUnlock = async (userId: string) => {
@@ -141,10 +217,22 @@ const UserManagement: React.FC<UserManagementProps> = ({ isCollapsed = false }) 
                 </div>
             )}
 
-            {showCreateForm && (
+            {(showCreateForm || editingUser) && (
                 <div className="team-form-card">
-                    <h3>Create New User</h3>
-                    <form onSubmit={handleCreate}>
+                    <h3>{editingUser ? 'Edit User' : 'Create New User'}</h3>
+                    {editingUser && (
+                        <div style={{ 
+                            padding: '12px', 
+                            background: 'rgba(59, 130, 246, 0.1)', 
+                            borderRadius: '8px', 
+                            marginBottom: '16px',
+                            fontSize: '0.875rem',
+                            color: 'var(--text-secondary)'
+                        }}>
+                            ℹ️ Currently you can only edit name. Email, password, team, and role editing coming soon.
+                        </div>
+                    )}
+                    <form onSubmit={editingUser ? handleUpdate : handleCreate}>
                         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '20px' }}>
                             <div className="form-group">
                                 <label>First Name</label>
@@ -178,66 +266,94 @@ const UserManagement: React.FC<UserManagementProps> = ({ isCollapsed = false }) 
                             </div>
                         </div>
                         <div className="form-group">
-                            <label>Email</label>
+                            <label>Email {editingUser && '(read-only for now)'}</label>
                             <input
                                 type="email"
-                                required
+                                required={!editingUser}
                                 value={formData.email}
                                 onChange={(e) =>
                                     setFormData({ ...formData, email: e.target.value })
                                 }
                                 placeholder="john.doe@example.com"
+                                disabled={!!editingUser}
+                                style={editingUser ? { opacity: 0.6, cursor: 'not-allowed' } : {}}
                             />
                         </div>
-                        <div className="form-group">
-                            <label>Password</label>
-                            <input
-                                type="password"
-                                required
-                                value={formData.password}
-                                onChange={(e) =>
-                                    setFormData({
-                                        ...formData,
-                                        password: e.target.value,
-                                    })
-                                }
-                                placeholder="••••••••"
-                            />
-                        </div>
-                        <div className="form-group">
-                            <label>Team</label>
-                            <select
-                                value={formData.teamId}
-                                onChange={(e) =>
-                                    setFormData({ ...formData, teamId: e.target.value })
-                                }
-                            >
-                                <option value="">No Team</option>
-                                {teams.map((team) => (
-                                    <option key={team.id} value={team.id}>
-                                        {team.name}
-                                    </option>
-                                ))}
-                            </select>
-                        </div>
-                        <div className="form-group">
-                            <label>Role</label>
-                            <select
-                                value={formData.role}
-                                onChange={(e) =>
-                                    setFormData({ ...formData, role: e.target.value })
-                                }
-                            >
-                                <option value="VIEWER">Viewer</option>
-                                <option value="EDITOR">Editor</option>
-                                <option value="GAME_OWNER">Game Owner</option>
-                                <option value="ADMIN">Admin</option>
-                            </select>
-                        </div>
+                        {!editingUser && (
+                            <>
+                                <div className="form-group">
+                                    <label>Password</label>
+                                    <input
+                                        type="password"
+                                        required
+                                        value={formData.password}
+                                        onChange={(e) =>
+                                            setFormData({
+                                                ...formData,
+                                                password: e.target.value,
+                                            })
+                                        }
+                                        placeholder="••••••••"
+                                    />
+                                </div>
+                                <div className="form-group">
+                                    <label>Team</label>
+                                    <select
+                                        value={formData.teamId}
+                                        onChange={(e) =>
+                                            setFormData({ ...formData, teamId: e.target.value })
+                                        }
+                                    >
+                                        <option value="">No Team</option>
+                                        {teams.map((team) => (
+                                            <option key={team.id} value={team.id}>
+                                                {team.name}
+                                            </option>
+                                        ))}
+                                    </select>
+                                </div>
+                                <div className="form-group">
+                                    <label>Role</label>
+                                    <select
+                                        value={formData.role}
+                                        onChange={(e) =>
+                                            setFormData({ ...formData, role: e.target.value })
+                                        }
+                                    >
+                                        <option value="VIEWER">Viewer</option>
+                                        <option value="EDITOR">Editor</option>
+                                        <option value="GAME_OWNER">Game Owner</option>
+                                        <option value="ADMIN">Admin</option>
+                                    </select>
+                                </div>
+                            </>
+                        )}
+                        {editingUser && (
+                            <div style={{ 
+                                padding: '12px', 
+                                background: 'rgba(107, 114, 128, 0.1)', 
+                                borderRadius: '8px',
+                                fontSize: '0.875rem',
+                                color: 'var(--text-secondary)'
+                            }}>
+                                <strong>Current Teams:</strong>
+                                <div style={{ marginTop: '8px' }}>
+                                    {editingUser.teamMemberships && editingUser.teamMemberships.length > 0 ? (
+                                        editingUser.teamMemberships.map((membership, idx) => (
+                                            <div key={idx} style={{ marginBottom: '4px' }}>
+                                                • {membership.team.name} ({membership.role})
+                                            </div>
+                                        ))
+                                    ) : (
+                                        <div style={{ opacity: 0.6 }}>No team memberships</div>
+                                    )}
+                                </div>
+                            </div>
+                        )}
                         <div className="form-actions">
                             <button
                                 type="button"
-                                onClick={() => setShowCreateForm(false)}
+                                onClick={editingUser ? handleCancelEdit : () => setShowCreateForm(false)}
                                 className="btn btn-secondary"
                             >
                                 Cancel
@@ -246,7 +362,7 @@ const UserManagement: React.FC<UserManagementProps> = ({ isCollapsed = false }) 
                                 type="submit"
                                 className="btn btn-primary"
                             >
-                                Create User
+                                {editingUser ? 'Update User' : 'Create User'}
                             </button>
                         </div>
                     </form>
@@ -317,6 +433,13 @@ const UserManagement: React.FC<UserManagementProps> = ({ isCollapsed = false }) 
                                     </td>
                                     <td>
                                         <div className="user-actions-cell">
+                                            <button
+                                                onClick={() => handleEdit(user)}
+                                                className="action-btn edit"
+                                                title="Edit user"
+                                            >
+                                                <Edit size={16} />
+                                            </button>
                                             {user.isLocked && (
                                                 <button
                                                     onClick={() => handleUnlock(user.id)}

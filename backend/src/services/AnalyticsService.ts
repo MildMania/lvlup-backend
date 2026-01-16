@@ -81,18 +81,25 @@ export class AnalyticsService {
                 throw new Error('Session not found');
             }
 
-            const endDateTime = new Date(endTime);
-            const duration = Math.floor((endDateTime.getTime() - session.startTime.getTime()) / 1000);
+            const requestedEndTime = new Date(endTime);
+            
+            // Use the later of requested endTime or lastHeartbeat
+            // This handles cases where heartbeats arrived after endSession was called
+            const actualEndTime = session.lastHeartbeat && session.lastHeartbeat > requestedEndTime 
+                ? session.lastHeartbeat 
+                : requestedEndTime;
+            
+            const duration = Math.floor((actualEndTime.getTime() - session.startTime.getTime()) / 1000);
 
             const updatedSession = await this.prisma.session.update({
                 where: { id: sessionId },
                 data: {
-                    endTime: endDateTime,
-                    duration: duration
+                    endTime: actualEndTime, // Use actualEndTime, not requested endTime
+                    duration: Math.max(duration, 0) // Ensure non-negative duration
                 }
             });
 
-            logger.info(`Session ${sessionId} ended, duration: ${duration}s`);
+            logger.info(`Session ${sessionId} ended, duration: ${duration}s (requested: ${requestedEndTime.toISOString()}, actual: ${actualEndTime.toISOString()}, lastHeartbeat: ${session.lastHeartbeat?.toISOString() || 'none'})`);
             return updatedSession;
         } catch (error) {
             logger.error('Error ending session:', error);
@@ -101,6 +108,8 @@ export class AnalyticsService {
     }
 
     // Update session heartbeat
+    // Note: This updates lastHeartbeat even if the session has an endTime
+    // When endSession is called later, it will use MAX(endTime, lastHeartbeat) for accurate duration
     async updateSessionHeartbeat(sessionId: string) {
         try {
             await this.prisma.session.update({

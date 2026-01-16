@@ -150,11 +150,13 @@ export class AnalyticsService {
                     sessionId: sessionId,
                     eventName: eventData.eventName,
                     properties: properties,
-                    timestamp: eventData.timestamp ? new Date(eventData.timestamp) : new Date(),
+                    timestamp: new Date(), // Always use server time for consistency
                     
                     // Event metadata
                     eventUuid: eventData.eventUuid ?? null,
-                    clientTs: eventData.clientTs ? BigInt(eventData.clientTs) : null,
+                    // If client sent a timestamp, store it in clientTs for reference
+                    clientTs: eventData.clientTs ? BigInt(eventData.clientTs) : 
+                              (eventData.timestamp ? BigInt(new Date(eventData.timestamp).getTime()) : null),
                     
                     // Device & Platform info
                     platform: eventData.platform ?? null,

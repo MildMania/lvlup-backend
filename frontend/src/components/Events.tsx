@@ -156,6 +156,14 @@ const Events: React.FC<EventsProps> = ({ gameInfo, isCollapsed = false }) => {
     const minutes = Math.floor(seconds / 60);
     const hours = Math.floor(minutes / 60);
 
+    // Handle future timestamps (client clock ahead of server)
+    if (seconds < 0) {
+      const absDiff = Math.abs(seconds);
+      if (absDiff < 60) return 'just now'; // Less than 1 minute in the future
+      if (absDiff < 3600) return `in ${Math.floor(absDiff / 60)}m`; // Show as future
+      return `in ${Math.floor(absDiff / 3600)}h`;
+    }
+
     if (seconds < 60) return `${seconds}s ago`;
     if (minutes < 60) return `${minutes}m ago`;
     if (hours < 24) return `${hours}h ago`;

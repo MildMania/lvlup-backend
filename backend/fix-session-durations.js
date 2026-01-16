@@ -22,6 +22,7 @@
 
 const { PrismaClient } = require('@prisma/client');
 
+
 // Check which database we're using
 const dbUrl = process.env.DATABASE_URL || '';
 const isRailway = dbUrl.includes('railway.app') || (dbUrl.includes('postgres://') && !dbUrl.includes('file:'));

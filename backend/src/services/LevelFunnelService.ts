@@ -24,7 +24,9 @@ interface LevelMetrics {
     completes: number;
     fails: number;
     winRate: number;
+    completionRate: number; // (unique players completed / unique players started) × 100
     failRate: number;
+    funnelRate: number; // (Nth level completed users / 1st level started users) × 100
     churnStartComplete: number;
     churnCompleteNext: number;
     aps: number;
@@ -178,6 +180,19 @@ export class LevelFunnelService {
                 .filter((id): id is number => id !== undefined && id !== null)
                 .sort((a, b) => a - b);
 
+            // Get first level started users count for funnel rate calculation
+            let firstLevelStartedUsers = 0;
+            if (levelIds.length > 0) {
+                const firstLevelId = levelIds[0];
+                if (firstLevelId !== undefined) {
+                    const firstLevelEvents = levelGroups.get(firstLevelId);
+                    if (firstLevelEvents) {
+                        const firstLevelStarts = firstLevelEvents.filter(e => e.eventName === 'level_start');
+                        firstLevelStartedUsers = new Set(firstLevelStarts.map(e => e.userId)).size;
+                    }
+                }
+            }
+
             for (let i = 0; i < levelIds.length; i++) {
                 const levelId = levelIds[i]!; // Non-null assertion since we filtered
                 const nextLevelId: number | null = i < levelIds.length - 1 ? levelIds[i + 1]! : null;
@@ -185,7 +200,8 @@ export class LevelFunnelService {
                 const metrics = await this.calculateLevelMetrics(
                     levelId,
                     levelGroups.get(levelId)!,
-                    nextLevelId !== null ? levelGroups.get(nextLevelId) : undefined
+                    nextLevelId !== null ? levelGroups.get(nextLevelId) : undefined,
+                    firstLevelStartedUsers
                 );
                 
                 levelMetrics.push(metrics);
@@ -225,7 +241,8 @@ export class LevelFunnelService {
     private async calculateLevelMetrics(
         levelId: number,
         events: any[],
-        nextLevelEvents?: any[]
+        nextLevelEvents?: any[],
+        firstLevelStartedUsers?: number
     ): Promise<LevelMetrics> {
         // Separate events by type
         const startEvents = events.filter(e => e.eventName === 'level_start');
@@ -252,8 +269,16 @@ export class LevelFunnelService {
         // Win Rate: (Completed levels / Started levels) × 100
         const winRate = totalStarts > 0 ? (totalCompletes / totalStarts) * 100 : 0;
 
+        // Completion Rate: (unique players completed / unique players started) × 100
+        const completionRate = startedPlayers > 0 ? (completedPlayers / startedPlayers) * 100 : 0;
+
         // Fail Rate: (Fail events / Start events) × 100
         const failRate = totalStarts > 0 ? (totalFails / totalStarts) * 100 : 0;
+
+        // Funnel Rate: (Nth level completed users / 1st level started users) × 100
+        const funnelRate = firstLevelStartedUsers && firstLevelStartedUsers > 0
+            ? (completedPlayers / firstLevelStartedUsers) * 100
+            : 0;
 
         // Churn (Start-Complete): % of users who started but never completed
         const churnStartComplete = usersWhoStarted.size > 0
@@ -336,7 +361,9 @@ export class LevelFunnelService {
             completes: totalCompletes,
             fails: totalFails,
             winRate: Math.round(winRate * 100) / 100, // Round to 2 decimals
+            completionRate: Math.round(completionRate * 100) / 100, // Round to 2 decimals
             failRate: Math.round(failRate * 100) / 100,
+            funnelRate: Math.round(funnelRate * 100) / 100, // Round to 2 decimals
             churnStartComplete: Math.round(churnStartComplete * 100) / 100,
             churnCompleteNext: Math.round(churnCompleteNext * 100) / 100,
             aps: Math.round(aps * 100) / 100,

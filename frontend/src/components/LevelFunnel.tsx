@@ -12,7 +12,9 @@ interface LevelMetrics {
     completes: number;
     fails: number;
     winRate: number;
+    completionRate: number;
     failRate: number;
+    funnelRate: number;
     churnStartComplete: number;
     churnCompleteNext: number;
     aps: number;
@@ -191,6 +193,8 @@ export default function LevelFunnel({ isCollapsed = false }: LevelFunnelProps) {
             'Completes',
             'Fails',
             'Win Rate (%)',
+            'Completion Rate (%)',
+            'Funnel Rate (%)',
             'Fail Rate (%)',
             'Churn Start-Complete (%)',
             'Churn Complete-Next (%)',
@@ -210,6 +214,8 @@ export default function LevelFunnel({ isCollapsed = false }: LevelFunnelProps) {
             level.completes,
             level.fails,
             level.winRate.toFixed(2),
+            level.completionRate.toFixed(2),
+            level.funnelRate.toFixed(2),
             level.failRate.toFixed(2),
             level.churnStartComplete.toFixed(2),
             level.churnCompleteNext.toFixed(2),
@@ -445,6 +451,8 @@ export default function LevelFunnel({ isCollapsed = false }: LevelFunnelProps) {
                                 <th>Started</th>
                                 <th>Completed</th>
                                 <th>Win Rate</th>
+                                <th>Completion Rate</th>
+                                <th>Funnel Rate</th>
                                 <th>Fail Rate</th>
                                 <th>Churn (Start)</th>
                                 <th>Churn (Next)</th>
@@ -467,6 +475,24 @@ export default function LevelFunnel({ isCollapsed = false }: LevelFunnelProps) {
                                             'metric-value-low'
                                         }>
                                             {level.winRate.toFixed(1)}%
+                                        </span>
+                                    </td>
+                                    <td>
+                                        <span className={
+                                            level.completionRate >= 80 ? 'metric-value-high' : 
+                                            level.completionRate >= 60 ? 'metric-value-medium' : 
+                                            'metric-value-low'
+                                        }>
+                                            {level.completionRate.toFixed(1)}%
+                                        </span>
+                                    </td>
+                                    <td>
+                                        <span className={
+                                            level.funnelRate >= 60 ? 'metric-value-high' : 
+                                            level.funnelRate >= 40 ? 'metric-value-medium' : 
+                                            'metric-value-low'
+                                        }>
+                                            {level.funnelRate.toFixed(1)}%
                                         </span>
                                     </td>
                                     <td>{level.failRate.toFixed(1)}%</td>

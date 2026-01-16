@@ -65,13 +65,25 @@ export class CohortAnalyticsService {
             }
 
             if (filters?.platform) {
-                userFilters.platform = Array.isArray(filters.platform)
+                // Filter users by their events' platform
+                if (!userFilters.events) {
+                    userFilters.events = { some: {} };
+                } else if (!userFilters.events.some) {
+                    userFilters.events.some = {};
+                }
+                userFilters.events.some.platform = Array.isArray(filters.platform)
                     ? { in: filters.platform }
                     : filters.platform;
             }
 
             if (filters?.version) {
-                userFilters.version = Array.isArray(filters.version)
+                // Filter users by their events' appVersion
+                if (!userFilters.events) {
+                    userFilters.events = { some: {} };
+                } else if (!userFilters.events.some) {
+                    userFilters.events.some = {};
+                }
+                userFilters.events.some.appVersion = Array.isArray(filters.version)
                     ? { in: filters.version }
                     : filters.version;
             }
@@ -225,6 +237,28 @@ export class CohortAnalyticsService {
                 };
             }
 
+            if (filters?.platform) {
+                if (!userFilters.events) {
+                    userFilters.events = { some: {} };
+                } else if (!userFilters.events.some) {
+                    userFilters.events.some = {};
+                }
+                userFilters.events.some.platform = Array.isArray(filters.platform)
+                    ? { in: filters.platform }
+                    : filters.platform;
+            }
+
+            if (filters?.version) {
+                if (!userFilters.events) {
+                    userFilters.events = { some: {} };
+                } else if (!userFilters.events.some) {
+                    userFilters.events.some = {};
+                }
+                userFilters.events.some.appVersion = Array.isArray(filters.version)
+                    ? { in: filters.version }
+                    : filters.version;
+            }
+
             const users = await this.prisma.user.findMany({
                 where: userFilters,
                 select: { id: true, createdAt: true }
@@ -336,6 +370,28 @@ export class CohortAnalyticsService {
                 };
             }
 
+            if (filters?.platform) {
+                if (!userFilters.events) {
+                    userFilters.events = { some: {} };
+                } else if (!userFilters.events.some) {
+                    userFilters.events.some = {};
+                }
+                userFilters.events.some.platform = Array.isArray(filters.platform)
+                    ? { in: filters.platform }
+                    : filters.platform;
+            }
+
+            if (filters?.version) {
+                if (!userFilters.events) {
+                    userFilters.events = { some: {} };
+                } else if (!userFilters.events.some) {
+                    userFilters.events.some = {};
+                }
+                userFilters.events.some.appVersion = Array.isArray(filters.version)
+                    ? { in: filters.version }
+                    : filters.version;
+            }
+
             const users = await this.prisma.user.findMany({
                 where: userFilters,
                 select: { id: true, createdAt: true }
@@ -438,6 +494,28 @@ export class CohortAnalyticsService {
                             : filters.country
                     }
                 };
+            }
+
+            if (filters?.platform) {
+                if (!userFilters.events) {
+                    userFilters.events = { some: {} };
+                } else if (!userFilters.events.some) {
+                    userFilters.events.some = {};
+                }
+                userFilters.events.some.platform = Array.isArray(filters.platform)
+                    ? { in: filters.platform }
+                    : filters.platform;
+            }
+
+            if (filters?.version) {
+                if (!userFilters.events) {
+                    userFilters.events = { some: {} };
+                } else if (!userFilters.events.some) {
+                    userFilters.events.some = {};
+                }
+                userFilters.events.some.appVersion = Array.isArray(filters.version)
+                    ? { in: filters.version }
+                    : filters.version;
             }
 
             const users = await this.prisma.user.findMany({

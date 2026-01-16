@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import apiClient from '../lib/apiClient';
 import Health from './Health';
 import './Analytics.css';
@@ -89,6 +89,33 @@ const EngagementTab: React.FC<{ gameInfo: any }> = ({ gameInfo }) => {
   const [availableCountries, setAvailableCountries] = useState<string[]>(['All']);
   const [availableVersions, setAvailableVersions] = useState<string[]>(['All']);
   const [availablePlatforms, setAvailablePlatforms] = useState<string[]>(['All']);
+
+  // Refs for dropdowns
+  const dayDropdownRef = useRef<HTMLDivElement>(null);
+  const platformDropdownRef = useRef<HTMLDivElement>(null);
+  const countryDropdownRef = useRef<HTMLDivElement>(null);
+  const versionDropdownRef = useRef<HTMLDivElement>(null);
+
+  // Click outside to close dropdowns
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (dayDropdownRef.current && !dayDropdownRef.current.contains(event.target as Node)) {
+        setShowDaySelector(false);
+      }
+      if (platformDropdownRef.current && !platformDropdownRef.current.contains(event.target as Node)) {
+        setShowPlatformSelector(false);
+      }
+      if (countryDropdownRef.current && !countryDropdownRef.current.contains(event.target as Node)) {
+        setShowCountrySelector(false);
+      }
+      if (versionDropdownRef.current && !versionDropdownRef.current.contains(event.target as Node)) {
+        setShowVersionSelector(false);
+      }
+    };
+
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
 
   const fetchCohortData = async () => {
     setLoading(true);
@@ -336,11 +363,16 @@ const EngagementTab: React.FC<{ gameInfo: any }> = ({ gameInfo }) => {
             onChange={(e) => handleFilterChange('endDate', e.target.value)}
           />
         </div>
-        <div className="filter-group day-selector-group">
+        <div className="filter-group day-selector-group" ref={dayDropdownRef}>
           <label>Days to Show</label>
           <button 
             className="day-selector-button"
-            onClick={() => setShowDaySelector(!showDaySelector)}
+            onClick={() => {
+              setShowDaySelector(!showDaySelector);
+              setShowPlatformSelector(false);
+              setShowCountrySelector(false);
+              setShowVersionSelector(false);
+            }}
           >
             {selectedDays.length} days selected ▾
           </button>
@@ -365,11 +397,16 @@ const EngagementTab: React.FC<{ gameInfo: any }> = ({ gameInfo }) => {
             </div>
           )}
         </div>
-        <div className="filter-group day-selector-group">
+        <div className="filter-group day-selector-group" ref={platformDropdownRef}>
           <label>Platform</label>
           <button 
             className="day-selector-button"
-            onClick={() => setShowPlatformSelector(!showPlatformSelector)}
+            onClick={() => {
+              setShowPlatformSelector(!showPlatformSelector);
+              setShowDaySelector(false);
+              setShowCountrySelector(false);
+              setShowVersionSelector(false);
+            }}
           >
             {selectedPlatforms.length > 0 ? `${selectedPlatforms.length} selected` : 'All platforms'} ▾
           </button>
@@ -394,11 +431,16 @@ const EngagementTab: React.FC<{ gameInfo: any }> = ({ gameInfo }) => {
             </div>
           )}
         </div>
-        <div className="filter-group day-selector-group">
+        <div className="filter-group day-selector-group" ref={countryDropdownRef}>
           <label>Country</label>
           <button 
             className="day-selector-button"
-            onClick={() => setShowCountrySelector(!showCountrySelector)}
+            onClick={() => {
+              setShowCountrySelector(!showCountrySelector);
+              setShowDaySelector(false);
+              setShowPlatformSelector(false);
+              setShowVersionSelector(false);
+            }}
           >
             {selectedCountries.length > 0 ? `${selectedCountries.length} selected` : 'All countries'} ▾
           </button>
@@ -423,11 +465,16 @@ const EngagementTab: React.FC<{ gameInfo: any }> = ({ gameInfo }) => {
             </div>
           )}
         </div>
-        <div className="filter-group day-selector-group">
+        <div className="filter-group day-selector-group" ref={versionDropdownRef}>
           <label>Build/Version</label>
           <button 
             className="day-selector-button"
-            onClick={() => setShowVersionSelector(!showVersionSelector)}
+            onClick={() => {
+              setShowVersionSelector(!showVersionSelector);
+              setShowDaySelector(false);
+              setShowPlatformSelector(false);
+              setShowCountrySelector(false);
+            }}
           >
             {selectedVersions.length > 0 ? `${selectedVersions.length} selected` : 'All versions'} ▾
           </button>

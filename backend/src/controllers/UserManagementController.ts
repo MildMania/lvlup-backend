@@ -17,25 +17,18 @@ export class UserManagementController {
                 });
             }
 
-            const { email, password, firstName, lastName, teamId, role, gameAccess } = req.body;
+            const { email, firstName, lastName, teamId, role, gameAccess } = req.body;
 
-            if (!email || !password || !firstName || !lastName) {
+            if (!email || !firstName || !lastName) {
                 return res.status(400).json({
                     success: false,
-                    error: 'Email, password, first name, and last name are required',
+                    error: 'Email, first name, and last name are required',
                 });
             }
 
-            if (password.length < 8) {
-                return res.status(400).json({
-                    success: false,
-                    error: 'Password must be at least 8 characters long',
-                });
-            }
-
-            const user = await userManagementService.createUser({
+            const result = await userManagementService.createUser({
                 email,
-                password,
+                password: '', // Password is auto-generated in service, this field is ignored
                 firstName,
                 lastName,
                 teamId,
@@ -48,7 +41,8 @@ export class UserManagementController {
                 success: true,
                 data: {
                     message: 'User created successfully',
-                    userId: user.id,
+                    userId: result.user.id,
+                    generatedPassword: result.generatedPassword, // Return password for admin to share
                 },
             });
         } catch (error: any) {
@@ -120,11 +114,11 @@ export class UserManagementController {
             }
 
             const { id } = req.params;
-            const { firstName, lastName, isActive } = req.body;
+            const { firstName, lastName, email, isActive, teamId, role } = req.body;
 
             await userManagementService.updateUser(
                 id,
-                { firstName, lastName, isActive },
+                { firstName, lastName, email, isActive, teamId, role },
                 req.dashboardUser.id
             );
 
@@ -163,7 +157,35 @@ export class UserManagementController {
         } catch (error: any) {
             return res.status(500).json({
                 success: false,
-                error: 'Failed to deactivate user',
+                error: error.message || 'Failed to deactivate user',
+            });
+        }
+    }
+
+    /**
+     * Permanently delete user (Admin only)
+     */
+    async deleteUser(req: DashboardAuthRequest, res: Response<ApiResponse>) {
+        try {
+            if (!req.dashboardUser) {
+                return res.status(401).json({
+                    success: false,
+                    error: 'Not authenticated',
+                });
+            }
+
+            const { id } = req.params;
+
+            await userManagementService.deleteUser(id, req.dashboardUser.id);
+
+            return res.json({
+                success: true,
+                data: { message: 'User permanently deleted' },
+            });
+        } catch (error: any) {
+            return res.status(400).json({
+                success: false,
+                error: error.message || 'Failed to delete user',
             });
         }
     }
@@ -237,31 +259,19 @@ export class UserManagementController {
             }
 
             const { id } = req.params;
-            const { newPassword } = req.body;
 
-            if (!newPassword) {
-                return res.status(400).json({
-                    success: false,
-                    error: 'New password is required',
-                });
-            }
-
-            if (newPassword.length < 8) {
-                return res.status(400).json({
-                    success: false,
-                    error: 'Password must be at least 8 characters long',
-                });
-            }
-
-            await userManagementService.resetUserPassword(
+            // Generate automatic password - no longer accept password from request
+            const result = await userManagementService.resetUserPassword(
                 id,
-                newPassword,
                 req.dashboardUser.id
             );
 
             return res.json({
                 success: true,
-                data: { message: 'Password reset successfully' },
+                data: { 
+                    message: 'Password reset successfully',
+                    generatedPassword: result.generatedPassword, // Return password for admin to share
+                },
             });
         } catch (error: any) {
             return res.status(500).json({
@@ -286,6 +296,67 @@ export class UserManagementController {
             return res.status(500).json({
                 success: false,
                 error: 'Failed to get user statistics',
+            });
+        }
+    }
+
+    /**
+     * Get current user's own profile (any authenticated user)
+     */
+    async getMyProfile(req: DashboardAuthRequest, res: Response<ApiResponse>) {
+        try {
+            if (!req.dashboardUser) {
+                return res.status(401).json({
+                    success: false,
+                    error: 'Not authenticated',
+                });
+            }
+
+            const user = await userManagementService.getUserById(req.dashboardUser.id);
+
+            return res.json({
+                success: true,
+                data: user,
+            });
+        } catch (error: any) {
+            return res.status(404).json({
+                success: false,
+                error: error.message || 'User not found',
+            });
+        }
+    }
+
+    /**
+     * Update current user's own profile (any authenticated user)
+     * Users can only update their own firstName, lastName, and email
+     * They cannot change their role or team
+     */
+    async updateMyProfile(req: DashboardAuthRequest, res: Response<ApiResponse>) {
+        try {
+            if (!req.dashboardUser) {
+                return res.status(401).json({
+                    success: false,
+                    error: 'Not authenticated',
+                });
+            }
+
+            const { firstName, lastName, email } = req.body;
+
+            // Users can only update their own basic info, not role/team/status
+            await userManagementService.updateUser(
+                req.dashboardUser.id,
+                { firstName, lastName, email },
+                req.dashboardUser.id
+            );
+
+            return res.json({
+                success: true,
+                data: { message: 'Profile updated successfully' },
+            });
+        } catch (error: any) {
+            return res.status(400).json({
+                success: false,
+                error: error.message || 'Failed to update profile',
             });
         }
     }

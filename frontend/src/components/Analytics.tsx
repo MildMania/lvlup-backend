@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { RefreshCw } from 'lucide-react';
 import apiClient from '../lib/apiClient';
 import Health from './Health';
 import './Analytics.css';
@@ -459,7 +460,8 @@ const EngagementTab: React.FC<{ gameInfo: any }> = ({ gameInfo }) => {
       {/* Data Table */}
       {loading ? (
         <div className="loading-container">
-          <div className="loading-spinner">⟳ Loading...</div>
+          <RefreshCw size={32} className="spinning" />
+          <p>Loading...</p>
         </div>
       ) : selectedMetric === 'retention' ? (
         <div className="cohort-table-container">

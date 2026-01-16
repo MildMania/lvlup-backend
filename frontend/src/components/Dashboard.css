@@ -674,9 +674,6 @@
   gap: 16px;
 }
 
-.loading-spinner {
-  animation: spin 1s linear infinite;
-}
 
 .chart-large {
   grid-column: span 2;
@@ -897,8 +894,8 @@
 }
 
 .loading-spinner {
-  width: 40px;
-  height: 40px;
+  width: 64px;
+  height: 64px;
   border: 4px solid #e5e7eb;
   border-top: 4px solid #3b82f6;
   border-radius: 50%;
@@ -906,8 +903,12 @@
 }
 
 @keyframes spin {
-  0% { transform: rotate(0deg); }
-  100% { transform: rotate(360deg); }
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
+.spinning {
+  animation: spin 1s linear infinite;
 }
 
 .dashboard-loading p {

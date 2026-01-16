@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
 import apiClient from '../lib/apiClient';
-import { UserPlus, Shield, Lock, Unlock, AlertCircle, User as UserIcon, Edit } from 'lucide-react';
+import { useAuth } from '../contexts/AuthContext';
+import { UserPlus, Shield, Lock, Unlock, AlertCircle, Edit, Trash2, Key, RefreshCw } from 'lucide-react';
 import './UserManagement.css';
 
 interface User {
@@ -31,11 +31,17 @@ interface UserManagementProps {
 }
 
 const UserManagement: React.FC<UserManagementProps> = ({ isCollapsed = false }) => {
+    const { user: currentUser } = useAuth();
     const [users, setUsers] = useState<User[]>([]);
     const [teams, setTeams] = useState<Team[]>([]);
     const [loading, setLoading] = useState(true);
     const [showCreateForm, setShowCreateForm] = useState(false);
     const [editingUser, setEditingUser] = useState<User | null>(null);
+    const [showPasswordReset, setShowPasswordReset] = useState(false);
+    const [passwordResetUserId, setPasswordResetUserId] = useState<string | null>(null);
+    const [newPassword, setNewPassword] = useState('');
+    const [confirmPassword, setConfirmPassword] = useState('');
+    const [deleteConfirm, setDeleteConfirm] = useState<string | null>(null);
     const [formData, setFormData] = useState({
         email: '',
         password: '',
@@ -45,6 +51,71 @@ const UserManagement: React.FC<UserManagementProps> = ({ isCollapsed = false }) 
         role: 'VIEWER',
     });
     const [error, setError] = useState('');
+    const [success, setSuccess] = useState('');
+    const [generatedPassword, setGeneratedPassword] = useState<string | null>(null);
+    const [showGeneratedPassword, setShowGeneratedPassword] = useState(false);
+
+    // Get current user's highest role
+    const getCurrentUserRole = (): string => {
+        if (!currentUser?.teamMemberships || currentUser.teamMemberships.length === 0) {
+            return 'VIEWER';
+        }
+        
+        const roleHierarchy = ['VIEWER', 'EDITOR', 'GAME_OWNER', 'ADMIN', 'SUPER_ADMIN'];
+        let highestRole = 'VIEWER';
+        
+        currentUser.teamMemberships.forEach(membership => {
+            if (roleHierarchy.indexOf(membership.role) > roleHierarchy.indexOf(highestRole)) {
+                highestRole = membership.role;
+            }
+        });
+        
+        return highestRole;
+    };
+
+    // Get user's highest role
+    const getUserHighestRole = (user: User): string => {
+        if (!user.teamMemberships || user.teamMemberships.length === 0) {
+            return 'VIEWER';
+        }
+        
+        const roleHierarchy = ['VIEWER', 'EDITOR', 'GAME_OWNER', 'ADMIN', 'SUPER_ADMIN'];
+        let highestRole = 'VIEWER';
+        
+        user.teamMemberships.forEach(membership => {
+            if (roleHierarchy.indexOf(membership.role) > roleHierarchy.indexOf(highestRole)) {
+                highestRole = membership.role;
+            }
+        });
+        
+        return highestRole;
+    };
+
+    // Check if current user can modify another user
+    const canModifyUser = (targetUser: User): boolean => {
+        // Users cannot modify themselves
+        if (currentUser && targetUser.id === currentUser.id) {
+            return false;
+        }
+        
+        const currentRole = getCurrentUserRole();
+        const targetRole = getUserHighestRole(targetUser);
+        
+        const roleHierarchy = ['VIEWER', 'EDITOR', 'GAME_OWNER', 'ADMIN', 'SUPER_ADMIN'];
+        const currentRoleIndex = roleHierarchy.indexOf(currentRole);
+        const targetRoleIndex = roleHierarchy.indexOf(targetRole);
+        
+        // Super admins can modify anyone except other super admins at same level
+        if (currentRole === 'SUPER_ADMIN') {
+            // Super admins can only modify users with lower roles, not other super admins
+            return targetRole !== 'SUPER_ADMIN';
+        }
+        
+        // Users can only modify users with LOWER roles, not same or higher
+        // Admins cannot modify other admins or super admins
+        // Editors cannot modify other editors, game owners, admins, or super admins
+        return currentRoleIndex > targetRoleIndex;
+    };
 
     useEffect(() => {
         fetchData();
@@ -72,7 +143,14 @@ const UserManagement: React.FC<UserManagementProps> = ({ isCollapsed = false }) 
         setError('');
 
         try {
-            await apiClient.post('/users', formData);
+            const response = await apiClient.post('/users', formData);
+            
+            // Show generated password to admin
+            if (response.data.data.generatedPassword) {
+                setGeneratedPassword(response.data.data.generatedPassword);
+                setShowGeneratedPassword(true);
+            }
+            
             setShowCreateForm(false);
             setFormData({
                 email: '',
@@ -118,15 +196,22 @@ const UserManagement: React.FC<UserManagementProps> = ({ isCollapsed = false }) 
             console.log('[UserManagement] Updating user:', editingUser.id);
             console.log('[UserManagement] Form data:', formData);
             
-            // Backend currently only supports updating firstName, lastName, and isActive
-            // Email, password, team, and role updates need backend enhancement
+            // Send all editable fields to backend
             const updateData: any = {
                 firstName: formData.firstName,
                 lastName: formData.lastName,
+                email: formData.email,
+                teamId: formData.teamId, // Always send teamId (empty string means remove team)
+                role: formData.role, // Always send role
             };
+
+            console.log('[UserManagement] Sending update data:', updateData);
 
             const response = await apiClient.put(`/users/${editingUser.id}`, updateData);
             console.log('[UserManagement] Update response:', response.data);
+            
+            setSuccess('User updated successfully');
+            setTimeout(() => setSuccess(''), 3000);
             
             setEditingUser(null);
             setFormData({
@@ -137,9 +222,6 @@ const UserManagement: React.FC<UserManagementProps> = ({ isCollapsed = false }) 
                 teamId: '',
                 role: 'VIEWER',
             });
-            
-            // Show success message
-            setError('');
             
             // Refetch data
             await fetchData();
@@ -174,20 +256,72 @@ const UserManagement: React.FC<UserManagementProps> = ({ isCollapsed = false }) 
     const handleToggleActive = async (userId: string, isActive: boolean) => {
         try {
             if (isActive) {
-                await apiClient.delete(`/users/${userId}`);
+                await apiClient.post(`/users/${userId}/deactivate`);
             } else {
                 await apiClient.post(`/users/${userId}/activate`);
             }
+            setSuccess(isActive ? 'User deactivated successfully' : 'User activated successfully');
+            setTimeout(() => setSuccess(''), 3000);
             fetchData();
         } catch (err: any) {
             setError(err.response?.data?.error || 'Failed to update user');
         }
     };
 
+    const handlePasswordReset = async (userId: string) => {
+        setPasswordResetUserId(userId);
+        setShowPasswordReset(true);
+        setError('');
+    };
+
+    const handlePasswordResetSubmit = async (e: React.FormEvent) => {
+        e.preventDefault();
+        if (!passwordResetUserId) return;
+
+        try {
+            const response = await apiClient.post(`/users/${passwordResetUserId}/reset-password`);
+            
+            // Show generated password to admin
+            if (response.data.data.generatedPassword) {
+                setGeneratedPassword(response.data.data.generatedPassword);
+                setShowGeneratedPassword(true);
+            }
+            
+            setSuccess('Password reset successfully');
+            setTimeout(() => setSuccess(''), 3000);
+            setShowPasswordReset(false);
+            setPasswordResetUserId(null);
+        } catch (err: any) {
+            setError(err.response?.data?.error || 'Failed to reset password');
+        }
+    };
+
+    const handleDeleteUser = async (userId: string) => {
+        if (deleteConfirm !== userId) {
+            setDeleteConfirm(userId);
+            return;
+        }
+
+        try {
+            await apiClient.delete(`/users/${userId}`);
+            setSuccess('User permanently deleted');
+            setTimeout(() => setSuccess(''), 3000);
+            setDeleteConfirm(null);
+            fetchData();
+        } catch (err: any) {
+            setError(err.response?.data?.error || 'Failed to delete user');
+        }
+    };
+
+    const cancelDelete = () => {
+        setDeleteConfirm(null);
+    };
+
     if (loading) {
         return (
-            <div className="loading-spinner">
-                <div className="spinner"></div>
+            <div className="loading-container">
+                <RefreshCw size={48} className="spinning" />
+                <p>Loading users...</p>
             </div>
         );
     }
@@ -217,21 +351,120 @@ const UserManagement: React.FC<UserManagementProps> = ({ isCollapsed = false }) 
                 </div>
             )}
 
+            {success && (
+                <div className="success-banner">
+                    <span>✓ {success}</span>
+                </div>
+            )}
+
+            {/* Password Reset Modal */}
+            {showPasswordReset && (
+                <div className="modal-overlay" onClick={() => setShowPasswordReset(false)}>
+                    <div className="modal-content" onClick={(e) => e.stopPropagation()}>
+                        <h3>Reset User Password</h3>
+                        <p style={{ color: 'var(--text-secondary)', marginBottom: '20px' }}>
+                            This will generate a new random password for the user. You'll be shown the password once to share with the user.
+                        </p>
+                        <form onSubmit={handlePasswordResetSubmit}>
+                            <div className="form-actions">
+                                <button
+                                    type="button"
+                                    onClick={() => {
+                                        setShowPasswordReset(false);
+                                        setPasswordResetUserId(null);
+                                    }}
+                                    className="btn btn-secondary"
+                                >
+                                    Cancel
+                                </button>
+                                <button type="submit" className="btn btn-primary">
+                                    <Key size={18} />
+                                    Generate New Password
+                                </button>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+            )}
+
+            {/* Generated Password Modal */}
+            {showGeneratedPassword && generatedPassword && (
+                <div className="modal-overlay" onClick={() => setShowGeneratedPassword(false)}>
+                    <div className="modal-content" onClick={(e) => e.stopPropagation()}>
+                        <h3>✅ Password Generated</h3>
+                        <p style={{ color: 'var(--text-secondary)', marginBottom: '20px' }}>
+                            Please share this password with the user. It will not be shown again.
+                        </p>
+                        <div style={{
+                            background: 'rgba(16, 185, 129, 0.1)',
+                            border: '2px solid #10b981',
+                            borderRadius: '8px',
+                            padding: '20px',
+                            marginBottom: '20px',
+                            textAlign: 'center'
+                        }}>
+                            <div style={{ fontSize: '0.875rem', color: 'var(--text-secondary)', marginBottom: '8px' }}>
+                                Generated Password:
+                            </div>
+                            <div style={{
+                                fontSize: '1.5rem',
+                                fontWeight: 'bold',
+                                color: '#10b981',
+                                fontFamily: 'monospace',
+                                letterSpacing: '2px'
+                            }}>
+                                {generatedPassword}
+                            </div>
+                            <button
+                                onClick={() => {
+                                    navigator.clipboard.writeText(generatedPassword);
+                                    setSuccess('Password copied to clipboard!');
+                                    setTimeout(() => setSuccess(''), 2000);
+                                }}
+                                style={{
+                                    marginTop: '12px',
+                                    padding: '8px 16px',
+                                    background: '#10b981',
+                                    color: 'white',
+                                    border: 'none',
+                                    borderRadius: '6px',
+                                    cursor: 'pointer',
+                                    fontSize: '0.875rem'
+                                }}
+                            >
+                                📋 Copy to Clipboard
+                            </button>
+                        </div>
+                        <div style={{
+                            background: 'rgba(245, 158, 11, 0.1)',
+                            border: '1px solid rgba(245, 158, 11, 0.3)',
+                            borderRadius: '8px',
+                            padding: '12px',
+                            marginBottom: '20px',
+                            fontSize: '0.875rem',
+                            color: '#f59e0b'
+                        }}>
+                            ⚠️ <strong>Important:</strong> This password will not be shown again. Make sure to save it or share it with the user before closing this dialog.
+                        </div>
+                        <div className="form-actions">
+                            <button
+                                type="button"
+                                onClick={() => {
+                                    setShowGeneratedPassword(false);
+                                    setGeneratedPassword(null);
+                                }}
+                                className="btn btn-primary"
+                            >
+                                I've Saved the Password
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
             {(showCreateForm || editingUser) && (
                 <div className="team-form-card">
                     <h3>{editingUser ? 'Edit User' : 'Create New User'}</h3>
-                    {editingUser && (
-                        <div style={{ 
-                            padding: '12px', 
-                            background: 'rgba(59, 130, 246, 0.1)', 
-                            borderRadius: '8px', 
-                            marginBottom: '16px',
-                            fontSize: '0.875rem',
-                            color: 'var(--text-secondary)'
-                        }}>
-                            ℹ️ Currently you can only edit name. Email, password, team, and role editing coming soon.
-                        </div>
-                    )}
                     <form onSubmit={editingUser ? handleUpdate : handleCreate}>
                         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '20px' }}>
                             <div className="form-group">
@@ -266,75 +499,103 @@ const UserManagement: React.FC<UserManagementProps> = ({ isCollapsed = false }) 
                             </div>
                         </div>
                         <div className="form-group">
-                            <label>Email {editingUser && '(read-only for now)'}</label>
+                            <label>Email</label>
                             <input
                                 type="email"
-                                required={!editingUser}
+                                required
                                 value={formData.email}
                                 onChange={(e) =>
                                     setFormData({ ...formData, email: e.target.value })
                                 }
                                 placeholder="john.doe@example.com"
-                                disabled={!!editingUser}
-                                style={editingUser ? { opacity: 0.6, cursor: 'not-allowed' } : {}}
                             />
                         </div>
                         {!editingUser && (
-                            <>
-                                <div className="form-group">
-                                    <label>Password</label>
-                                    <input
-                                        type="password"
-                                        required
-                                        value={formData.password}
-                                        onChange={(e) =>
-                                            setFormData({
-                                                ...formData,
-                                                password: e.target.value,
-                                            })
-                                        }
-                                        placeholder="••••••••"
-                                    />
-                                </div>
-                                <div className="form-group">
-                                    <label>Team</label>
-                                    <select
-                                        value={formData.teamId}
-                                        onChange={(e) =>
-                                            setFormData({ ...formData, teamId: e.target.value })
-                                        }
-                                    >
-                                        <option value="">No Team</option>
-                                        {teams.map((team) => (
-                                            <option key={team.id} value={team.id}>
-                                                {team.name}
-                                            </option>
-                                        ))}
-                                    </select>
-                                </div>
-                                <div className="form-group">
-                                    <label>Role</label>
-                                    <select
-                                        value={formData.role}
-                                        onChange={(e) =>
-                                            setFormData({ ...formData, role: e.target.value })
-                                        }
-                                    >
-                                        <option value="VIEWER">Viewer</option>
-                                        <option value="EDITOR">Editor</option>
-                                        <option value="GAME_OWNER">Game Owner</option>
-                                        <option value="ADMIN">Admin</option>
-                                    </select>
-                                </div>
-                            </>
+                            <div style={{ 
+                                padding: '12px', 
+                                background: 'rgba(59, 130, 246, 0.1)', 
+                                borderRadius: '8px',
+                                fontSize: '0.875rem',
+                                color: '#3b82f6',
+                                marginBottom: '16px'
+                            }}>
+                                🔒 A secure random password will be automatically generated and shown to you after creating the user.
+                            </div>
                         )}
                         {editingUser && (
+                            <div style={{ 
+                                padding: '12px', 
+                                background: 'rgba(245, 158, 11, 0.1)', 
+                                borderRadius: '8px',
+                                fontSize: '0.875rem',
+                                color: '#f59e0b',
+                                marginBottom: '16px'
+                            }}>
+                                💡 To change password, use the "Reset Password" button in the actions column.
+                            </div>
+                        )}
+                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '20px' }}>
+                            <div className="form-group">
+                                <label>Team {editingUser?.teamMemberships?.some(m => m.role === 'SUPER_ADMIN') && '(locked for super admin)'}</label>
+                                <select
+                                    value={formData.teamId}
+                                    onChange={(e) =>
+                                        setFormData({ ...formData, teamId: e.target.value })
+                                    }
+                                    disabled={editingUser?.teamMemberships?.some(m => m.role === 'SUPER_ADMIN')}
+                                    style={editingUser?.teamMemberships?.some(m => m.role === 'SUPER_ADMIN') ? { opacity: 0.6, cursor: 'not-allowed' } : {}}
+                                >
+                                    <option value="">No Team</option>
+                                    {teams.map((team) => (
+                                        <option key={team.id} value={team.id}>
+                                            {team.name}
+                                        </option>
+                                    ))}
+                                </select>
+                            </div>
+                            <div className="form-group">
+                                <label>Role {editingUser?.teamMemberships?.some(m => m.role === 'SUPER_ADMIN') && '(locked for super admin)'}</label>
+                                <select
+                                    value={formData.role}
+                                    onChange={(e) =>
+                                        setFormData({ ...formData, role: e.target.value })
+                                    }
+                                    disabled={editingUser?.teamMemberships?.some(m => m.role === 'SUPER_ADMIN')}
+                                    style={editingUser?.teamMemberships?.some(m => m.role === 'SUPER_ADMIN') ? { opacity: 0.6, cursor: 'not-allowed' } : {}}
+                                >
+                                    <option value="VIEWER">Viewer</option>
+                                    <option value="EDITOR">Editor</option>
+                                    <option value="GAME_OWNER">Game Owner</option>
+                                    <option value="ADMIN">Admin</option>
+                                    <option value="SUPER_ADMIN">Super Admin</option>
+                                </select>
+                            </div>
+                        </div>
+                        {editingUser?.teamMemberships?.some(m => m.role === 'SUPER_ADMIN') && (
+                            <div style={{ 
+                                padding: '12px', 
+                                background: 'rgba(239, 68, 68, 0.1)', 
+                                borderRadius: '8px',
+                                fontSize: '0.875rem',
+                                color: '#ef4444',
+                                marginTop: '12px',
+                                marginBottom: '12px',
+                                display: 'flex',
+                                alignItems: 'center',
+                                gap: '8px'
+                            }}>
+                                <Shield size={16} />
+                                <span><strong>Super Admin Protection:</strong> Team and role cannot be changed for super admin users to maintain system security.</span>
+                            </div>
+                        )}
+                        {editingUser && !editingUser.teamMemberships?.some(m => m.role === 'SUPER_ADMIN') && (
                             <div style={{ 
                                 padding: '12px', 
                                 background: 'rgba(107, 114, 128, 0.1)', 
                                 borderRadius: '8px',
                                 fontSize: '0.875rem',
-                                color: 'var(--text-secondary)'
+                                color: 'var(--text-secondary)',
+                                marginTop: '16px'
                             }}>
                                 <strong>Current Teams:</strong>
                                 <div style={{ marginTop: '8px' }}>
@@ -436,15 +697,28 @@ const UserManagement: React.FC<UserManagementProps> = ({ isCollapsed = false }) 
                                             <button
                                                 onClick={() => handleEdit(user)}
                                                 className="action-btn edit"
-                                                title="Edit user"
+                                                title={canModifyUser(user) ? "Edit user" : "Insufficient permissions"}
+                                                disabled={!canModifyUser(user)}
+                                                style={!canModifyUser(user) ? { opacity: 0.5, cursor: 'not-allowed' } : {}}
                                             >
                                                 <Edit size={16} />
+                                            </button>
+                                            <button
+                                                onClick={() => handlePasswordReset(user.id)}
+                                                className="action-btn password"
+                                                title={canModifyUser(user) ? "Reset password" : "Insufficient permissions"}
+                                                disabled={!canModifyUser(user)}
+                                                style={!canModifyUser(user) ? { opacity: 0.5, cursor: 'not-allowed' } : {}}
+                                            >
+                                                <Key size={16} />
                                             </button>
                                             {user.isLocked && (
                                                 <button
                                                     onClick={() => handleUnlock(user.id)}
                                                     className="action-btn unlock"
-                                                    title="Unlock"
+                                                    title={canModifyUser(user) ? "Unlock" : "Insufficient permissions"}
+                                                    disabled={!canModifyUser(user)}
+                                                    style={!canModifyUser(user) ? { opacity: 0.5, cursor: 'not-allowed' } : {}}
                                                 >
                                                     <Unlock size={16} />
                                                 </button>
@@ -454,10 +728,31 @@ const UserManagement: React.FC<UserManagementProps> = ({ isCollapsed = false }) 
                                                     handleToggleActive(user.id, user.isActive)
                                                 }
                                                 className={`action-btn ${user.isActive ? 'deactivate' : 'activate'}`}
-                                                title={user.isActive ? 'Deactivate' : 'Activate'}
+                                                title={canModifyUser(user) ? (user.isActive ? 'Deactivate' : 'Activate') : "Insufficient permissions"}
+                                                disabled={!canModifyUser(user)}
+                                                style={!canModifyUser(user) ? { opacity: 0.5, cursor: 'not-allowed' } : {}}
                                             >
                                                 <Shield size={16} />
                                             </button>
+                                            <button
+                                                onClick={() => handleDeleteUser(user.id)}
+                                                onDoubleClick={() => handleDeleteUser(user.id)}
+                                                className={`action-btn delete ${deleteConfirm === user.id ? 'confirm' : ''}`}
+                                                title={canModifyUser(user) ? (deleteConfirm === user.id ? 'Click again to confirm' : 'Delete user') : "Insufficient permissions"}
+                                                disabled={!canModifyUser(user)}
+                                                style={!canModifyUser(user) ? { opacity: 0.5, cursor: 'not-allowed' } : {}}
+                                            >
+                                                <Trash2 size={16} />
+                                            </button>
+                                            {deleteConfirm === user.id && (
+                                                <button
+                                                    onClick={cancelDelete}
+                                                    className="action-btn cancel"
+                                                    title="Cancel delete"
+                                                >
+                                                    ✕
+                                                </button>
+                                            )}
                                         </div>
                                     </td>
                                 </tr>

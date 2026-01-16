@@ -19,6 +19,7 @@ import {
   GitBranch,
   Trash2,
   UsersRound,
+  User,
   LogOut
 } from 'lucide-react';
 import { useTheme } from '../contexts/ThemeContext';
@@ -71,7 +72,12 @@ const Sidebar: React.FC<SidebarProps> = ({
   });
   const [isAddGameModalOpen, setIsAddGameModalOpen] = useState(false);
   const { isDarkMode, toggleTheme } = useTheme();
-  const { logout } = useAuth();
+  const { logout, user } = useAuth();
+
+  // Check if user has admin privileges
+  const isAdmin = user?.teamMemberships?.some(
+    membership => ['ADMIN', 'SUPER_ADMIN'].includes(membership.role)
+  ) || false;
 
   // Notify parent of initial collapsed state
   useEffect(() => {
@@ -100,10 +106,19 @@ const Sidebar: React.FC<SidebarProps> = ({
   ];
 
   const settingsItems = [
-    { id: 'teams', label: 'Teams', icon: UsersRound },
-    { id: 'users', label: 'Users', icon: Users },
-    { id: 'settings', label: 'General', icon: Settings },
+    { id: 'profile', label: 'My Profile', icon: User },
+    { id: 'teams', label: 'Teams', icon: UsersRound, adminOnly: true },
+    { id: 'users', label: 'Users', icon: Users, adminOnly: true },
+    { id: 'settings', label: 'General', icon: Settings, adminOnly: true },
   ];
+
+  // Filter settings items based on user role
+  const visibleSettingsItems = settingsItems.filter(item => {
+    if (item.adminOnly && !isAdmin) {
+      return false;
+    }
+    return true;
+  });
 
   const toggleCollapse = () => {
     const newCollapsedState = !isCollapsed;
@@ -287,7 +302,7 @@ const Sidebar: React.FC<SidebarProps> = ({
                 
                 {isSettingsExpanded && (
                   <ul className="settings-submenu">
-                    {settingsItems.map((item) => {
+                    {visibleSettingsItems.map((item) => {
                       const IconComponent = item.icon;
                       return (
                         <li key={item.id} className="submenu-item">
@@ -311,7 +326,7 @@ const Sidebar: React.FC<SidebarProps> = ({
               </li>
             ) : (
               // Collapsed sidebar - show Settings items as regular menu items
-              settingsItems.map((item) => {
+              visibleSettingsItems.map((item) => {
                 const IconComponent = item.icon;
                 return (
                   <li key={item.id} className="nav-item">

@@ -23,13 +23,35 @@ interface CreateUserInput {
 
 export class UserManagementService {
     /**
+     * Generate a secure random password
+     */
+    private generatePassword(): string {
+        const crypto = require('crypto');
+        const length = 12;
+        const charset = 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789!@#$%^&*';
+        let password = '';
+        const randomBytes = crypto.randomBytes(length);
+        
+        for (let i = 0; i < length; i++) {
+            password += charset[randomBytes[i] % charset.length];
+        }
+        
+        // Ensure at least one of each type
+        password = 'Aa1!' + password.substring(4);
+        return password;
+    }
+
+    /**
      * Create a new user (Admin only)
      */
     async createUser(input: CreateUserInput) {
-        // Register the user
+        // Generate automatic password instead of using provided one
+        const generatedPassword = this.generatePassword();
+        
+        // Register the user with generated password
         const user = await authService.register({
             email: input.email,
-            password: input.password,
+            password: generatedPassword,
             firstName: input.firstName,
             lastName: input.lastName,
             createdBy: input.createdBy,
@@ -72,7 +94,10 @@ export class UserManagementService {
             },
         });
 
-        return user;
+        return {
+            user,
+            generatedPassword, // Return the password so admin can share it with the user
+        };
     }
 
     /**
@@ -117,7 +142,8 @@ export class UserManagementService {
                     lastLogin: true,
                     createdAt: true,
                     teamMemberships: {
-                        include: {
+                        select: {
+                            role: true,
                             team: {
                                 select: {
                                     id: true,
@@ -170,7 +196,8 @@ export class UserManagementService {
                 updatedAt: true,
                 createdBy: true,
                 teamMemberships: {
-                    include: {
+                    select: {
+                        role: true,
                         team: {
                             select: {
                                 id: true,
@@ -214,14 +241,145 @@ export class UserManagementService {
         data: {
             firstName?: string;
             lastName?: string;
+            email?: string;
             isActive?: boolean;
+            teamId?: string;
+            role?: string;
         },
         updatedBy: string
     ) {
+        // Get user to check if they are a super admin
+        const userToUpdate = await prisma.dashboardUser.findUnique({
+            where: { id: userId },
+            include: {
+                teamMemberships: true,
+            },
+        });
+
+        if (!userToUpdate) {
+            throw new Error('User not found');
+        }
+
+        // Check if user is a SUPER_ADMIN
+        const isSuperAdmin = userToUpdate.teamMemberships.some(
+            membership => membership.role === 'SUPER_ADMIN'
+        );
+
+        // Prevent changing super admin's role or team
+        if (isSuperAdmin && (data.teamId || data.role)) {
+            throw new Error('Cannot change role or team for SUPER_ADMIN users. Super admins must maintain their elevated privileges.');
+        }
+
+        // Check if email is being changed and if it already exists
+        if (data.email) {
+            const existingUser = await prisma.dashboardUser.findUnique({
+                where: { email: data.email },
+            });
+            
+            if (existingUser && existingUser.id !== userId) {
+                throw new Error('Email already in use by another user');
+            }
+        }
+
+        // Update basic user info
+        const updateData: any = {};
+        if (data.firstName !== undefined) updateData.firstName = data.firstName;
+        if (data.lastName !== undefined) updateData.lastName = data.lastName;
+        if (data.email !== undefined) updateData.email = data.email;
+        if (data.isActive !== undefined) updateData.isActive = data.isActive;
+
         const user = await prisma.dashboardUser.update({
             where: { id: userId },
-            data,
+            data: updateData,
         });
+
+        // Handle team/role update if provided (already checked not super admin above)
+        // Check if teamId or role were explicitly provided (even if empty)
+        const teamIdProvided = data.teamId !== undefined;
+        const roleProvided = data.role !== undefined;
+        
+        // Normalize empty strings to undefined for actual values
+        const normalizedTeamId = data.teamId && data.teamId.trim() !== '' ? data.teamId : undefined;
+        const normalizedRole = data.role && data.role.trim() !== '' ? data.role : undefined;
+
+        console.log('[UserManagementService] Update role/team:', {
+            rawTeamId: data.teamId,
+            rawRole: data.role,
+            teamIdProvided,
+            roleProvided,
+            normalizedTeamId,
+            normalizedRole,
+            userId
+        });
+
+        // Only process team/role changes if at least one was provided
+        if (teamIdProvided || roleProvided) {
+            // Get user's current team memberships
+            const currentMemberships = await prisma.teamMember.findMany({
+                where: { userId },
+            });
+
+            console.log('[UserManagementService] Current memberships:', currentMemberships);
+
+            // Case 1: User wants to remove team (teamId is empty/undefined)
+            if (teamIdProvided && !normalizedTeamId) {
+                console.log('[UserManagementService] Removing all team memberships');
+                await prisma.teamMember.deleteMany({
+                    where: { userId },
+                });
+            }
+            // Case 2: Both team and role are being set - replace membership
+            else if (normalizedTeamId && normalizedRole) {
+                console.log('[UserManagementService] Replacing membership with new team and role');
+                await prisma.teamMember.deleteMany({
+                    where: { userId },
+                });
+
+                await prisma.teamMember.create({
+                    data: {
+                        userId,
+                        teamId: normalizedTeamId,
+                        role: normalizedRole as any,
+                    },
+                });
+            }
+            // Case 3: Only role is being changed - update existing membership
+            else if (normalizedRole && currentMemberships.length > 0) {
+                console.log('[UserManagementService] Updating role in existing membership');
+                await prisma.teamMember.updateMany({
+                    where: { userId },
+                    data: { role: normalizedRole as any },
+                });
+            }
+            // Case 4: Only team is being changed (and it's not empty) - keep same role, change team
+            else if (normalizedTeamId && currentMemberships.length > 0) {
+                console.log('[UserManagementService] Changing team, keeping role');
+                const currentMembership = currentMemberships[0];
+                if (!currentMembership) {
+                    throw new Error('User has no team membership to update');
+                }
+                const currentRole = currentMembership.role;
+                await prisma.teamMember.deleteMany({
+                    where: { userId },
+                });
+                
+                await prisma.teamMember.create({
+                    data: {
+                        userId,
+                        teamId: normalizedTeamId,
+                        role: currentRole,
+                    },
+                });
+            }
+            // Case 5: User has no team membership and we only have a role - ERROR
+            else if (normalizedRole && currentMemberships.length === 0) {
+                console.log('[UserManagementService] ERROR: Cannot assign role without team');
+                throw new Error('Cannot assign a role without assigning the user to a team. Please select a team first.');
+            }
+            else {
+                console.log('[UserManagementService] No action taken - conditions not met');
+            }
+        }
 
         // Log audit
         await auditLogService.log({
@@ -245,6 +403,53 @@ export class UserManagementService {
             userId: deactivatedBy,
             action: AUDIT_ACTIONS.USER_DEACTIVATED,
             resource: `DashboardUser:${userId}`,
+        });
+    }
+
+    /**
+     * Permanently delete user (Admin only)
+     */
+    async deleteUser(userId: string, deletedBy: string) {
+        // Check if user is trying to delete themselves
+        if (userId === deletedBy) {
+            throw new Error('Cannot delete your own account');
+        }
+
+        // Check if user is a super admin
+        const user = await prisma.dashboardUser.findUnique({
+            where: { id: userId },
+            include: {
+                teamMemberships: true,
+            },
+        });
+
+        if (!user) {
+            throw new Error('User not found');
+        }
+
+        const isSuperAdmin = user.teamMemberships.some(
+            membership => membership.role === 'SUPER_ADMIN'
+        );
+
+        if (isSuperAdmin) {
+            throw new Error('Cannot delete SUPER_ADMIN users for security reasons');
+        }
+
+        // Log audit before deleting
+        await auditLogService.log({
+            userId: deletedBy,
+            action: AUDIT_ACTIONS.USER_DELETED,
+            resource: `DashboardUser:${userId}`,
+            details: {
+                email: user.email,
+                firstName: user.firstName,
+                lastName: user.lastName,
+            },
+        });
+
+        // Delete user (cascade will handle related records)
+        await prisma.dashboardUser.delete({
+            where: { id: userId },
         });
     }
 
@@ -282,10 +487,13 @@ export class UserManagementService {
     /**
      * Reset user password (Admin only)
      */
-    async resetUserPassword(userId: string, newPassword: string, resetBy: string) {
+    async resetUserPassword(userId: string, resetBy: string) {
+        // Generate new automatic password
+        const generatedPassword = this.generatePassword();
+        
         const bcrypt = require('bcrypt');
         const bcryptRounds = parseInt(process.env.BCRYPT_ROUNDS || '12');
-        const passwordHash = await bcrypt.hash(newPassword, bcryptRounds);
+        const passwordHash = await bcrypt.hash(generatedPassword, bcryptRounds);
 
         await prisma.dashboardUser.update({
             where: { id: userId },
@@ -308,6 +516,10 @@ export class UserManagementService {
             resource: `DashboardUser:${userId}`,
             details: { resetByAdmin: true },
         });
+
+        return {
+            generatedPassword, // Return the password so admin can share it with the user
+        };
     }
 
     /**

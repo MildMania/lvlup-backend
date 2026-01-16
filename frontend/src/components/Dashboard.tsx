@@ -106,7 +106,7 @@ const ChartContainer: React.FC<ChartContainerProps> = ({
     <div className="chart-content">
       {loading ? (
         <div className="chart-loading">
-          <RefreshCw className="loading-spinner" size={32} />
+          <RefreshCw size={32} className="spinning" />
           <p>Loading chart data...</p>
         </div>
       ) : (
@@ -421,7 +421,7 @@ const Dashboard: React.FC<DashboardProps> = ({ gameInfo, isCollapsed = false }) 
   if (loading) {
     return (
       <div className="dashboard-loading">
-        <div className="loading-spinner"></div>
+        <RefreshCw size={48} className="spinning" />
         <p>Loading dashboard data...</p>
       </div>
     );

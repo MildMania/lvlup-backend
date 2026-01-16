@@ -8,6 +8,7 @@ import ReleaseManagement from './ReleaseManagement';
 import LevelFunnel from './LevelFunnel';
 import TeamManagement from './TeamManagement';
 import UserManagement from './UserManagement';
+import UserProfile from './UserProfile';
 import { AIChatWidget } from './AIChatWidget';
 import { useGame } from '../contexts/GameContext';
 import { setApiKey } from '../lib/apiClient';
@@ -106,6 +107,7 @@ const Layout: React.FC = () => {
           <Route path="/events" element={<Events gameInfo={currentGame} isCollapsed={isSidebarCollapsed} />} />
           <Route path="/funnels" element={<LevelFunnel isCollapsed={isSidebarCollapsed} />} />
           <Route path="/releases" element={<ReleaseManagement isCollapsed={isSidebarCollapsed} />} />
+          <Route path="/profile" element={<UserProfile isCollapsed={isSidebarCollapsed} />} />
           <Route path="/settings" element={<div className="page-placeholder">Settings Page - Coming Soon</div>} />
           <Route path="/" element={<Dashboard gameInfo={currentGame} isCollapsed={isSidebarCollapsed} />} />
         </Routes>

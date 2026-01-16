@@ -387,9 +387,11 @@
 /* Loading state */
 .loading-container {
   display: flex;
+  flex-direction: column;
   justify-content: center;
   align-items: center;
   padding: 4rem;
+  gap: 1rem;
   color: var(--text-secondary);
 }
 
@@ -400,6 +402,10 @@
 @keyframes spin {
   from { transform: rotate(0deg); }
   to { transform: rotate(360deg); }
+}
+
+.spinning {
+  animation: spin 1s linear infinite;
 }
 
 /* Dark mode adjustments */

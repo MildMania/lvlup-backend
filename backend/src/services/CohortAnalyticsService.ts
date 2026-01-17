@@ -1120,10 +1120,6 @@ export class CohortAnalyticsService {
                     } else {
                         retentionByDay[day] = 0;
                         userCountByDay[day] = 0;
-                    }
-                            retentionByDay[day] = 0;
-                            userCountByDay[day] = 0;
-                        }
                     } else {
                         retentionByDay[day] = 0;
                         userCountByDay[day] = 0;

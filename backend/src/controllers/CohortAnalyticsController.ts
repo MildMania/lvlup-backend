@@ -16,13 +16,13 @@ export class CohortAnalyticsController {
         try {
             const gameId = req.game!.id;
 
-            // Extract filter parameters
+            // Extract filter parameters and split comma-separated values
             const filters: any = {
                 startDate: req.query.startDate as string,
                 endDate: req.query.endDate as string,
-                country: req.query.country as string | string[],
-                platform: req.query.platform as string | string[],
-                version: req.query.version as string | string[],
+                country: req.query.country ? (req.query.country as string).split(',').map(c => c.trim()) : undefined,
+                platform: req.query.platform ? (req.query.platform as string).split(',').map(p => p.trim()) : undefined,
+                version: req.query.version ? (req.query.version as string).split(',').map(v => v.trim()) : undefined,
                 abTestGroup: req.query.abTestGroup as string
             };
 
@@ -69,9 +69,9 @@ export class CohortAnalyticsController {
             const filters: any = {
                 startDate: req.query.startDate as string,
                 endDate: req.query.endDate as string,
-                country: req.query.country as string | string[],
-                platform: req.query.platform as string | string[],
-                version: req.query.version as string | string[]
+                country: req.query.country ? (req.query.country as string).split(',').map(c => c.trim()) : undefined,
+                platform: req.query.platform ? (req.query.platform as string).split(',').map(p => p.trim()) : undefined,
+                version: req.query.version ? (req.query.version as string).split(',').map(v => v.trim()) : undefined
             };
 
             if (req.query.days) {
@@ -102,9 +102,9 @@ export class CohortAnalyticsController {
             const filters: any = {
                 startDate: req.query.startDate as string,
                 endDate: req.query.endDate as string,
-                country: req.query.country as string | string[],
-                platform: req.query.platform as string | string[],
-                version: req.query.version as string | string[]
+                country: req.query.country ? (req.query.country as string).split(',').map(c => c.trim()) : undefined,
+                platform: req.query.platform ? (req.query.platform as string).split(',').map(p => p.trim()) : undefined,
+                version: req.query.version ? (req.query.version as string).split(',').map(v => v.trim()) : undefined
             };
 
             if (req.query.days) {
@@ -135,9 +135,9 @@ export class CohortAnalyticsController {
             const filters: any = {
                 startDate: req.query.startDate as string,
                 endDate: req.query.endDate as string,
-                country: req.query.country as string | string[],
-                platform: req.query.platform as string | string[],
-                version: req.query.version as string | string[]
+                country: req.query.country ? (req.query.country as string).split(',').map(c => c.trim()) : undefined,
+                platform: req.query.platform ? (req.query.platform as string).split(',').map(p => p.trim()) : undefined,
+                version: req.query.version ? (req.query.version as string).split(',').map(v => v.trim()) : undefined
             };
 
             if (req.query.days) {

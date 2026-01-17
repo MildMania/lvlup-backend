@@ -132,10 +132,10 @@ export class CohortAnalyticsService {
 
                 // Calculate retention for each specified day
                 for (const day of retentionDays) {
-                    // Day 0 is always 100% (install day)
+                    // Day 0 is always 100% (install day) - all users who installed count as Day 0
                     if (day === 0) {
                         retentionByDay[day] = 100;
-                        userCountByDay[day] = userIds.length;
+                        userCountByDay[day] = userIds.length; // Same as installCount
                         continue;
                     }
 
@@ -291,6 +291,51 @@ export class CohortAnalyticsService {
                 const userCountByDay: { [day: number]: number } = {};
 
                 for (const day of retentionDays) {
+                    // Day 0 special handling - all installed users count
+                    if (day === 0) {
+                        userCountByDay[day] = userIds.length; // Same as installCount
+                        
+                        // Calculate Day 0 playtime
+                        const targetDateStart = new Date(installDateObj);
+                        targetDateStart.setHours(0, 0, 0, 0);
+                        const targetDateEnd = new Date(installDateObj);
+                        targetDateEnd.setHours(23, 59, 59, 999);
+
+                        const sessionFilters: any = {
+                            userId: { in: userIds },
+                            gameId: gameId,
+                            startTime: { gte: targetDateStart, lte: targetDateEnd },
+                            endTime: { not: null },
+                            duration: { not: null }
+                        };
+
+                        if (filters?.platform) {
+                            sessionFilters.platform = Array.isArray(filters.platform) ? { in: filters.platform } : filters.platform;
+                        }
+                        if (filters?.version) {
+                            sessionFilters.version = Array.isArray(filters.version) ? { in: filters.version } : filters.version;
+                        }
+
+                        const sessions = await this.prisma.session.findMany({
+                            where: sessionFilters,
+                            select: { userId: true, duration: true }
+                        });
+
+                        if (sessions.length > 0) {
+                            const userPlaytime = new Map<string, number>();
+                            for (const session of sessions) {
+                                const current = userPlaytime.get(session.userId) || 0;
+                                userPlaytime.set(session.userId, current + (session.duration || 0));
+                            }
+                            const totalPlaytime = Array.from(userPlaytime.values()).reduce((sum, val) => sum + val, 0);
+                            const avgPlaytime = totalPlaytime / userPlaytime.size / 60;
+                            retentionByDay[day] = Math.round(avgPlaytime * 10) / 10;
+                        } else {
+                            retentionByDay[day] = 0;
+                        }
+                        continue;
+                    }
+
                     const targetDate = new Date(installDateObj);
                     targetDate.setDate(targetDate.getDate() + day);
                     const targetDateStart = new Date(targetDate);
@@ -428,6 +473,45 @@ export class CohortAnalyticsService {
                 const userCountByDay: { [day: number]: number } = {};
 
                 for (const day of retentionDays) {
+                    // Day 0 special handling - all installed users count
+                    if (day === 0) {
+                        userCountByDay[day] = userIds.length; // Same as installCount
+                        
+                        // Calculate Day 0 session count
+                        const day0Start = new Date(installDateObj);
+                        day0Start.setHours(0, 0, 0, 0);
+                        const day0End = new Date(installDateObj);
+                        day0End.setHours(23, 59, 59, 999);
+
+                        const day0SessionFilters: any = {
+                            userId: { in: userIds },
+                            gameId: gameId,
+                            startTime: { gte: day0Start, lte: day0End }
+                        };
+
+                        if (filters?.platform) {
+                            day0SessionFilters.platform = Array.isArray(filters.platform) ? { in: filters.platform } : filters.platform;
+                        }
+                        if (filters?.version) {
+                            day0SessionFilters.version = Array.isArray(filters.version) ? { in: filters.version } : filters.version;
+                        }
+
+                        const userSessions = await this.prisma.session.groupBy({
+                            by: ['userId'],
+                            _count: { id: true },
+                            where: day0SessionFilters
+                        });
+
+                        if (userSessions.length > 0) {
+                            const totalSessions = userSessions.reduce((sum: number, u: any) => sum + u._count.id, 0);
+                            const avgSessions = totalSessions / userSessions.length;
+                            retentionByDay[day] = Math.round(avgSessions * 100) / 100;
+                        } else {
+                            retentionByDay[day] = 0;
+                        }
+                        continue;
+                    }
+
                     const targetDate = new Date(installDateObj);
                     targetDate.setDate(targetDate.getDate() + day);
                     const targetDateStart = new Date(targetDate);
@@ -558,6 +642,46 @@ export class CohortAnalyticsService {
                 const userCountByDay: { [day: number]: number } = {};
 
                 for (const day of retentionDays) {
+                    // Day 0 special handling - all installed users count
+                    if (day === 0) {
+                        userCountByDay[day] = userIds.length; // Same as installCount
+                        
+                        // Calculate Day 0 session length
+                        const day0Start = new Date(installDateObj);
+                        day0Start.setHours(0, 0, 0, 0);
+                        const day0End = new Date(installDateObj);
+                        day0End.setHours(23, 59, 59, 999);
+
+                        const day0SessionFilters: any = {
+                            userId: { in: userIds },
+                            gameId: gameId,
+                            startTime: { gte: day0Start, lte: day0End },
+                            endTime: { not: null },
+                            duration: { not: null }
+                        };
+
+                        if (filters?.platform) {
+                            day0SessionFilters.platform = Array.isArray(filters.platform) ? { in: filters.platform } : filters.platform;
+                        }
+                        if (filters?.version) {
+                            day0SessionFilters.version = Array.isArray(filters.version) ? { in: filters.version } : filters.version;
+                        }
+
+                        const sessions = await this.prisma.session.findMany({
+                            where: day0SessionFilters,
+                            select: { duration: true, userId: true }
+                        });
+
+                        if (sessions.length > 0) {
+                            const totalDuration = sessions.reduce((sum, s) => sum + (s.duration || 0), 0);
+                            const avgDuration = totalDuration / sessions.length / 60;
+                            retentionByDay[day] = Math.round(avgDuration * 10) / 10;
+                        } else {
+                            retentionByDay[day] = 0;
+                        }
+                        continue;
+                    }
+
                     const targetDate = new Date(installDateObj);
                     targetDate.setDate(targetDate.getDate() + day);
                     const targetDateStart = new Date(targetDate);

@@ -284,11 +284,6 @@ export class LevelFunnelService {
             ? (completedPlayers / firstLevelStartedUsers) * 100
             : 0;
 
-        // Churn Total: % of users who started but never completed
-        const churnTotal = usersWhoStarted.size > 0
-            ? ((usersWhoStarted.size - usersWhoCompleted.size) / usersWhoStarted.size) * 100
-            : 0;
-
         // Churn (Start-Complete): % of users who started but never completed
         const churnStartComplete = usersWhoStarted.size > 0
             ? ((usersWhoStarted.size - usersWhoCompleted.size) / usersWhoStarted.size) * 100
@@ -296,8 +291,9 @@ export class LevelFunnelService {
 
         // Churn (Complete-Next): % of users who completed this level but didn't start next
         let churnCompleteNext = 0;
+        let nextLevelStarters = new Set<string>();
         if (nextLevelEvents) {
-            const nextLevelStarters = new Set(
+            nextLevelStarters = new Set(
                 nextLevelEvents
                     .filter(e => e.eventName === 'level_start')
                     .map(e => e.userId)
@@ -307,6 +303,16 @@ export class LevelFunnelService {
                 ? ((usersWhoCompleted.size - nextLevelStarters.size) / usersWhoCompleted.size) * 100
                 : 0;
         }
+
+        // Churn Total: Total users lost (didn't complete + completed but didn't continue) as % of started users
+        // This is: (users who never completed + users who completed but didn't start next) / started users
+        const usersWhoDidntComplete = usersWhoStarted.size - usersWhoCompleted.size;
+        const usersWhoCompletedButDidntContinue = nextLevelEvents 
+            ? usersWhoCompleted.size - nextLevelStarters.size
+            : 0;
+        const churnTotal = usersWhoStarted.size > 0
+            ? ((usersWhoDidntComplete + usersWhoCompletedButDidntContinue) / usersWhoStarted.size) * 100
+            : 0;
 
         // APS (Attempts Per Success): Average starts per completing user
         const aps = usersWhoCompleted.size > 0

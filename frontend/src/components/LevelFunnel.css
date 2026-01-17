@@ -315,18 +315,22 @@
   border-radius: 12px;
   box-shadow: var(--card-shadow);
   border: 1px solid var(--border-primary);
-  overflow: hidden;
+  overflow: visible;
   margin-bottom: 24px;
+  margin-top: 50px; /* Space for tooltips above */
 }
 
 .level-funnel-table {
   width: 100%;
   border-collapse: collapse;
   overflow-x: auto;
+  overflow-y: visible;
 }
 
 .level-funnel-table thead {
-  background: var(--bg-tertiary);
+  background: linear-gradient(135deg, rgba(59, 130, 246, 0.08) 0%, rgba(99, 102, 241, 0.08) 100%);
+  position: relative;
+  z-index: 50;
 }
 
 .level-funnel-table th {
@@ -334,25 +338,28 @@
   text-align: left;
   font-size: 0.75rem;
   font-weight: 600;
-  color: var(--text-secondary);
+  color: #3b82f6;
   text-transform: uppercase;
   letter-spacing: 0.05em;
-  border-bottom: 1px solid var(--border-primary);
+  border-bottom: 2px solid rgba(59, 130, 246, 0.2);
+  position: relative;
+  z-index: 100;
 }
 
 .level-funnel-table th:first-child {
   position: sticky;
   left: 0;
-  z-index: 10;
-  background: var(--bg-tertiary);
+  z-index: 110;
+  background: linear-gradient(135deg, rgba(59, 130, 246, 0.08) 0%, rgba(99, 102, 241, 0.08) 100%);
 }
 
 .level-funnel-table tbody tr {
-  transition: background-color 0.15s ease;
+  transition: all 0.15s ease;
 }
 
 .level-funnel-table tbody tr:hover {
-  background: var(--bg-tertiary);
+  background: rgba(59, 130, 246, 0.05);
+  transform: scale(1.001);
 }
 
 .level-funnel-table td {
@@ -369,24 +376,35 @@
   z-index: 5;
   background: var(--bg-secondary);
   font-weight: 600;
+  color: #3b82f6;
 }
 
 .level-funnel-table tbody tr:hover td:first-child {
-  background: var(--bg-tertiary);
+  background: rgba(59, 130, 246, 0.05);
 }
 
-/* Metric Values with Colors */
+/* Metric Values with Colors - Vibrant and Appealing */
 .metric-value-high {
-  color: var(--success);
+  color: #10b981;
+  background: rgba(16, 185, 129, 0.1);
+  padding: 4px 8px;
+  border-radius: 6px;
   font-weight: 600;
 }
 
 .metric-value-medium {
-  color: var(--warning);
+  color: #f59e0b;
+  background: rgba(245, 158, 11, 0.1);
+  padding: 4px 8px;
+  border-radius: 6px;
+  font-weight: 500;
 }
 
 .metric-value-low {
-  color: var(--error);
+  color: #ef4444;
+  background: rgba(239, 68, 68, 0.1);
+  padding: 4px 8px;
+  border-radius: 6px;
   font-weight: 600;
 }
 
@@ -580,6 +598,7 @@
   display: inline-flex;
   align-items: center;
   gap: 4px;
+  white-space: nowrap;
 }
 
 .metric-tooltip-icon {
@@ -596,6 +615,7 @@
   cursor: help;
   opacity: 0.6;
   transition: opacity 0.2s ease;
+  flex-shrink: 0;
 }
 
 .metric-tooltip-container:hover .metric-tooltip-icon {
@@ -616,7 +636,7 @@
   color: var(--text-primary);
   white-space: nowrap;
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
-  z-index: 1000;
+  z-index: 9999;
   pointer-events: none;
 }
 

@@ -9,9 +9,9 @@ const METRIC_TOOLTIPS: Record<string, string> = {
     'Started': 'Unique players who triggered level_start event',
     'Completed': 'Unique players who triggered level_complete event',
     'Funnel Rate': '(Nth level completed users / 1st level started users) × 100',
-    'Churn (Total)': '% of users who started but never completed this level',
-    'Churn (Start)': '% of users who started but never completed (same as Churn Total)',
-    'Churn (Next)': '% of users who completed this level but never started the next level',
+    'Churn (Total)': 'Total % of users lost: users who didn\'t complete + users who completed but didn\'t start next level',
+    'Churn (Start)': '% of users who started but never completed (out of started users)',
+    'Churn (Next)': '% of users who completed this level but never started the next level (out of completed users)',
     'Completion Rate': '(Unique players completed / Unique players started) × 100',
     'Win Rate': '(Completed attempts / (Completed + Failed attempts)) × 100. Only counts users who finished (excludes incomplete attempts)',
     'Fail Rate': '(Failed attempts / (Completed + Failed attempts)) × 100',
@@ -480,32 +480,32 @@ export default function LevelFunnel({ isCollapsed = false }: LevelFunnelProps) {
                     <table className="level-funnel-table">
                         <thead>
                             <tr>
-                                <MetricTooltip text={METRIC_TOOLTIPS['Level']}><th>Level</th></MetricTooltip>
-                                <MetricTooltip text={METRIC_TOOLTIPS['Started']}><th>Started</th></MetricTooltip>
-                                <MetricTooltip text={METRIC_TOOLTIPS['Completed']}><th>Completed</th></MetricTooltip>
-                                <MetricTooltip text={METRIC_TOOLTIPS['Funnel Rate']}><th>Funnel Rate</th></MetricTooltip>
-                                <MetricTooltip text={METRIC_TOOLTIPS['Churn (Total)']}>
-                                    <th 
-                                        className="churn-header-expandable"
-                                        onClick={() => setIsChurnExpanded(!isChurnExpanded)}
-                                        style={{ cursor: 'pointer' }}
-                                    >
+                                <th><MetricTooltip text={METRIC_TOOLTIPS['Level']}>Level</MetricTooltip></th>
+                                <th><MetricTooltip text={METRIC_TOOLTIPS['Started']}>Started</MetricTooltip></th>
+                                <th><MetricTooltip text={METRIC_TOOLTIPS['Completed']}>Completed</MetricTooltip></th>
+                                <th><MetricTooltip text={METRIC_TOOLTIPS['Funnel Rate']}>Funnel Rate</MetricTooltip></th>
+                                <th 
+                                    className="churn-header-expandable"
+                                    onClick={() => setIsChurnExpanded(!isChurnExpanded)}
+                                    style={{ cursor: 'pointer' }}
+                                >
+                                    <MetricTooltip text={METRIC_TOOLTIPS['Churn (Total)']}>
                                         Churn (Total) {isChurnExpanded ? '▼' : '▶'}
-                                    </th>
-                                </MetricTooltip>
+                                    </MetricTooltip>
+                                </th>
                                 {isChurnExpanded && (
                                     <>
-                                        <MetricTooltip text={METRIC_TOOLTIPS['Churn (Start)']}><th>Churn (Start)</th></MetricTooltip>
-                                        <MetricTooltip text={METRIC_TOOLTIPS['Churn (Next)']}><th>Churn (Next)</th></MetricTooltip>
+                                        <th><MetricTooltip text={METRIC_TOOLTIPS['Churn (Start)']}>Churn (Start)</MetricTooltip></th>
+                                        <th><MetricTooltip text={METRIC_TOOLTIPS['Churn (Next)']}>Churn (Next)</MetricTooltip></th>
                                     </>
                                 )}
-                                <MetricTooltip text={METRIC_TOOLTIPS['Completion Rate']}><th>Completion Rate</th></MetricTooltip>
-                                <MetricTooltip text={METRIC_TOOLTIPS['Win Rate']}><th>Win Rate</th></MetricTooltip>
-                                <MetricTooltip text={METRIC_TOOLTIPS['Fail Rate']}><th>Fail Rate</th></MetricTooltip>
-                                <MetricTooltip text={METRIC_TOOLTIPS['APS']}><th>APS</th></MetricTooltip>
-                                <MetricTooltip text={METRIC_TOOLTIPS['AVG Time']}><th>AVG Time</th></MetricTooltip>
-                                <MetricTooltip text={METRIC_TOOLTIPS['Booster']}><th>Booster %</th></MetricTooltip>
-                                <MetricTooltip text={METRIC_TOOLTIPS['EGP']}><th>EGP %</th></MetricTooltip>
+                                <th><MetricTooltip text={METRIC_TOOLTIPS['Completion Rate']}>Completion Rate</MetricTooltip></th>
+                                <th><MetricTooltip text={METRIC_TOOLTIPS['Win Rate']}>Win Rate</MetricTooltip></th>
+                                <th><MetricTooltip text={METRIC_TOOLTIPS['Fail Rate']}>Fail Rate</MetricTooltip></th>
+                                <th><MetricTooltip text={METRIC_TOOLTIPS['APS']}>APS</MetricTooltip></th>
+                                <th><MetricTooltip text={METRIC_TOOLTIPS['AVG Time']}>AVG Time</MetricTooltip></th>
+                                <th><MetricTooltip text={METRIC_TOOLTIPS['Booster']}>Booster %</MetricTooltip></th>
+                                <th><MetricTooltip text={METRIC_TOOLTIPS['EGP']}>EGP %</MetricTooltip></th>
                             </tr>
                         </thead>
                         <tbody>

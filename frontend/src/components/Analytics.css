@@ -261,14 +261,15 @@
 }
 
 .cohort-table th {
-  background-color: var(--bg-secondary);
-  color: var(--text-secondary);
+  background: linear-gradient(135deg, rgba(59, 130, 246, 0.08) 0%, rgba(99, 102, 241, 0.08) 100%);
+  color: #3b82f6;
   font-weight: 600;
   font-size: 0.85rem;
   text-transform: uppercase;
   position: sticky;
   top: 0;
   z-index: 10;
+  border-bottom: 2px solid rgba(59, 130, 246, 0.2);
 }
 
 .cohort-table th:first-child,
@@ -281,11 +282,12 @@
 
 .cohort-table th:first-child {
   z-index: 15;
-  background-color: var(--bg-secondary);
+  background: linear-gradient(135deg, rgba(59, 130, 246, 0.08) 0%, rgba(99, 102, 241, 0.08) 100%);
 }
 
 .cohort-table tbody tr:hover {
-  background-color: var(--bg-hover);
+  background: rgba(59, 130, 246, 0.05);
+  transition: background 0.15s ease;
 }
 
 .cohort-table td {
@@ -293,13 +295,13 @@
 }
 
 .cohort-table td.install-date {
-  font-weight: 500;
-  color: var(--text-primary);
+  font-weight: 600;
+  color: #3b82f6;
 }
 
 .cohort-table td.install-count {
   font-weight: 600;
-  color: var(--primary-color);
+  color: #10b981;
 }
 
 .cohort-table td.retention-cell {
@@ -315,88 +317,100 @@
 /* Metric value styling */
 .metric-value {
   font-size: 0.95rem;
-  font-weight: 500;
+  font-weight: 600;
   margin-bottom: 2px;
 }
 
 .metric-user-count {
-  font-size: 0.7rem;
-  color: var(--text-secondary);
-  font-weight: 400;
-  opacity: 0.8;
+  font-size: 0.75rem;
+  color: rgba(0, 0, 0, 0.6);
+  font-weight: 600;
   margin-top: 2px;
 }
 
-/* Retention cell color coding - Better gradient */
+/* Dark mode adjustment for user count */
+[data-theme="dark"] .metric-user-count {
+  color: rgba(255, 255, 255, 0.6);
+}
+
+/* Retention cell color coding - Vibrant gradient */
 .cohort-table td.retention-90 {
-  background-color: rgba(5, 150, 105, 0.15);
+  background-color: rgba(16, 185, 129, 0.12);
   color: #059669;
   font-weight: 600;
 }
 
 .cohort-table td.retention-70 {
-  background-color: rgba(16, 185, 129, 0.12);
+  background-color: rgba(16, 185, 129, 0.1);
   color: #10b981;
-  font-weight: 500;
+  font-weight: 600;
 }
 
 .cohort-table td.retention-50 {
   background-color: rgba(52, 211, 153, 0.12);
-  color: #34d399;
-}
-
-.cohort-table td.retention-40 {
-  background-color: rgba(251, 191, 36, 0.12);
-  color: #fbbf24;
-}
-
-.cohort-table td.retention-30 {
-  background-color: rgba(245, 158, 11, 0.12);
-  color: #f59e0b;
-}
-
-.cohort-table td.retention-20 {
-  background-color: rgba(251, 146, 60, 0.12);
-  color: #fb923c;
-}
-
-.cohort-table td.retention-10 {
-  background-color: rgba(239, 68, 68, 0.12);
-  color: #ef4444;
+  color: #059669;
   font-weight: 500;
 }
 
-/* Metric cell color coding - Blue gradient (darker = worse, lighter = better) */
+.cohort-table td.retention-40 {
+  background-color: rgba(251, 191, 36, 0.15);
+  color: #d97706;
+  font-weight: 500;
+}
+
+.cohort-table td.retention-30 {
+  background-color: rgba(245, 158, 11, 0.15);
+  color: #ea580c;
+  font-weight: 500;
+}
+
+.cohort-table td.retention-20 {
+  background-color: rgba(251, 146, 60, 0.15);
+  color: #dc2626;
+  font-weight: 600;
+}
+
+.cohort-table td.retention-10 {
+  background-color: rgba(239, 68, 68, 0.15);
+  color: #b91c1c;
+  font-weight: 600;
+}
+
+/* Metric cell color coding - Vibrant blue gradient */
 .cohort-table td.metric-top {
-  background-color: rgba(191, 219, 254, 0.9);
-  color: #f8fafc;
+  background-color: rgba(16, 185, 129, 0.12);
+  color: #059669;
   font-weight: 600;
 }
 
 .cohort-table td.metric-high {
-  background-color: rgba(147, 197, 253, 0.8);
-  color: #f8fafc;
-  font-weight: 500;
+  background-color: rgba(52, 211, 153, 0.12);
+  color: #10b981;
+  font-weight: 600;
 }
 
 .cohort-table td.metric-good {
-  background-color: rgba(96, 165, 250, 0.7);
-  color: #f8fafc;
+  background-color: rgba(96, 165, 250, 0.15);
+  color: #2563eb;
+  font-weight: 500;
 }
 
 .cohort-table td.metric-medium {
-  background-color: rgba(59, 130, 246, 0.6);
-  color: #f8fafc;
+  background-color: rgba(59, 130, 246, 0.12);
+  color: #3b82f6;
+  font-weight: 500;
 }
 
 .cohort-table td.metric-low {
-  background-color: rgba(37, 99, 235, 0.7);
-  color: #f8fafc;
+  background-color: rgba(245, 158, 11, 0.15);
+  color: #ea580c;
+  font-weight: 500;
 }
 
 .cohort-table td.metric-very-low {
-  background-color: rgba(30, 64, 175, 0.8);
-  color: #f8fafc;
+  background-color: rgba(239, 68, 68, 0.12);
+  color: #dc2626;
+  font-weight: 600;
 }
 
 /* Loading state */

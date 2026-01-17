@@ -315,8 +315,11 @@ export class LevelFunnelService {
             : 0;
 
         // APS (Attempts Per Success): Average starts per completing user
+        // Only count starts from users who actually finished (completed OR failed)
+        const usersWhoConcluded = new Set([...usersWhoCompleted, ...usersWhoFailed]);
+        const startsFromConcludedUsers = startEvents.filter(e => usersWhoConcluded.has(e.userId)).length;
         const aps = usersWhoCompleted.size > 0
-            ? totalStarts / usersWhoCompleted.size
+            ? startsFromConcludedUsers / usersWhoCompleted.size
             : 0;
 
         // Mean Completion Duration

@@ -15,7 +15,7 @@ const METRIC_TOOLTIPS: Record<string, string> = {
     'Completion Rate': '(Unique players completed / Unique players started) × 100',
     'Win Rate': '(Completed attempts / (Completed + Failed attempts)) × 100. Only counts users who finished (excludes incomplete attempts)',
     'Fail Rate': '(Failed attempts / (Completed + Failed attempts)) × 100',
-    'APS': 'Attempts Per Success - Average number of starts per completing user',
+    'APS': 'Attempts Per Success - Average number of starts per completing user (only counts starts from users who completed or failed)',
     'AVG Time': 'Average time to complete the level in seconds',
     'Booster': '% of completing/failing users who used at least one booster',
     'EGP': 'End Game Purchase - % of failing users who made a purchase'

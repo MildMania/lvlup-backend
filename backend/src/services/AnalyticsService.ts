@@ -531,12 +531,11 @@ export class AnalyticsService {
                     userId: true,
                     sessionId: true,
                     properties: true,
-                    timestamp: true,
-                    createdAt: true, // Server timestamp - always reliable
+                    timestamp: true, // Server timestamp - always reliable (set by server on creation)
                     
                     // Event metadata
                     eventUuid: true,
-                    clientTs: true,
+                    clientTs: true, // Client-provided timestamp (for reference/debugging)
                     
                     // Device & Platform info
                     platform: true,
@@ -568,7 +567,7 @@ export class AnalyticsService {
                     timezone: true,
                 },
                 orderBy: {
-                    createdAt: sort === 'desc' ? 'desc' : 'asc' // Use server timestamp for ordering
+                    timestamp: sort === 'desc' ? 'desc' : 'asc' // timestamp is server time
                 },
                 take: limit,
                 skip: offset
@@ -577,8 +576,7 @@ export class AnalyticsService {
             // Convert BigInt to string for JSON serialization
             const serializedEvents = events.map(event => ({
                 ...event,
-                clientTs: event.clientTs ? event.clientTs.toString() : null,
-                createdAt: event.createdAt ? event.createdAt.toString() : null
+                clientTs: event.clientTs ? event.clientTs.toString() : null
             }));
 
             return serializedEvents;

@@ -8,12 +8,11 @@ interface Event {
   userId: string;
   sessionId?: string;
   properties?: Record<string, any>;
-  timestamp: string; // Client-provided timestamp (can be wrong)
-  createdAt?: string; // Server timestamp (always accurate)
+  timestamp: string; // Server timestamp (set by server when event is received) - always accurate
   
   // Event metadata
   eventUuid?: string;
-  clientTs?: number;
+  clientTs?: number; // Client-provided timestamp (for reference only - may be inaccurate)
   
   // Device & Platform info
   platform?: string;
@@ -321,7 +320,7 @@ const Events: React.FC<EventsProps> = ({ gameInfo, isCollapsed = false }) => {
                     <Activity size={14} />
                     <span className="event-name">{event.eventName}</span>
                   </div>
-                  <span className="event-time">{formatTime(event.createdAt || event.timestamp)}</span>
+                  <span className="event-time">{formatTime(event.timestamp)}</span>
                 </div>
 
                 <div className="event-summary">

@@ -574,3 +574,69 @@
   }
 }
 
+/* Metric Tooltip Styles */
+.metric-tooltip-container {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.metric-tooltip-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: var(--text-secondary);
+  color: var(--card-bg);
+  font-size: 10px;
+  font-weight: bold;
+  cursor: help;
+  opacity: 0.6;
+  transition: opacity 0.2s ease;
+}
+
+.metric-tooltip-container:hover .metric-tooltip-icon {
+  opacity: 1;
+}
+
+.metric-tooltip-text {
+  position: absolute;
+  bottom: 100%;
+  left: 50%;
+  transform: translateX(-50%);
+  margin-bottom: 8px;
+  padding: 8px 12px;
+  background: var(--bg-primary);
+  border: 1px solid var(--border-primary);
+  border-radius: 6px;
+  font-size: 0.75rem;
+  color: var(--text-primary);
+  white-space: nowrap;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+  z-index: 1000;
+  pointer-events: none;
+}
+
+.metric-tooltip-text::after {
+  content: '';
+  position: absolute;
+  top: 100%;
+  left: 50%;
+  transform: translateX(-50%);
+  border: 6px solid transparent;
+  border-top-color: var(--border-primary);
+}
+
+/* Churn Header Expandable */
+.churn-header-expandable {
+  user-select: none;
+  transition: background-color 0.2s ease;
+}
+
+.churn-header-expandable:hover {
+  background-color: var(--bg-hover);
+}
+

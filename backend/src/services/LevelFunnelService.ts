@@ -23,10 +23,11 @@ interface LevelMetrics {
     starts: number;
     completes: number;
     fails: number;
-    winRate: number;
+    winRate: number; // (Completed levels / (Completed + Failed levels)) × 100 - excludes users who only started
     completionRate: number; // (unique players completed / unique players started) × 100
     failRate: number;
     funnelRate: number; // (Nth level completed users / 1st level started users) × 100
+    churnTotal: number; // Total churn rate
     churnStartComplete: number;
     churnCompleteNext: number;
     aps: number;
@@ -266,18 +267,26 @@ export class LevelFunnelService {
         // Completed Players: unique users who triggered level_complete
         const completedPlayers = usersWhoCompleted.size;
 
-        // Win Rate: (Completed levels / Started levels) × 100
-        const winRate = totalStarts > 0 ? (totalCompletes / totalStarts) * 100 : 0;
+        // Win Rate: (Completed levels / (Completed + Failed levels)) × 100
+        // This excludes users who only started but never completed or failed
+        const totalConclusions = totalCompletes + totalFails;
+        const winRate = totalConclusions > 0 ? (totalCompletes / totalConclusions) * 100 : 0;
 
         // Completion Rate: (unique players completed / unique players started) × 100
         const completionRate = startedPlayers > 0 ? (completedPlayers / startedPlayers) * 100 : 0;
 
-        // Fail Rate: (Fail events / Start events) × 100
-        const failRate = totalStarts > 0 ? (totalFails / totalStarts) * 100 : 0;
+        // Fail Rate: (Fail events / (Completed + Failed levels)) × 100
+        // This also excludes users who only started
+        const failRate = totalConclusions > 0 ? (totalFails / totalConclusions) * 100 : 0;
 
         // Funnel Rate: (Nth level completed users / 1st level started users) × 100
         const funnelRate = firstLevelStartedUsers && firstLevelStartedUsers > 0
             ? (completedPlayers / firstLevelStartedUsers) * 100
+            : 0;
+
+        // Churn Total: % of users who started but never completed
+        const churnTotal = usersWhoStarted.size > 0
+            ? ((usersWhoStarted.size - usersWhoCompleted.size) / usersWhoStarted.size) * 100
             : 0;
 
         // Churn (Start-Complete): % of users who started but never completed
@@ -364,6 +373,7 @@ export class LevelFunnelService {
             completionRate: Math.round(completionRate * 100) / 100, // Round to 2 decimals
             failRate: Math.round(failRate * 100) / 100,
             funnelRate: Math.round(funnelRate * 100) / 100, // Round to 2 decimals
+            churnTotal: Math.round(churnTotal * 100) / 100,
             churnStartComplete: Math.round(churnStartComplete * 100) / 100,
             churnCompleteNext: Math.round(churnCompleteNext * 100) / 100,
             aps: Math.round(aps * 100) / 100,

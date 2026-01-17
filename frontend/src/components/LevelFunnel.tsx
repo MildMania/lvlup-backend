@@ -3,6 +3,41 @@ import { useGame } from '../contexts/GameContext';
 import apiClient from '../lib/apiClient';
 import './LevelFunnel.css';
 
+// Metric explanations for tooltips
+const METRIC_TOOLTIPS: Record<string, string> = {
+    'Level': 'The level number or name',
+    'Started': 'Unique players who triggered level_start event',
+    'Completed': 'Unique players who triggered level_complete event',
+    'Funnel Rate': '(Nth level completed users / 1st level started users) × 100',
+    'Churn (Total)': '% of users who started but never completed this level',
+    'Churn (Start)': '% of users who started but never completed (same as Churn Total)',
+    'Churn (Next)': '% of users who completed this level but never started the next level',
+    'Completion Rate': '(Unique players completed / Unique players started) × 100',
+    'Win Rate': '(Completed attempts / (Completed + Failed attempts)) × 100. Only counts users who finished (excludes incomplete attempts)',
+    'Fail Rate': '(Failed attempts / (Completed + Failed attempts)) × 100',
+    'APS': 'Attempts Per Success - Average number of starts per completing user',
+    'AVG Time': 'Average time to complete the level in seconds',
+    'Booster': '% of completing/failing users who used at least one booster',
+    'EGP': 'End Game Purchase - % of failing users who made a purchase'
+};
+
+// Tooltip component
+const MetricTooltip: React.FC<{ text: string; children: React.ReactNode }> = ({ text, children }) => {
+    const [show, setShow] = useState(false);
+    
+    return (
+        <div 
+            className="metric-tooltip-container"
+            onMouseEnter={() => setShow(true)}
+            onMouseLeave={() => setShow(false)}
+        >
+            {children}
+            <span className="metric-tooltip-icon">?</span>
+            {show && <div className="metric-tooltip-text">{text}</div>}
+        </div>
+    );
+};
+
 interface LevelMetrics {
     levelId: number;
     levelName?: string;
@@ -15,6 +50,7 @@ interface LevelMetrics {
     completionRate: number;
     failRate: number;
     funnelRate: number;
+    churnTotal: number;
     churnStartComplete: number;
     churnCompleteNext: number;
     aps: number;
@@ -43,6 +79,9 @@ export default function LevelFunnel({ isCollapsed = false }: LevelFunnelProps) {
         startDate: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
         endDate: new Date().toISOString().split('T')[0]
     });
+
+    // Churn column expansion state
+    const [isChurnExpanded, setIsChurnExpanded] = useState(false);
 
     // Multi-select filter states
     const [selectedCountries, setSelectedCountries] = useState<string[]>([]);
@@ -189,18 +228,15 @@ export default function LevelFunnel({ isCollapsed = false }: LevelFunnelProps) {
             'Level Name',
             'Started',
             'Completed',
-            'Starts',
-            'Completes',
-            'Fails',
-            'Win Rate (%)',
-            'Completion Rate (%)',
             'Funnel Rate (%)',
-            'Fail Rate (%)',
+            'Churn Total (%)',
             'Churn Start-Complete (%)',
             'Churn Complete-Next (%)',
+            'Completion Rate (%)',
+            'Win Rate (%)',
+            'Fail Rate (%)',
             'APS',
             'Avg Completion Time (s)',
-            'Avg Fail Time (s)',
             'Booster Usage (%)',
             'EGP Rate (%)'
         ];
@@ -210,18 +246,15 @@ export default function LevelFunnel({ isCollapsed = false }: LevelFunnelProps) {
             level.levelName || '',
             level.startedPlayers,
             level.completedPlayers,
-            level.starts,
-            level.completes,
-            level.fails,
-            level.winRate.toFixed(2),
-            level.completionRate.toFixed(2),
             level.funnelRate.toFixed(2),
-            level.failRate.toFixed(2),
+            level.churnTotal.toFixed(2),
             level.churnStartComplete.toFixed(2),
             level.churnCompleteNext.toFixed(2),
+            level.completionRate.toFixed(2),
+            level.winRate.toFixed(2),
+            level.failRate.toFixed(2),
             level.aps.toFixed(2),
             level.meanCompletionDuration.toFixed(2),
-            level.meanFailDuration.toFixed(2),
             level.boosterUsage.toFixed(2),
             level.egpRate.toFixed(2)
         ]);
@@ -447,19 +480,32 @@ export default function LevelFunnel({ isCollapsed = false }: LevelFunnelProps) {
                     <table className="level-funnel-table">
                         <thead>
                             <tr>
-                                <th>Level</th>
-                                <th>Started</th>
-                                <th>Completed</th>
-                                <th>Win Rate</th>
-                                <th>Completion Rate</th>
-                                <th>Funnel Rate</th>
-                                <th>Fail Rate</th>
-                                <th>Churn (Start)</th>
-                                <th>Churn (Next)</th>
-                                <th>APS</th>
-                                <th>Avg Time</th>
-                                <th>Booster %</th>
-                                <th>EGP %</th>
+                                <MetricTooltip text={METRIC_TOOLTIPS['Level']}><th>Level</th></MetricTooltip>
+                                <MetricTooltip text={METRIC_TOOLTIPS['Started']}><th>Started</th></MetricTooltip>
+                                <MetricTooltip text={METRIC_TOOLTIPS['Completed']}><th>Completed</th></MetricTooltip>
+                                <MetricTooltip text={METRIC_TOOLTIPS['Funnel Rate']}><th>Funnel Rate</th></MetricTooltip>
+                                <MetricTooltip text={METRIC_TOOLTIPS['Churn (Total)']}>
+                                    <th 
+                                        className="churn-header-expandable"
+                                        onClick={() => setIsChurnExpanded(!isChurnExpanded)}
+                                        style={{ cursor: 'pointer' }}
+                                    >
+                                        Churn (Total) {isChurnExpanded ? '▼' : '▶'}
+                                    </th>
+                                </MetricTooltip>
+                                {isChurnExpanded && (
+                                    <>
+                                        <MetricTooltip text={METRIC_TOOLTIPS['Churn (Start)']}><th>Churn (Start)</th></MetricTooltip>
+                                        <MetricTooltip text={METRIC_TOOLTIPS['Churn (Next)']}><th>Churn (Next)</th></MetricTooltip>
+                                    </>
+                                )}
+                                <MetricTooltip text={METRIC_TOOLTIPS['Completion Rate']}><th>Completion Rate</th></MetricTooltip>
+                                <MetricTooltip text={METRIC_TOOLTIPS['Win Rate']}><th>Win Rate</th></MetricTooltip>
+                                <MetricTooltip text={METRIC_TOOLTIPS['Fail Rate']}><th>Fail Rate</th></MetricTooltip>
+                                <MetricTooltip text={METRIC_TOOLTIPS['APS']}><th>APS</th></MetricTooltip>
+                                <MetricTooltip text={METRIC_TOOLTIPS['AVG Time']}><th>AVG Time</th></MetricTooltip>
+                                <MetricTooltip text={METRIC_TOOLTIPS['Booster']}><th>Booster %</th></MetricTooltip>
+                                <MetricTooltip text={METRIC_TOOLTIPS['EGP']}><th>EGP %</th></MetricTooltip>
                             </tr>
                         </thead>
                         <tbody>
@@ -470,13 +516,44 @@ export default function LevelFunnel({ isCollapsed = false }: LevelFunnelProps) {
                                     <td>{level.completedPlayers.toLocaleString()}</td>
                                     <td>
                                         <span className={
-                                            level.winRate >= 80 ? 'metric-value-high' : 
-                                            level.winRate >= 60 ? 'metric-value-medium' : 
+                                            level.funnelRate >= 60 ? 'metric-value-high' : 
+                                            level.funnelRate >= 40 ? 'metric-value-medium' : 
                                             'metric-value-low'
                                         }>
-                                            {level.winRate.toFixed(1)}%
+                                            {level.funnelRate.toFixed(1)}%
                                         </span>
                                     </td>
+                                    <td>
+                                        <span className={
+                                            level.churnTotal >= 30 ? 'metric-value-low' : 
+                                            level.churnTotal >= 15 ? 'metric-value-medium' : 
+                                            'metric-value-high'
+                                        }>
+                                            {level.churnTotal.toFixed(1)}%
+                                        </span>
+                                    </td>
+                                    {isChurnExpanded && (
+                                        <>
+                                            <td>
+                                                <span className={
+                                                    level.churnStartComplete >= 30 ? 'metric-value-low' : 
+                                                    level.churnStartComplete >= 15 ? 'metric-value-medium' : 
+                                                    'metric-value-high'
+                                                }>
+                                                    {level.churnStartComplete.toFixed(1)}%
+                                                </span>
+                                            </td>
+                                            <td>
+                                                <span className={
+                                                    level.churnCompleteNext >= 30 ? 'metric-value-low' : 
+                                                    level.churnCompleteNext >= 15 ? 'metric-value-medium' : 
+                                                    'metric-value-high'
+                                                }>
+                                                    {level.churnCompleteNext.toFixed(1)}%
+                                                </span>
+                                            </td>
+                                        </>
+                                    )}
                                     <td>
                                         <span className={
                                             level.completionRate >= 80 ? 'metric-value-high' : 
@@ -488,32 +565,14 @@ export default function LevelFunnel({ isCollapsed = false }: LevelFunnelProps) {
                                     </td>
                                     <td>
                                         <span className={
-                                            level.funnelRate >= 60 ? 'metric-value-high' : 
-                                            level.funnelRate >= 40 ? 'metric-value-medium' : 
+                                            level.winRate >= 80 ? 'metric-value-high' : 
+                                            level.winRate >= 60 ? 'metric-value-medium' : 
                                             'metric-value-low'
                                         }>
-                                            {level.funnelRate.toFixed(1)}%
+                                            {level.winRate.toFixed(1)}%
                                         </span>
                                     </td>
                                     <td>{level.failRate.toFixed(1)}%</td>
-                                    <td>
-                                        <span className={
-                                            level.churnStartComplete >= 30 ? 'metric-value-low' : 
-                                            level.churnStartComplete >= 15 ? 'metric-value-medium' : 
-                                            'metric-value-high'
-                                        }>
-                                            {level.churnStartComplete.toFixed(1)}%
-                                        </span>
-                                    </td>
-                                    <td>
-                                        <span className={
-                                            level.churnCompleteNext >= 30 ? 'metric-value-low' : 
-                                            level.churnCompleteNext >= 15 ? 'metric-value-medium' : 
-                                            'metric-value-high'
-                                        }>
-                                            {level.churnCompleteNext.toFixed(1)}%
-                                        </span>
-                                    </td>
                                     <td>{level.aps.toFixed(2)}</td>
                                     <td>{level.meanCompletionDuration.toFixed(1)}s</td>
                                     <td>{level.boosterUsage.toFixed(1)}%</td>

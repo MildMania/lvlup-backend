@@ -1044,6 +1044,8 @@ export class CohortAnalyticsService {
                     const now = new Date();
                     const effectiveEndTime = targetDateEnd > now ? now : targetDateEnd;
 
+                    console.log(`[Avg Reached Level] Day ${day}, Install: ${installDate}, EffectiveEndTime: ${effectiveEndTime.toISOString()}`);
+
                     // Get level_complete events CUMULATIVELY up to this day (from install to day N)
                     const eventFilters: any = {
                         userId: { in: userIds },
@@ -1073,10 +1075,13 @@ export class CohortAnalyticsService {
                         where: eventFilters
                     });
 
+                    console.log(`[Avg Reached Level] Day ${day}, Found ${userCompletions.length} users with completions`);
+
                     if (userCompletions.length > 0) {
                         // Calculate average number of completions per user (cumulative)
                         const totalCompletions = userCompletions.reduce((sum: number, u: any) => sum + u._count.id, 0);
                         const avgReached = totalCompletions / userCompletions.length;
+                        console.log(`[Avg Reached Level] Day ${day}, Total: ${totalCompletions}, Users: ${userCompletions.length}, Avg: ${avgReached}`);
                         retentionByDay[day] = Math.round(avgReached * 10) / 10;
                         userCountByDay[day] = userCompletions.length;
                     } else {

@@ -894,18 +894,23 @@ export class CohortAnalyticsService {
                     const targetDateEnd = new Date(targetDate);
                     targetDateEnd.setHours(23, 59, 59, 999);
 
-                    if (targetDateEnd > new Date()) {
+                    // Only skip if the target day hasn't started yet (start time is in the future)
+                    if (targetDateStart > new Date()) {
                         retentionByDay[day] = -1;
                         userCountByDay[day] = 0;
                         continue;
                     }
+
+                    // If we're in the middle of the target day, use current time as the end boundary
+                    const now = new Date();
+                    const effectiveEndTime = targetDateEnd > now ? now : targetDateEnd;
 
                     // Get level_complete events ONLY on this specific day (not cumulative)
                     const eventFilters: any = {
                         userId: { in: userIds },
                         gameId: gameId,
                         eventName: 'level_complete',
-                        timestamp: { gte: targetDateStart, lte: targetDateEnd } // Only this day
+                        timestamp: { gte: targetDateStart, lte: effectiveEndTime } // Only this day, up to now
                     };
 
                     if (filters?.platform || filters?.version) {
@@ -1023,21 +1028,28 @@ export class CohortAnalyticsService {
                 for (const day of retentionDays) {
                     const targetDate = new Date(installDateObj);
                     targetDate.setDate(targetDate.getDate() + day);
+                    const targetDateStart = new Date(targetDate);
+                    targetDateStart.setHours(0, 0, 0, 0);
                     const targetDateEnd = new Date(targetDate);
                     targetDateEnd.setHours(23, 59, 59, 999);
 
-                    if (targetDateEnd > new Date()) {
+                    // Only skip if the target day hasn't started yet (start time is in the future)
+                    if (targetDateStart > new Date()) {
                         retentionByDay[day] = -1;
                         userCountByDay[day] = 0;
                         continue;
                     }
+
+                    // If we're in the middle of the target day, use current time as the end boundary
+                    const now = new Date();
+                    const effectiveEndTime = targetDateEnd > now ? now : targetDateEnd;
 
                     // Get level_complete events CUMULATIVELY up to this day (from install to day N)
                     const eventFilters: any = {
                         userId: { in: userIds },
                         gameId: gameId,
                         eventName: 'level_complete',
-                        timestamp: { lte: targetDateEnd } // Cumulative - all events up to this day
+                        timestamp: { lte: effectiveEndTime } // Cumulative - all events up to now
                     };
 
                     if (filters?.platform || filters?.version) {

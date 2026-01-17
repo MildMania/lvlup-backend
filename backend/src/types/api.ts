@@ -117,7 +117,8 @@ export interface BatchEventData {
 export interface SessionData {
     startTime: string;
     platform?: string;
-    version?: string;
+    version?: string;      // Legacy field
+    appVersion?: string;   // Primary field from SDK (same as events)
 }
 
 // Remote config request

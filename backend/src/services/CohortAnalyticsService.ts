@@ -887,14 +887,10 @@ export class CohortAnalyticsService {
                 const userCountByDay: { [day: number]: number } = {};
 
                 for (const day of retentionDays) {
-                    if (day === 0) {
-                        userCountByDay[day] = userIds.length;
-                        retentionByDay[day] = 0; // No levels completed yet on day 0
-                        continue;
-                    }
-
                     const targetDate = new Date(installDateObj);
                     targetDate.setDate(targetDate.getDate() + day);
+                    const targetDateStart = new Date(targetDate);
+                    targetDateStart.setHours(0, 0, 0, 0);
                     const targetDateEnd = new Date(targetDate);
                     targetDateEnd.setHours(23, 59, 59, 999);
 
@@ -904,12 +900,12 @@ export class CohortAnalyticsService {
                         continue;
                     }
 
-                    // Get all level_complete events up to this day
+                    // Get level_complete events ONLY on this specific day (not cumulative)
                     const eventFilters: any = {
                         userId: { in: userIds },
                         gameId: gameId,
                         eventName: 'level_complete',
-                        timestamp: { lte: targetDateEnd }
+                        timestamp: { gte: targetDateStart, lte: targetDateEnd } // Only this day
                     };
 
                     if (filters?.platform || filters?.version) {
@@ -926,39 +922,19 @@ export class CohortAnalyticsService {
                         }
                     }
 
-                    const completedLevelEvents = await this.prisma.event.findMany({
-                        where: eventFilters,
-                        select: {
-                            userId: true,
-                            properties: true
-                        }
+                    // Count level_complete events per user using groupBy
+                    const userCompletions = await this.prisma.event.groupBy({
+                        by: ['userId'],
+                        _count: { id: true },
+                        where: eventFilters
                     });
 
-                    if (completedLevelEvents.length > 0) {
-                        // Count unique levels per user
-                        const userCompletedLevels = new Map<string, Set<number>>();
-                        for (const event of completedLevelEvents) {
-                            const props = event.properties as any;
-                            const levelId = props?.levelId;
-                            if (levelId !== undefined && typeof levelId === 'number') {
-                                if (!userCompletedLevels.has(event.userId)) {
-                                    userCompletedLevels.set(event.userId, new Set());
-                                }
-                                userCompletedLevels.get(event.userId)!.add(levelId);
-                            }
-                        }
-
-                        if (userCompletedLevels.size > 0) {
-                            // Calculate average number of unique levels completed
-                            const totalUniqueLevels = Array.from(userCompletedLevels.values())
-                                .reduce((sum, levelSet) => sum + levelSet.size, 0);
-                            const avgCompleted = totalUniqueLevels / userCompletedLevels.size;
-                            retentionByDay[day] = Math.round(avgCompleted * 10) / 10;
-                            userCountByDay[day] = userCompletedLevels.size;
-                        } else {
-                            retentionByDay[day] = 0;
-                            userCountByDay[day] = 0;
-                        }
+                    if (userCompletions.length > 0) {
+                        // Calculate average number of completions per user
+                        const totalCompletions = userCompletions.reduce((sum: number, u: any) => sum + u._count.id, 0);
+                        const avgCompleted = totalCompletions / userCompletions.length;
+                        retentionByDay[day] = Math.round(avgCompleted * 10) / 10;
+                        userCountByDay[day] = userCompletions.length;
                     } else {
                         retentionByDay[day] = 0;
                         userCountByDay[day] = 0;
@@ -1045,12 +1021,6 @@ export class CohortAnalyticsService {
                 const userCountByDay: { [day: number]: number } = {};
 
                 for (const day of retentionDays) {
-                    if (day === 0) {
-                        userCountByDay[day] = userIds.length;
-                        retentionByDay[day] = 0; // No levels reached on day 0
-                        continue;
-                    }
-
                     const targetDate = new Date(installDateObj);
                     targetDate.setDate(targetDate.getDate() + day);
                     const targetDateEnd = new Date(targetDate);
@@ -1062,12 +1032,12 @@ export class CohortAnalyticsService {
                         continue;
                     }
 
-                    // Get all level_complete events cumulatively up to this day
+                    // Get level_complete events CUMULATIVELY up to this day (from install to day N)
                     const eventFilters: any = {
                         userId: { in: userIds },
                         gameId: gameId,
                         eventName: 'level_complete',
-                        timestamp: { lte: targetDateEnd }
+                        timestamp: { lte: targetDateEnd } // Cumulative - all events up to this day
                     };
 
                     if (filters?.platform || filters?.version) {
@@ -1084,39 +1054,19 @@ export class CohortAnalyticsService {
                         }
                     }
 
-                    const completedLevelEvents = await this.prisma.event.findMany({
-                        where: eventFilters,
-                        select: {
-                            userId: true,
-                            properties: true
-                        }
+                    // Count level_complete events per user using groupBy (cumulative)
+                    const userCompletions = await this.prisma.event.groupBy({
+                        by: ['userId'],
+                        _count: { id: true },
+                        where: eventFilters
                     });
 
-                    if (completedLevelEvents.length > 0) {
-                        // Count unique levels per user (same as avg completed levels)
-                        const userCompletedLevels = new Map<string, Set<number>>();
-                        for (const event of completedLevelEvents) {
-                            const props = event.properties as any;
-                            const levelId = props?.levelId;
-                            if (levelId !== undefined && typeof levelId === 'number') {
-                                if (!userCompletedLevels.has(event.userId)) {
-                                    userCompletedLevels.set(event.userId, new Set());
-                                }
-                                userCompletedLevels.get(event.userId)!.add(levelId);
-                            }
-                        }
-
-                        if (userCompletedLevels.size > 0) {
-                            // Calculate average number of unique levels completed (cumulative)
-                            const totalUniqueLevels = Array.from(userCompletedLevels.values())
-                                .reduce((sum, levelSet) => sum + levelSet.size, 0);
-                            const avgReached = totalUniqueLevels / userCompletedLevels.size;
-                            retentionByDay[day] = Math.round(avgReached * 10) / 10;
-                            userCountByDay[day] = userCompletedLevels.size;
-                        } else {
-                            retentionByDay[day] = 0;
-                            userCountByDay[day] = 0;
-                        }
+                    if (userCompletions.length > 0) {
+                        // Calculate average number of completions per user (cumulative)
+                        const totalCompletions = userCompletions.reduce((sum: number, u: any) => sum + u._count.id, 0);
+                        const avgReached = totalCompletions / userCompletions.length;
+                        retentionByDay[day] = Math.round(avgReached * 10) / 10;
+                        userCountByDay[day] = userCompletions.length;
                     } else {
                         retentionByDay[day] = 0;
                         userCountByDay[day] = 0;

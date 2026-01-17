@@ -218,8 +218,11 @@ export class LevelFunnelService {
             // Calculate cumulative average time for each level
             let cumulativeTime = 0;
             for (let i = 0; i < levelMetrics.length; i++) {
-                cumulativeTime += levelMetrics[i].meanCompletionDuration;
-                levelMetrics[i].cumulativeAvgTime = Math.round(cumulativeTime * 100) / 100;
+                const metric = levelMetrics[i];
+                if (metric) {
+                    cumulativeTime += metric.meanCompletionDuration;
+                    metric.cumulativeAvgTime = Math.round(cumulativeTime * 100) / 100;
+                }
             }
 
             return levelMetrics;

@@ -192,7 +192,8 @@ const EngagementTab: React.FC<{ gameInfo: any }> = ({ gameInfo }) => {
         const transformedData = response.data.data.map((item: any) => ({
           date: item.installDate,
           userCount: item.installCount,
-          metricsByDay: item.retentionByDay
+          metricsByDay: item.retentionByDay,
+          userCountByDay: item.userCountByDay
         }));
         setMetricData(transformedData);
       } else {
@@ -532,13 +533,17 @@ const EngagementTab: React.FC<{ gameInfo: any }> = ({ gameInfo }) => {
                     <td className="install-count">{cohort.installCount}</td>
                     {selectedDays.map(day => {
                       const value = cohort.retentionByDay[day];
+                      const userCount = cohort.userCountByDay?.[day];
                       const isNotAvailable = value < 0;
                       return (
                         <td
                           key={day}
                           className={`retention-cell ${isNotAvailable ? 'not-available' : getRetentionColor(value)}`}
                         >
-                          {isNotAvailable ? 'N/A' : `${value}%`}
+                          <div className="metric-value">{isNotAvailable ? 'N/A' : `${value}%`}</div>
+                          {!isNotAvailable && userCount !== undefined && (
+                            <div className="metric-user-count">{userCount} users</div>
+                          )}
                         </td>
                       );
                     })}
@@ -574,6 +579,7 @@ const EngagementTab: React.FC<{ gameInfo: any }> = ({ gameInfo }) => {
                     <td className="install-count">{row.userCount || 0}</td>
                     {selectedDays.map(day => {
                       const value = row.metricsByDay?.[day];
+                      const userCount = row.userCountByDay?.[day];
                       const isNotAvailable = value === undefined || value === null || value < 0;
                       const formattedValue = isNotAvailable
                         ? 'N/A'
@@ -587,7 +593,10 @@ const EngagementTab: React.FC<{ gameInfo: any }> = ({ gameInfo }) => {
                       
                       return (
                         <td key={day} className={`retention-cell ${colorClass}`}>
-                          {formattedValue}
+                          <div className="metric-value">{formattedValue}</div>
+                          {!isNotAvailable && userCount !== undefined && (
+                            <div className="metric-user-count">{userCount} users</div>
+                          )}
                         </td>
                       );
                     })}

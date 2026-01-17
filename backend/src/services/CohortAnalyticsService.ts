@@ -5,6 +5,7 @@ export interface CohortData {
     installDate: string;
     installCount: number;
     retentionByDay: { [day: number]: number }; // day -> retention percentage
+    userCountByDay: { [day: number]: number }; // day -> absolute user count
 }
 
 // Cohort analytics parameters
@@ -127,12 +128,14 @@ export class CohortAnalyticsService {
             for (const [installDate, userIds] of cohortMap.entries()) {
                 const installDateObj = new Date(installDate + 'T00:00:00.000Z');
                 const retentionByDay: { [day: number]: number } = {};
+                const userCountByDay: { [day: number]: number } = {};
 
                 // Calculate retention for each specified day
                 for (const day of retentionDays) {
                     // Day 0 is always 100% (install day)
                     if (day === 0) {
                         retentionByDay[day] = 100;
+                        userCountByDay[day] = userIds.length;
                         continue;
                     }
 
@@ -148,6 +151,7 @@ export class CohortAnalyticsService {
                     const now = new Date();
                     if (targetDateStart > now) {
                         retentionByDay[day] = -1; // Marker for "not yet available"
+                        userCountByDay[day] = 0;
                         continue;
                     }
 
@@ -184,12 +188,14 @@ export class CohortAnalyticsService {
                     const retainedCount = activeUsers.length;
                     const retentionRate = (retainedCount / userIds.length) * 100;
                     retentionByDay[day] = Math.round(retentionRate * 100) / 100; // Round to 2 decimals
+                    userCountByDay[day] = retainedCount;
                 }
 
                 cohortData.push({
                     installDate,
                     installCount: userIds.length,
-                    retentionByDay
+                    retentionByDay,
+                    userCountByDay
                 });
             }
 
@@ -282,6 +288,7 @@ export class CohortAnalyticsService {
             for (const [installDate, userIds] of cohortMap.entries()) {
                 const installDateObj = new Date(installDate + 'T00:00:00.000Z');
                 const retentionByDay: { [day: number]: number } = {};
+                const userCountByDay: { [day: number]: number } = {};
 
                 for (const day of retentionDays) {
                     const targetDate = new Date(installDateObj);
@@ -293,6 +300,7 @@ export class CohortAnalyticsService {
 
                     if (targetDateStart > new Date()) {
                         retentionByDay[day] = -1;
+                        userCountByDay[day] = 0;
                         continue;
                     }
 
@@ -318,6 +326,7 @@ export class CohortAnalyticsService {
 
                     if (sessions.length === 0) {
                         retentionByDay[day] = 0;
+                        userCountByDay[day] = 0;
                         continue;
                     }
 
@@ -330,9 +339,10 @@ export class CohortAnalyticsService {
                     const totalPlaytime = Array.from(userPlaytime.values()).reduce((sum, val) => sum + val, 0);
                     const avgPlaytime = totalPlaytime / userPlaytime.size / 60; // Convert to minutes
                     retentionByDay[day] = Math.round(avgPlaytime * 10) / 10;
+                    userCountByDay[day] = userPlaytime.size; // Number of unique users with sessions
                 }
 
-                cohortData.push({ installDate, installCount: userIds.length, retentionByDay });
+                cohortData.push({ installDate, installCount: userIds.length, retentionByDay, userCountByDay });
             }
 
             cohortData.sort((a, b) => a.installDate.localeCompare(b.installDate));
@@ -415,6 +425,7 @@ export class CohortAnalyticsService {
             for (const [installDate, userIds] of cohortMap.entries()) {
                 const installDateObj = new Date(installDate + 'T00:00:00.000Z');
                 const retentionByDay: { [day: number]: number } = {};
+                const userCountByDay: { [day: number]: number } = {};
 
                 for (const day of retentionDays) {
                     const targetDate = new Date(installDateObj);
@@ -426,6 +437,7 @@ export class CohortAnalyticsService {
 
                     if (targetDateStart > new Date()) {
                         retentionByDay[day] = -1;
+                        userCountByDay[day] = 0;
                         continue;
                     }
 
@@ -450,15 +462,17 @@ export class CohortAnalyticsService {
 
                     if (userSessions.length === 0) {
                         retentionByDay[day] = 0;
+                        userCountByDay[day] = 0;
                         continue;
                     }
 
                     const totalSessions = userSessions.reduce((sum: number, u: any) => sum + u._count.id, 0);
                     const avgSessions = totalSessions / userSessions.length;
                     retentionByDay[day] = Math.round(avgSessions * 100) / 100;
+                    userCountByDay[day] = userSessions.length; // Number of unique users with sessions
                 }
 
-                cohortData.push({ installDate, installCount: userIds.length, retentionByDay });
+                cohortData.push({ installDate, installCount: userIds.length, retentionByDay, userCountByDay });
             }
 
             cohortData.sort((a, b) => a.installDate.localeCompare(b.installDate));
@@ -541,6 +555,7 @@ export class CohortAnalyticsService {
             for (const [installDate, userIds] of cohortMap.entries()) {
                 const installDateObj = new Date(installDate + 'T00:00:00.000Z');
                 const retentionByDay: { [day: number]: number } = {};
+                const userCountByDay: { [day: number]: number } = {};
 
                 for (const day of retentionDays) {
                     const targetDate = new Date(installDateObj);
@@ -552,6 +567,7 @@ export class CohortAnalyticsService {
 
                     if (targetDateStart > new Date()) {
                         retentionByDay[day] = -1;
+                        userCountByDay[day] = 0;
                         continue;
                     }
 
@@ -572,20 +588,25 @@ export class CohortAnalyticsService {
 
                     const sessions = await this.prisma.session.findMany({
                         where: sessionFilters,
-                        select: { duration: true }
+                        select: { duration: true, userId: true }
                     });
 
                     if (sessions.length === 0) {
                         retentionByDay[day] = 0;
+                        userCountByDay[day] = 0;
                         continue;
                     }
 
                     const totalDuration = sessions.reduce((sum, s) => sum + (s.duration || 0), 0);
                     const avgDuration = totalDuration / sessions.length / 60; // Convert to minutes
                     retentionByDay[day] = Math.round(avgDuration * 10) / 10;
+                    
+                    // Count unique users with sessions
+                    const uniqueUsers = new Set(sessions.map(s => s.userId));
+                    userCountByDay[day] = uniqueUsers.size;
                 }
 
-                cohortData.push({ installDate, installCount: userIds.length, retentionByDay });
+                cohortData.push({ installDate, installCount: userIds.length, retentionByDay, userCountByDay });
             }
 
             cohortData.sort((a, b) => a.installDate.localeCompare(b.installDate));

@@ -68,7 +68,7 @@ const EngagementTab: React.FC<{ gameInfo: any }> = ({ gameInfo }) => {
   const [cohortData, setCohortData] = useState<any[]>([]);
   const [metricData, setMetricData] = useState<any[]>([]);
   const [loading, setLoading] = useState(false);
-  const [selectedMetric, setSelectedMetric] = useState<'retention' | 'playtime' | 'session-count' | 'session-length'>('retention');
+  const [selectedMetric, setSelectedMetric] = useState<'retention' | 'playtime' | 'session-count' | 'session-length' | 'avg-completed-levels' | 'avg-reached-level'>('retention');
   const [showDaySelector, setShowDaySelector] = useState(false);
   const [showPlatformSelector, setShowPlatformSelector] = useState(false);
   const [showCountrySelector, setShowCountrySelector] = useState(false);
@@ -174,6 +174,12 @@ const EngagementTab: React.FC<{ gameInfo: any }> = ({ gameInfo }) => {
           break;
         case 'session-length':
           endpoint = '/analytics/cohort/session-length';
+          break;
+        case 'avg-completed-levels':
+          endpoint = '/analytics/cohort/avg-completed-levels';
+          break;
+        case 'avg-reached-level':
+          endpoint = '/analytics/cohort/avg-reached-level';
           break;
         default:
           return fetchCohortData();
@@ -335,13 +341,15 @@ const EngagementTab: React.FC<{ gameInfo: any }> = ({ gameInfo }) => {
           <label>Metric</label>
           <select
             value={selectedMetric}
-            onChange={(e) => setSelectedMetric(e.target.value as 'retention' | 'playtime' | 'session-count' | 'session-length')}
+            onChange={(e) => setSelectedMetric(e.target.value as 'retention' | 'playtime' | 'session-count' | 'session-length' | 'avg-completed-levels' | 'avg-reached-level')}
             style={{ padding: '8px', borderRadius: '4px', border: '1px solid #ddd' }}
           >
             <option value="retention">Retention Cohort</option>
             <option value="playtime">Avg Daily Playtime</option>
             <option value="session-count">Avg Session Count</option>
             <option value="session-length">Avg Session Length</option>
+            <option value="avg-completed-levels">Avg Completed Levels</option>
+            <option value="avg-reached-level">Avg Reached Level</option>
           </select>
         </div>
       </div>
@@ -587,7 +595,13 @@ const EngagementTab: React.FC<{ gameInfo: any }> = ({ gameInfo }) => {
                         ? `${value.toFixed(1)}m`
                         : selectedMetric === 'session-count'
                         ? value.toFixed(2)
-                        : `${value.toFixed(1)}m`;
+                        : selectedMetric === 'session-length'
+                        ? `${value.toFixed(1)}m`
+                        : selectedMetric === 'avg-completed-levels'
+                        ? value.toFixed(1)
+                        : selectedMetric === 'avg-reached-level'
+                        ? `L${value.toFixed(0)}`
+                        : value.toFixed(1);
                       
                       const colorClass = getMetricColor(day, value);
                       

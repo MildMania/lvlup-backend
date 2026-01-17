@@ -95,6 +95,30 @@ router.get('/cohort/session-count', cohortAnalyticsController.getCohortSessionCo
  */
 router.get('/cohort/session-length', cohortAnalyticsController.getCohortSessionLength);
 
+/**
+ * GET /analytics/cohort/avg-completed-levels - Get average completed level count per user by cohort
+ * @query {string} gameId - Required game ID
+ * @query {string} startDate - Optional start date (ISO format)
+ * @query {string} endDate - Optional end date (ISO format)
+ * @query {string|string[]} country - Optional country or countries to filter by
+ * @query {string|string[]} platform - Optional platform or platforms to filter by
+ * @query {string|string[]} version - Optional version or versions to filter by
+ * @query {string} days - Optional comma-separated list of days (e.g., "0,1,3,7,14,30")
+ */
+router.get('/cohort/avg-completed-levels', cohortAnalyticsController.getAvgCompletedLevels);
+
+/**
+ * GET /analytics/cohort/avg-reached-level - Get average reached level (highest level) per user by cohort
+ * @query {string} gameId - Required game ID
+ * @query {string} startDate - Optional start date (ISO format)
+ * @query {string} endDate - Optional end date (ISO format)
+ * @query {string|string[]} country - Optional country or countries to filter by
+ * @query {string|string[]} platform - Optional platform or platforms to filter by
+ * @query {string|string[]} version - Optional version or versions to filter by
+ * @query {string} days - Optional comma-separated list of days (e.g., "0,1,3,7,14,30")
+ */
+router.get('/cohort/avg-reached-level', cohortAnalyticsController.getAvgReachedLevel);
+
 // Player Journey Endpoints
 /**
  * POST /analytics/journey/checkpoints - Create a new checkpoint

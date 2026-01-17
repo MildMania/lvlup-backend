@@ -817,4 +817,294 @@ export class CohortAnalyticsService {
             throw new Error('Failed to calculate cohort session length');
         }
     }
+
+    /**
+     * Calculate average completed level count per user by cohort
+     */
+    async calculateAvgCompletedLevels(
+        gameId: string,
+        startDate: Date,
+        endDate: Date,
+        filters?: CohortAnalyticsParams
+    ): Promise<CohortData[]> {
+        try {
+            const retentionDays = filters?.days || [0, 1, 2, 3, 4, 5, 6, 7, 14, 30];
+            
+            const userFilters: any = {
+                gameId: gameId,
+                createdAt: { gte: startDate, lte: endDate }
+            };
+
+            if (filters?.country) {
+                userFilters.events = {
+                    some: {
+                        countryCode: Array.isArray(filters.country)
+                            ? { in: filters.country }
+                            : filters.country
+                    }
+                };
+            }
+
+            if (filters?.platform) {
+                if (!userFilters.events) userFilters.events = { some: {} };
+                else if (!userFilters.events.some) userFilters.events.some = {};
+                userFilters.events.some.platform = Array.isArray(filters.platform)
+                    ? { in: filters.platform }
+                    : filters.platform;
+            }
+
+            if (filters?.version) {
+                if (!userFilters.events) userFilters.events = { some: {} };
+                else if (!userFilters.events.some) userFilters.events.some = {};
+                userFilters.events.some.appVersion = Array.isArray(filters.version)
+                    ? { in: filters.version }
+                    : filters.version;
+            }
+
+            const users = await this.prisma.user.findMany({
+                where: userFilters,
+                select: { id: true, createdAt: true }
+            });
+
+            if (users.length === 0) return [];
+
+            const cohortMap = new Map<string, string[]>();
+            for (const user of users) {
+                const timestamp = typeof user.createdAt === 'bigint' ? Number(user.createdAt) : user.createdAt;
+                const installDate = new Date(timestamp);
+                const dateKey = installDate.toISOString().split('T')[0];
+                if (dateKey) {
+                    if (!cohortMap.has(dateKey)) cohortMap.set(dateKey, []);
+                    cohortMap.get(dateKey)!.push(user.id);
+                }
+            }
+
+            const cohortData: CohortData[] = [];
+
+            for (const [installDate, userIds] of cohortMap.entries()) {
+                const installDateObj = new Date(installDate + 'T00:00:00.000Z');
+                const retentionByDay: { [day: number]: number } = {};
+                const userCountByDay: { [day: number]: number } = {};
+
+                for (const day of retentionDays) {
+                    if (day === 0) {
+                        userCountByDay[day] = userIds.length;
+                        retentionByDay[day] = 0; // No levels completed yet on day 0
+                        continue;
+                    }
+
+                    const targetDate = new Date(installDateObj);
+                    targetDate.setDate(targetDate.getDate() + day);
+                    const targetDateEnd = new Date(targetDate);
+                    targetDateEnd.setHours(23, 59, 59, 999);
+
+                    if (targetDateEnd > new Date()) {
+                        retentionByDay[day] = -1;
+                        userCountByDay[day] = 0;
+                        continue;
+                    }
+
+                    // Count unique level_complete events per user up to this day
+                    const eventFilters: any = {
+                        userId: { in: userIds },
+                        gameId: gameId,
+                        eventName: 'level_complete',
+                        timestamp: { lte: targetDateEnd }
+                    };
+
+                    if (filters?.platform || filters?.version) {
+                        eventFilters.session = {};
+                        if (filters?.platform) {
+                            eventFilters.session.platform = Array.isArray(filters.platform)
+                                ? { in: filters.platform }
+                                : filters.platform;
+                        }
+                        if (filters?.version) {
+                            eventFilters.session.version = Array.isArray(filters.version)
+                                ? { in: filters.version }
+                                : filters.version;
+                        }
+                    }
+
+                    const completedLevels = await this.prisma.event.groupBy({
+                        by: ['userId'],
+                        _count: { id: true },
+                        where: eventFilters
+                    });
+
+                    if (completedLevels.length > 0) {
+                        const totalCompleted = completedLevels.reduce((sum: number, u: any) => sum + u._count.id, 0);
+                        const avgCompleted = totalCompleted / completedLevels.length;
+                        retentionByDay[day] = Math.round(avgCompleted * 10) / 10;
+                        userCountByDay[day] = completedLevels.length;
+                    } else {
+                        retentionByDay[day] = 0;
+                        userCountByDay[day] = 0;
+                    }
+                }
+
+                cohortData.push({ installDate, installCount: userIds.length, retentionByDay, userCountByDay });
+            }
+
+            cohortData.sort((a, b) => a.installDate.localeCompare(b.installDate));
+            return cohortData;
+        } catch (error) {
+            console.error('Error calculating average completed levels:', error);
+            throw new Error('Failed to calculate average completed levels');
+        }
+    }
+
+    /**
+     * Calculate average reached level (highest level completed) per user by cohort
+     */
+    async calculateAvgReachedLevel(
+        gameId: string,
+        startDate: Date,
+        endDate: Date,
+        filters?: CohortAnalyticsParams
+    ): Promise<CohortData[]> {
+        try {
+            const retentionDays = filters?.days || [0, 1, 2, 3, 4, 5, 6, 7, 14, 30];
+            
+            const userFilters: any = {
+                gameId: gameId,
+                createdAt: { gte: startDate, lte: endDate }
+            };
+
+            if (filters?.country) {
+                userFilters.events = {
+                    some: {
+                        countryCode: Array.isArray(filters.country)
+                            ? { in: filters.country }
+                            : filters.country
+                    }
+                };
+            }
+
+            if (filters?.platform) {
+                if (!userFilters.events) userFilters.events = { some: {} };
+                else if (!userFilters.events.some) userFilters.events.some = {};
+                userFilters.events.some.platform = Array.isArray(filters.platform)
+                    ? { in: filters.platform }
+                    : filters.platform;
+            }
+
+            if (filters?.version) {
+                if (!userFilters.events) userFilters.events = { some: {} };
+                else if (!userFilters.events.some) userFilters.events.some = {};
+                userFilters.events.some.appVersion = Array.isArray(filters.version)
+                    ? { in: filters.version }
+                    : filters.version;
+            }
+
+            const users = await this.prisma.user.findMany({
+                where: userFilters,
+                select: { id: true, createdAt: true }
+            });
+
+            if (users.length === 0) return [];
+
+            const cohortMap = new Map<string, string[]>();
+            for (const user of users) {
+                const timestamp = typeof user.createdAt === 'bigint' ? Number(user.createdAt) : user.createdAt;
+                const installDate = new Date(timestamp);
+                const dateKey = installDate.toISOString().split('T')[0];
+                if (dateKey) {
+                    if (!cohortMap.has(dateKey)) cohortMap.set(dateKey, []);
+                    cohortMap.get(dateKey)!.push(user.id);
+                }
+            }
+
+            const cohortData: CohortData[] = [];
+
+            for (const [installDate, userIds] of cohortMap.entries()) {
+                const installDateObj = new Date(installDate + 'T00:00:00.000Z');
+                const retentionByDay: { [day: number]: number } = {};
+                const userCountByDay: { [day: number]: number } = {};
+
+                for (const day of retentionDays) {
+                    if (day === 0) {
+                        userCountByDay[day] = userIds.length;
+                        retentionByDay[day] = 0; // No levels reached on day 0
+                        continue;
+                    }
+
+                    const targetDate = new Date(installDateObj);
+                    targetDate.setDate(targetDate.getDate() + day);
+                    const targetDateEnd = new Date(targetDate);
+                    targetDateEnd.setHours(23, 59, 59, 999);
+
+                    if (targetDateEnd > new Date()) {
+                        retentionByDay[day] = -1;
+                        userCountByDay[day] = 0;
+                        continue;
+                    }
+
+                    // Get the highest level completed by each user up to this day
+                    const eventFilters: any = {
+                        userId: { in: userIds },
+                        gameId: gameId,
+                        eventName: 'level_complete',
+                        timestamp: { lte: targetDateEnd }
+                    };
+
+                    if (filters?.platform || filters?.version) {
+                        eventFilters.session = {};
+                        if (filters?.platform) {
+                            eventFilters.session.platform = Array.isArray(filters.platform)
+                                ? { in: filters.platform }
+                                : filters.platform;
+                        }
+                        if (filters?.version) {
+                            eventFilters.session.version = Array.isArray(filters.version)
+                                ? { in: filters.version }
+                                : filters.version;
+                        }
+                    }
+
+                    const completedLevelEvents = await this.prisma.event.findMany({
+                        where: eventFilters,
+                        select: {
+                            userId: true,
+                            properties: true
+                        }
+                    });
+
+                    if (completedLevelEvents.length > 0) {
+                        // Calculate max level per user
+                        const userMaxLevel = new Map<string, number>();
+                        for (const event of completedLevelEvents) {
+                            const props = event.properties as any;
+                            const levelId = props?.levelId;
+                            if (levelId !== undefined && typeof levelId === 'number') {
+                                const currentMax = userMaxLevel.get(event.userId) || 0;
+                                userMaxLevel.set(event.userId, Math.max(currentMax, levelId));
+                            }
+                        }
+
+                        if (userMaxLevel.size > 0) {
+                            const totalMaxLevel = Array.from(userMaxLevel.values()).reduce((sum, val) => sum + val, 0);
+                            const avgMaxLevel = totalMaxLevel / userMaxLevel.size;
+                            retentionByDay[day] = Math.round(avgMaxLevel * 10) / 10;
+                            userCountByDay[day] = userMaxLevel.size;
+                        } else {
+                            retentionByDay[day] = 0;
+                            userCountByDay[day] = 0;
+                        }
+                    } else {
+                        retentionByDay[day] = 0;
+                        userCountByDay[day] = 0;
+                    }
+                }
+
+                cohortData.push({ installDate, installCount: userIds.length, retentionByDay, userCountByDay });
+            }
+
+            cohortData.sort((a, b) => a.installDate.localeCompare(b.installDate));
+            return cohortData;
+        } catch (error) {
+            console.error('Error calculating average reached level:', error);
+            throw new Error('Failed to calculate average reached level');
+        }
+    }
 }

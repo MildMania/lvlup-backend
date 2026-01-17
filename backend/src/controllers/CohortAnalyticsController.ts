@@ -158,4 +158,66 @@ export class CohortAnalyticsController {
             res.status(500).json({ success: false, error: 'Failed to retrieve cohort session length data' });
         }
     }
+
+    async getAvgCompletedLevels(req: AuthenticatedRequest, res: Response<ApiResponse>) {
+        try {
+            const gameId = req.game!.id;
+
+            const filters: any = {
+                startDate: req.query.startDate as string,
+                endDate: req.query.endDate as string,
+                country: req.query.country ? (req.query.country as string).split(',') : undefined,
+                platform: req.query.platform ? (req.query.platform as string).split(',') : undefined,
+                version: req.query.version ? (req.query.version as string).split(',') : undefined
+            };
+
+            if (req.query.days) {
+                filters.days = (req.query.days as string).split(',').map(day => parseInt(day.trim(), 10));
+            }
+
+            const endDate = filters.endDate ? new Date(filters.endDate + 'T23:59:59.999Z') : new Date();
+            const startDate = filters.startDate ? new Date(filters.startDate + 'T00:00:00.000Z') : new Date();
+            if (!filters.startDate) {
+                startDate.setDate(startDate.getDate() - 30);
+            }
+
+            const data = await cohortAnalyticsService.calculateAvgCompletedLevels(gameId, startDate, endDate, filters);
+
+            res.status(200).json({ success: true, data });
+        } catch (error) {
+            console.error('Error getting average completed levels:', error);
+            res.status(500).json({ success: false, error: 'Failed to retrieve average completed levels data' });
+        }
+    }
+
+    async getAvgReachedLevel(req: AuthenticatedRequest, res: Response<ApiResponse>) {
+        try {
+            const gameId = req.game!.id;
+
+            const filters: any = {
+                startDate: req.query.startDate as string,
+                endDate: req.query.endDate as string,
+                country: req.query.country ? (req.query.country as string).split(',') : undefined,
+                platform: req.query.platform ? (req.query.platform as string).split(',') : undefined,
+                version: req.query.version ? (req.query.version as string).split(',') : undefined
+            };
+
+            if (req.query.days) {
+                filters.days = (req.query.days as string).split(',').map(day => parseInt(day.trim(), 10));
+            }
+
+            const endDate = filters.endDate ? new Date(filters.endDate + 'T23:59:59.999Z') : new Date();
+            const startDate = filters.startDate ? new Date(filters.startDate + 'T00:00:00.000Z') : new Date();
+            if (!filters.startDate) {
+                startDate.setDate(startDate.getDate() - 30);
+            }
+
+            const data = await cohortAnalyticsService.calculateAvgReachedLevel(gameId, startDate, endDate, filters);
+
+            res.status(200).json({ success: true, data });
+        } catch (error) {
+            console.error('Error getting average reached level:', error);
+            res.status(500).json({ success: false, error: 'Failed to retrieve average reached level data' });
+        }
+    }
 }

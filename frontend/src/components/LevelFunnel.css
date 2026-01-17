@@ -538,6 +538,37 @@
   color: var(--text-primary);
 }
 
+/* Funnel Graph */
+.funnel-graph-container {
+  margin-top: 32px;
+  padding-top: 24px;
+  border-top: 1px solid var(--border-primary);
+}
+
+.funnel-graph-container h4 {
+  font-size: 1rem;
+  font-weight: 600;
+  color: var(--text-primary);
+  margin: 0 0 16px 0;
+}
+
+.funnel-graph {
+  background: var(--card-bg);
+  border-radius: 8px;
+  padding: 20px;
+  border: 1px solid var(--border-primary);
+}
+
+.funnel-graph svg {
+  display: block;
+}
+
+.funnel-graph circle:hover {
+  r: 6;
+  fill: #2563eb;
+  cursor: pointer;
+}
+
 /* Responsive Design */
 @media (max-width: 1024px) {
   .level-funnel {

@@ -13,6 +13,7 @@ interface LevelFunnelFilters {
     variantId?: string | undefined; // For filtering by specific AB test variant
     levelFunnel?: string | undefined; // e.g., "live_v1"
     levelFunnelVersion?: number | undefined; // e.g., 1, 2, 3
+    levelLimit?: number | undefined; // Maximum number of levels to return (default: 100)
 }
 
 interface LevelMetrics {
@@ -33,6 +34,7 @@ interface LevelMetrics {
     aps: number;
     meanCompletionDuration: number;
     meanFailDuration: number;
+    cumulativeAvgTime: number; // Cumulative average time from level 1 to current level
     boosterUsage: number;
     egpRate: number;
     customMetrics: Record<string, any>;
@@ -44,8 +46,9 @@ export class LevelFunnelService {
      */
     async getLevelFunnelData(filters: LevelFunnelFilters): Promise<LevelMetrics[]> {
         try {
-            const { gameId, startDate, endDate, country, version, abTestId, variantId, levelFunnel, levelFunnelVersion } = filters;
+            const { gameId, startDate, endDate, country, version, abTestId, variantId, levelFunnel, levelFunnelVersion, levelLimit = 100 } = filters;
 
+            // ...existing code...
             // Build where clause for filtering
             const whereClause: any = {
                 gameId,
@@ -194,9 +197,13 @@ export class LevelFunnelService {
                 }
             }
 
-            for (let i = 0; i < levelIds.length; i++) {
-                const levelId = levelIds[i]!; // Non-null assertion since we filtered
-                const nextLevelId: number | null = i < levelIds.length - 1 ? levelIds[i + 1]! : null;
+            // Apply level limit (default 100)
+            const limitedLevelIds = levelIds.slice(0, levelLimit);
+            logger.info(`Processing ${limitedLevelIds.length} levels out of ${levelIds.length} total (limit: ${levelLimit})`);
+
+            for (let i = 0; i < limitedLevelIds.length; i++) {
+                const levelId = limitedLevelIds[i]!; // Non-null assertion since we filtered
+                const nextLevelId: number | null = i < limitedLevelIds.length - 1 ? limitedLevelIds[i + 1]! : null;
                 
                 const metrics = await this.calculateLevelMetrics(
                     levelId,
@@ -206,6 +213,13 @@ export class LevelFunnelService {
                 );
                 
                 levelMetrics.push(metrics);
+            }
+
+            // Calculate cumulative average time for each level
+            let cumulativeTime = 0;
+            for (let i = 0; i < levelMetrics.length; i++) {
+                cumulativeTime += levelMetrics[i].meanCompletionDuration;
+                levelMetrics[i].cumulativeAvgTime = Math.round(cumulativeTime * 100) / 100;
             }
 
             return levelMetrics;
@@ -388,6 +402,7 @@ export class LevelFunnelService {
             aps: Math.round(aps * 100) / 100,
             meanCompletionDuration: Math.round(meanCompletionDuration * 100) / 100,
             meanFailDuration: Math.round(meanFailDuration * 100) / 100,
+            cumulativeAvgTime: 0, // Will be calculated after all levels are processed
             boosterUsage: Math.round(boosterUsage * 100) / 100,
             egpRate: Math.round(egpRate * 100) / 100,
             customMetrics

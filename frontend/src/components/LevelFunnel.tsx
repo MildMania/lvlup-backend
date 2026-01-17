@@ -17,6 +17,7 @@ const METRIC_TOOLTIPS: Record<string, string> = {
     'Fail Rate': '(Failed attempts / (Completed + Failed attempts)) × 100',
     'APS': 'Attempts Per Success - Average number of starts per completing user (only counts starts from users who completed or failed)',
     'AVG Time': 'Average time to complete the level in seconds',
+    'Cumulative AVG Time': 'Total cumulative average time from level 1 to this level in seconds',
     'Booster': '% of completing/failing users who used at least one booster',
     'EGP': 'End Game Purchase - % of failing users who made a purchase'
 };
@@ -56,6 +57,7 @@ interface LevelMetrics {
     aps: number;
     meanCompletionDuration: number;
     meanFailDuration: number;
+    cumulativeAvgTime: number;
     boosterUsage: number;
     egpRate: number;
     customMetrics: Record<string, any>;
@@ -82,6 +84,9 @@ export default function LevelFunnel({ isCollapsed = false }: LevelFunnelProps) {
 
     // Churn column expansion state
     const [isChurnExpanded, setIsChurnExpanded] = useState(false);
+
+    // Level limit state
+    const [levelLimit, setLevelLimit] = useState<number>(100);
 
     // Multi-select filter states
     const [selectedCountries, setSelectedCountries] = useState<string[]>([]);
@@ -174,7 +179,7 @@ export default function LevelFunnel({ isCollapsed = false }: LevelFunnelProps) {
         } else {
             setLoading(false);
         }
-    }, [currentGame, filters, selectedCountries, selectedVersions, selectedLevelFunnels]);
+    }, [currentGame, filters, selectedCountries, selectedVersions, selectedLevelFunnels, levelLimit]);
 
     const fetchLevelFunnelData = async () => {
         try {
@@ -182,7 +187,8 @@ export default function LevelFunnel({ isCollapsed = false }: LevelFunnelProps) {
             setError(null);
 
             const params = new URLSearchParams({
-                gameId: currentGame?.id || ''
+                gameId: currentGame?.id || '',
+                levelLimit: levelLimit.toString()
             });
 
             if (filters.startDate) params.append('startDate', filters.startDate);
@@ -237,6 +243,7 @@ export default function LevelFunnel({ isCollapsed = false }: LevelFunnelProps) {
             'Fail Rate (%)',
             'APS',
             'Avg Completion Time (s)',
+            'Cumulative Avg Time (s)',
             'Booster Usage (%)',
             'EGP Rate (%)'
         ];
@@ -255,6 +262,7 @@ export default function LevelFunnel({ isCollapsed = false }: LevelFunnelProps) {
             level.failRate.toFixed(2),
             level.aps.toFixed(2),
             level.meanCompletionDuration.toFixed(2),
+            level.cumulativeAvgTime.toFixed(2),
             level.boosterUsage.toFixed(2),
             level.egpRate.toFixed(2)
         ]);
@@ -457,6 +465,22 @@ export default function LevelFunnel({ isCollapsed = false }: LevelFunnelProps) {
                             </div>
                         )}
                     </div>
+                    <div className="filter-group">
+                        <label>Level Limit</label>
+                        <input
+                            type="number"
+                            min="1"
+                            max="1000"
+                            value={levelLimit}
+                            onChange={(e) => {
+                                const value = parseInt(e.target.value);
+                                if (value > 0 && value <= 1000) {
+                                    setLevelLimit(value);
+                                }
+                            }}
+                            style={{ width: '100px' }}
+                        />
+                    </div>
                 </div>
             </div>
 
@@ -504,6 +528,7 @@ export default function LevelFunnel({ isCollapsed = false }: LevelFunnelProps) {
                                 <th><MetricTooltip text={METRIC_TOOLTIPS['Fail Rate']}>Fail Rate</MetricTooltip></th>
                                 <th><MetricTooltip text={METRIC_TOOLTIPS['APS']}>APS</MetricTooltip></th>
                                 <th><MetricTooltip text={METRIC_TOOLTIPS['AVG Time']}>AVG Time</MetricTooltip></th>
+                                <th><MetricTooltip text={METRIC_TOOLTIPS['Cumulative AVG Time']}>Cumulative AVG Time</MetricTooltip></th>
                                 <th><MetricTooltip text={METRIC_TOOLTIPS['Booster']}>Booster %</MetricTooltip></th>
                                 <th><MetricTooltip text={METRIC_TOOLTIPS['EGP']}>EGP %</MetricTooltip></th>
                             </tr>
@@ -575,6 +600,7 @@ export default function LevelFunnel({ isCollapsed = false }: LevelFunnelProps) {
                                     <td>{level.failRate.toFixed(1)}%</td>
                                     <td>{level.aps.toFixed(2)}</td>
                                     <td>{level.meanCompletionDuration.toFixed(1)}s</td>
+                                    <td>{level.cumulativeAvgTime.toFixed(1)}s</td>
                                     <td>{level.boosterUsage.toFixed(1)}%</td>
                                     <td>{level.egpRate.toFixed(1)}%</td>
                                 </tr>
@@ -647,6 +673,76 @@ LvlUpEvents.TrackLevelFailed(1, "timeout", time);`}
                             <div className="summary-item-value">
                                 {(levels.reduce((sum, l) => sum + l.aps, 0) / levels.length).toFixed(2)}
                             </div>
+                        </div>
+                    </div>
+
+                    {/* Funnel Rate Graph */}
+                    <div className="funnel-graph-container">
+                        <h4>Funnel Rate by Level</h4>
+                        <div className="funnel-graph">
+                            <svg width="100%" height="300" style={{ overflow: 'visible' }}>
+                                {/* Y-axis labels */}
+                                {[0, 25, 50, 75, 100].map((tick) => (
+                                    <g key={tick}>
+                                        <line
+                                            x1="40"
+                                            y1={250 - (tick * 2)}
+                                            x2="100%"
+                                            y2={250 - (tick * 2)}
+                                            stroke="#e5e7eb"
+                                            strokeWidth="1"
+                                        />
+                                        <text
+                                            x="5"
+                                            y={254 - (tick * 2)}
+                                            fontSize="10"
+                                            fill="#6b7280"
+                                        >
+                                            {tick}%
+                                        </text>
+                                    </g>
+                                ))}
+
+                                {/* Line path */}
+                                <path
+                                    d={levels.map((level, index) => {
+                                        const x = 50 + (index * (100 / (levels.length || 1)) * 8);
+                                        const y = 250 - (level.funnelRate * 2);
+                                        return index === 0 ? `M ${x} ${y}` : `L ${x} ${y}`;
+                                    }).join(' ')}
+                                    fill="none"
+                                    stroke="#3b82f6"
+                                    strokeWidth="2"
+                                />
+
+                                {/* Data points */}
+                                {levels.map((level, index) => {
+                                    const x = 50 + (index * (100 / (levels.length || 1)) * 8);
+                                    const y = 250 - (level.funnelRate * 2);
+                                    return (
+                                        <g key={level.levelId}>
+                                            <circle
+                                                cx={x}
+                                                cy={y}
+                                                r="4"
+                                                fill="#3b82f6"
+                                            />
+                                            {/* Level label every 5th level or first/last */}
+                                            {(index === 0 || index === levels.length - 1 || level.levelId % 5 === 0) && (
+                                                <text
+                                                    x={x}
+                                                    y="280"
+                                                    fontSize="10"
+                                                    fill="#6b7280"
+                                                    textAnchor="middle"
+                                                >
+                                                    {level.levelId}
+                                                </text>
+                                            )}
+                                        </g>
+                                    );
+                                })}
+                            </svg>
                         </div>
                     </div>
                 </div>

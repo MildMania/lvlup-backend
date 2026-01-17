@@ -148,9 +148,17 @@ const Events: React.FC<EventsProps> = ({ gameInfo, isCollapsed = false }) => {
   // Get unique event types for filter
   const eventTypes = ['all', ...Array.from(new Set(events.map(e => e.eventName)))];
 
-  const formatTime = (dateString: string) => {
   const formatTime = (timestamp: string) => {
-    const date = new Date(parseInt(timestamp));
+    // Handle both ISO string format and millisecond timestamp
+    let date: Date;
+    if (timestamp.includes('T') || timestamp.includes('-')) {
+      // ISO string format (e.g., "2026-01-17T10:30:00.000Z")
+      date = new Date(timestamp);
+    } else {
+      // Millisecond timestamp (e.g., "1737112200000")
+      date = new Date(parseInt(timestamp));
+    }
+    
     const now = new Date();
     const seconds = Math.floor((now.getTime() - date.getTime()) / 1000);
     const minutes = Math.floor(seconds / 60);

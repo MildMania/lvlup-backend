@@ -904,7 +904,7 @@ export class CohortAnalyticsService {
                         continue;
                     }
 
-                    // Count unique level_complete events per user up to this day
+                    // Get all level_complete events up to this day
                     const eventFilters: any = {
                         userId: { in: userIds },
                         gameId: gameId,
@@ -926,17 +926,39 @@ export class CohortAnalyticsService {
                         }
                     }
 
-                    const completedLevels = await this.prisma.event.groupBy({
-                        by: ['userId'],
-                        _count: { id: true },
-                        where: eventFilters
+                    const completedLevelEvents = await this.prisma.event.findMany({
+                        where: eventFilters,
+                        select: {
+                            userId: true,
+                            properties: true
+                        }
                     });
 
-                    if (completedLevels.length > 0) {
-                        const totalCompleted = completedLevels.reduce((sum: number, u: any) => sum + u._count.id, 0);
-                        const avgCompleted = totalCompleted / completedLevels.length;
-                        retentionByDay[day] = Math.round(avgCompleted * 10) / 10;
-                        userCountByDay[day] = completedLevels.length;
+                    if (completedLevelEvents.length > 0) {
+                        // Count unique levels per user
+                        const userCompletedLevels = new Map<string, Set<number>>();
+                        for (const event of completedLevelEvents) {
+                            const props = event.properties as any;
+                            const levelId = props?.levelId;
+                            if (levelId !== undefined && typeof levelId === 'number') {
+                                if (!userCompletedLevels.has(event.userId)) {
+                                    userCompletedLevels.set(event.userId, new Set());
+                                }
+                                userCompletedLevels.get(event.userId)!.add(levelId);
+                            }
+                        }
+
+                        if (userCompletedLevels.size > 0) {
+                            // Calculate average number of unique levels completed
+                            const totalUniqueLevels = Array.from(userCompletedLevels.values())
+                                .reduce((sum, levelSet) => sum + levelSet.size, 0);
+                            const avgCompleted = totalUniqueLevels / userCompletedLevels.size;
+                            retentionByDay[day] = Math.round(avgCompleted * 10) / 10;
+                            userCountByDay[day] = userCompletedLevels.size;
+                        } else {
+                            retentionByDay[day] = 0;
+                            userCountByDay[day] = 0;
+                        }
                     } else {
                         retentionByDay[day] = 0;
                         userCountByDay[day] = 0;
@@ -1040,7 +1062,7 @@ export class CohortAnalyticsService {
                         continue;
                     }
 
-                    // Get the highest level completed by each user up to this day
+                    // Get all level_complete events cumulatively up to this day
                     const eventFilters: any = {
                         userId: { in: userIds },
                         gameId: gameId,
@@ -1071,23 +1093,34 @@ export class CohortAnalyticsService {
                     });
 
                     if (completedLevelEvents.length > 0) {
-                        // Calculate max level per user
-                        const userMaxLevel = new Map<string, number>();
+                        // Count unique levels per user (same as avg completed levels)
+                        const userCompletedLevels = new Map<string, Set<number>>();
                         for (const event of completedLevelEvents) {
                             const props = event.properties as any;
                             const levelId = props?.levelId;
                             if (levelId !== undefined && typeof levelId === 'number') {
-                                const currentMax = userMaxLevel.get(event.userId) || 0;
-                                userMaxLevel.set(event.userId, Math.max(currentMax, levelId));
+                                if (!userCompletedLevels.has(event.userId)) {
+                                    userCompletedLevels.set(event.userId, new Set());
+                                }
+                                userCompletedLevels.get(event.userId)!.add(levelId);
                             }
                         }
 
-                        if (userMaxLevel.size > 0) {
-                            const totalMaxLevel = Array.from(userMaxLevel.values()).reduce((sum, val) => sum + val, 0);
-                            const avgMaxLevel = totalMaxLevel / userMaxLevel.size;
-                            retentionByDay[day] = Math.round(avgMaxLevel * 10) / 10;
-                            userCountByDay[day] = userMaxLevel.size;
+                        if (userCompletedLevels.size > 0) {
+                            // Calculate average number of unique levels completed (cumulative)
+                            const totalUniqueLevels = Array.from(userCompletedLevels.values())
+                                .reduce((sum, levelSet) => sum + levelSet.size, 0);
+                            const avgReached = totalUniqueLevels / userCompletedLevels.size;
+                            retentionByDay[day] = Math.round(avgReached * 10) / 10;
+                            userCountByDay[day] = userCompletedLevels.size;
                         } else {
+                            retentionByDay[day] = 0;
+                            userCountByDay[day] = 0;
+                        }
+                    } else {
+                        retentionByDay[day] = 0;
+                        userCountByDay[day] = 0;
+                    }
                             retentionByDay[day] = 0;
                             userCountByDay[day] = 0;
                         }

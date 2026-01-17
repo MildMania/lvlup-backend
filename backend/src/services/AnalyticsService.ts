@@ -108,18 +108,32 @@ export class AnalyticsService {
     }
 
     // Update session heartbeat
-    // Note: This updates lastHeartbeat even if the session has an endTime
-    // When endSession is called later, it will use MAX(endTime, lastHeartbeat) for accurate duration
+    // Updates lastHeartbeat, endTime, and duration on every heartbeat
+    // This ensures sessions have accurate data even if endSession is never called
     async updateSessionHeartbeat(sessionId: string) {
         try {
+            const session = await this.prisma.session.findUnique({
+                where: { id: sessionId },
+                select: { startTime: true }
+            });
+
+            if (!session) {
+                throw new Error('Session not found');
+            }
+
+            const now = new Date();
+            const duration = Math.floor((now.getTime() - session.startTime.getTime()) / 1000);
+
             await this.prisma.session.update({
                 where: { id: sessionId },
                 data: {
-                    lastHeartbeat: new Date()
+                    lastHeartbeat: now,
+                    endTime: now,
+                    duration: Math.max(duration, 0)
                 }
             });
 
-            logger.debug(`Updated heartbeat for session ${sessionId}`);
+            logger.debug(`Updated heartbeat, endTime, and duration (${duration}s) for session ${sessionId}`);
         } catch (error) {
             logger.error('Error updating session heartbeat:', error);
             throw error;

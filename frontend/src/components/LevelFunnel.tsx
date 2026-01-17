@@ -720,13 +720,62 @@ LvlUpEvents.TrackLevelFailed(1, "timeout", time);`}
                                     const x = 50 + (index * (100 / (levels.length || 1)) * 8);
                                     const y = 250 - (level.funnelRate * 2);
                                     return (
-                                        <g key={level.levelId}>
+                                        <g key={level.levelId} className="graph-point-group">
+                                            {/* Base circle */}
                                             <circle
                                                 cx={x}
                                                 cy={y}
                                                 r="4"
                                                 fill="#3b82f6"
+                                                className="graph-point"
                                             />
+                                            {/* Hover circle - larger, shown on hover */}
+                                            <circle
+                                                cx={x}
+                                                cy={y}
+                                                r="6"
+                                                fill="#2563eb"
+                                                className="graph-point-hover"
+                                                opacity="0"
+                                            />
+                                            {/* Invisible larger circle for easier hovering */}
+                                            <circle
+                                                cx={x}
+                                                cy={y}
+                                                r="12"
+                                                fill="transparent"
+                                                className="graph-point-hitarea"
+                                            />
+                                            {/* Tooltip - shown on hover */}
+                                            <g className="graph-tooltip" style={{ pointerEvents: 'none' }}>
+                                                <rect
+                                                    x={x - 50}
+                                                    y={y - 50}
+                                                    width="100"
+                                                    height="40"
+                                                    fill="#1e293b"
+                                                    rx="6"
+                                                />
+                                                <text
+                                                    x={x}
+                                                    y={y - 28}
+                                                    fontSize="14"
+                                                    fill="white"
+                                                    textAnchor="middle"
+                                                    fontWeight="600"
+                                                >
+                                                    Level {level.levelId}
+                                                </text>
+                                                <text
+                                                    x={x}
+                                                    y={y - 12}
+                                                    fontSize="13"
+                                                    fill="#94a3b8"
+                                                    textAnchor="middle"
+                                                >
+                                                    {level.funnelRate.toFixed(1)}%
+                                                </text>
+                                            </g>
                                             {/* Level label every 5th level or first/last */}
                                             {(index === 0 || index === levels.length - 1 || level.levelId % 5 === 0) && (
                                                 <text

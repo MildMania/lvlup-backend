@@ -563,10 +563,39 @@
   display: block;
 }
 
-.funnel-graph circle:hover {
-  r: 6;
-  fill: #2563eb;
+.funnel-graph .graph-point-group {
   cursor: pointer;
+}
+
+.funnel-graph .graph-point {
+  transition: opacity 0.2s ease;
+}
+
+.funnel-graph .graph-point-hover {
+  transition: opacity 0.2s ease;
+  pointer-events: none;
+}
+
+.funnel-graph .graph-point-hitarea {
+  cursor: pointer;
+}
+
+.funnel-graph .graph-tooltip {
+  opacity: 0;
+  transition: opacity 0.2s ease;
+  pointer-events: none;
+}
+
+.funnel-graph .graph-point-group:hover .graph-point {
+  opacity: 0;
+}
+
+.funnel-graph .graph-point-group:hover .graph-point-hover {
+  opacity: 1;
+}
+
+.funnel-graph .graph-point-group:hover .graph-tooltip {
+  opacity: 1;
 }
 
 /* Responsive Design */

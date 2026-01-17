@@ -301,12 +301,11 @@ export class CohortAnalyticsService {
                         const targetDateEnd = new Date(installDateObj);
                         targetDateEnd.setHours(23, 59, 59, 999);
 
+                        // Remove strict endTime/duration filters to capture all sessions
                         const sessionFilters: any = {
                             userId: { in: userIds },
                             gameId: gameId,
-                            startTime: { gte: targetDateStart, lte: targetDateEnd },
-                            endTime: { not: null },
-                            duration: { not: null }
+                            startTime: { gte: targetDateStart, lte: targetDateEnd }
                         };
 
                         if (filters?.platform) {
@@ -318,14 +317,33 @@ export class CohortAnalyticsService {
 
                         const sessions = await this.prisma.session.findMany({
                             where: sessionFilters,
-                            select: { userId: true, duration: true }
+                            select: { userId: true, duration: true, startTime: true, endTime: true, lastHeartbeat: true }
                         });
 
                         if (sessions.length > 0) {
                             const userPlaytime = new Map<string, number>();
                             for (const session of sessions) {
+                                let sessionDuration = session.duration || 0;
+                                
+                                // If duration is not set, calculate from startTime and endTime/lastHeartbeat
+                                if (!sessionDuration && session.startTime) {
+                                    const start = typeof session.startTime === 'bigint' ? Number(session.startTime) : new Date(session.startTime).getTime();
+                                    let end = 0;
+                                    
+                                    // Use lastHeartbeat if available and later than endTime, otherwise use endTime
+                                    if (session.lastHeartbeat) {
+                                        end = typeof session.lastHeartbeat === 'bigint' ? Number(session.lastHeartbeat) : new Date(session.lastHeartbeat).getTime();
+                                    } else if (session.endTime) {
+                                        end = typeof session.endTime === 'bigint' ? Number(session.endTime) : new Date(session.endTime).getTime();
+                                    }
+                                    
+                                    if (end > start) {
+                                        sessionDuration = Math.floor((end - start) / 1000); // Convert to seconds
+                                    }
+                                }
+                                
                                 const current = userPlaytime.get(session.userId) || 0;
-                                userPlaytime.set(session.userId, current + (session.duration || 0));
+                                userPlaytime.set(session.userId, current + sessionDuration);
                             }
                             const totalPlaytime = Array.from(userPlaytime.values()).reduce((sum, val) => sum + val, 0);
                             const avgPlaytime = totalPlaytime / userPlaytime.size / 60;
@@ -349,12 +367,11 @@ export class CohortAnalyticsService {
                         continue;
                     }
 
+                    // Remove strict endTime/duration filters to capture all sessions
                     const sessionFilters: any = {
                         userId: { in: userIds },
                         gameId: gameId,
-                        startTime: { gte: targetDateStart, lte: targetDateEnd },
-                        endTime: { not: null },
-                        duration: { not: null }
+                        startTime: { gte: targetDateStart, lte: targetDateEnd }
                     };
 
                     if (filters?.platform) {
@@ -366,7 +383,7 @@ export class CohortAnalyticsService {
 
                     const sessions = await this.prisma.session.findMany({
                         where: sessionFilters,
-                        select: { userId: true, duration: true }
+                        select: { userId: true, duration: true, startTime: true, endTime: true, lastHeartbeat: true }
                     });
 
                     if (sessions.length === 0) {
@@ -377,8 +394,27 @@ export class CohortAnalyticsService {
 
                     const userPlaytime = new Map<string, number>();
                     for (const session of sessions) {
+                        let sessionDuration = session.duration || 0;
+                        
+                        // If duration is not set, calculate from startTime and endTime/lastHeartbeat
+                        if (!sessionDuration && session.startTime) {
+                            const start = typeof session.startTime === 'bigint' ? Number(session.startTime) : new Date(session.startTime).getTime();
+                            let end = 0;
+                            
+                            // Use lastHeartbeat if available and later than endTime, otherwise use endTime
+                            if (session.lastHeartbeat) {
+                                end = typeof session.lastHeartbeat === 'bigint' ? Number(session.lastHeartbeat) : new Date(session.lastHeartbeat).getTime();
+                            } else if (session.endTime) {
+                                end = typeof session.endTime === 'bigint' ? Number(session.endTime) : new Date(session.endTime).getTime();
+                            }
+                            
+                            if (end > start) {
+                                sessionDuration = Math.floor((end - start) / 1000); // Convert to seconds
+                            }
+                        }
+                        
                         const current = userPlaytime.get(session.userId) || 0;
-                        userPlaytime.set(session.userId, current + (session.duration || 0));
+                        userPlaytime.set(session.userId, current + sessionDuration);
                     }
 
                     const totalPlaytime = Array.from(userPlaytime.values()).reduce((sum, val) => sum + val, 0);
@@ -652,12 +688,11 @@ export class CohortAnalyticsService {
                         const day0End = new Date(installDateObj);
                         day0End.setHours(23, 59, 59, 999);
 
+                        // Remove strict endTime/duration filters
                         const day0SessionFilters: any = {
                             userId: { in: userIds },
                             gameId: gameId,
-                            startTime: { gte: day0Start, lte: day0End },
-                            endTime: { not: null },
-                            duration: { not: null }
+                            startTime: { gte: day0Start, lte: day0End }
                         };
 
                         if (filters?.platform) {
@@ -669,11 +704,32 @@ export class CohortAnalyticsService {
 
                         const sessions = await this.prisma.session.findMany({
                             where: day0SessionFilters,
-                            select: { duration: true, userId: true }
+                            select: { duration: true, userId: true, startTime: true, endTime: true, lastHeartbeat: true }
                         });
 
                         if (sessions.length > 0) {
-                            const totalDuration = sessions.reduce((sum, s) => sum + (s.duration || 0), 0);
+                            let totalDuration = 0;
+                            for (const session of sessions) {
+                                let sessionDuration = session.duration || 0;
+                                
+                                // If duration is not set, calculate from timestamps
+                                if (!sessionDuration && session.startTime) {
+                                    const start = typeof session.startTime === 'bigint' ? Number(session.startTime) : new Date(session.startTime).getTime();
+                                    let end = 0;
+                                    
+                                    if (session.lastHeartbeat) {
+                                        end = typeof session.lastHeartbeat === 'bigint' ? Number(session.lastHeartbeat) : new Date(session.lastHeartbeat).getTime();
+                                    } else if (session.endTime) {
+                                        end = typeof session.endTime === 'bigint' ? Number(session.endTime) : new Date(session.endTime).getTime();
+                                    }
+                                    
+                                    if (end > start) {
+                                        sessionDuration = Math.floor((end - start) / 1000);
+                                    }
+                                }
+                                
+                                totalDuration += sessionDuration;
+                            }
                             const avgDuration = totalDuration / sessions.length / 60;
                             retentionByDay[day] = Math.round(avgDuration * 10) / 10;
                         } else {
@@ -695,12 +751,11 @@ export class CohortAnalyticsService {
                         continue;
                     }
 
+                    // Remove strict endTime/duration filters
                     const sessionFilters: any = {
                         userId: { in: userIds },
                         gameId: gameId,
-                        startTime: { gte: targetDateStart, lte: targetDateEnd },
-                        endTime: { not: null },
-                        duration: { not: null }
+                        startTime: { gte: targetDateStart, lte: targetDateEnd }
                     };
 
                     if (filters?.platform) {
@@ -712,7 +767,7 @@ export class CohortAnalyticsService {
 
                     const sessions = await this.prisma.session.findMany({
                         where: sessionFilters,
-                        select: { duration: true, userId: true }
+                        select: { duration: true, userId: true, startTime: true, endTime: true, lastHeartbeat: true }
                     });
 
                     if (sessions.length === 0) {
@@ -721,7 +776,29 @@ export class CohortAnalyticsService {
                         continue;
                     }
 
-                    const totalDuration = sessions.reduce((sum, s) => sum + (s.duration || 0), 0);
+                    let totalDuration = 0;
+                    for (const session of sessions) {
+                        let sessionDuration = session.duration || 0;
+                        
+                        // If duration is not set, calculate from timestamps
+                        if (!sessionDuration && session.startTime) {
+                            const start = typeof session.startTime === 'bigint' ? Number(session.startTime) : new Date(session.startTime).getTime();
+                            let end = 0;
+                            
+                            if (session.lastHeartbeat) {
+                                end = typeof session.lastHeartbeat === 'bigint' ? Number(session.lastHeartbeat) : new Date(session.lastHeartbeat).getTime();
+                            } else if (session.endTime) {
+                                end = typeof session.endTime === 'bigint' ? Number(session.endTime) : new Date(session.endTime).getTime();
+                            }
+                            
+                            if (end > start) {
+                                sessionDuration = Math.floor((end - start) / 1000);
+                            }
+                        }
+                        
+                        totalDuration += sessionDuration;
+                    }
+
                     const avgDuration = totalDuration / sessions.length / 60; // Convert to minutes
                     retentionByDay[day] = Math.round(avgDuration * 10) / 10;
                     

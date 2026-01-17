@@ -8,7 +8,8 @@ interface Event {
   userId: string;
   sessionId?: string;
   properties?: Record<string, any>;
-  timestamp: string;
+  timestamp: string; // Client-provided timestamp (can be wrong)
+  createdAt?: string; // Server timestamp (always accurate)
   
   // Event metadata
   eventUuid?: string;
@@ -149,19 +150,16 @@ const Events: React.FC<EventsProps> = ({ gameInfo, isCollapsed = false }) => {
   const eventTypes = ['all', ...Array.from(new Set(events.map(e => e.eventName)))];
 
   const formatTime = (dateString: string) => {
-    const date = new Date(dateString);
+  const formatTime = (timestamp: string) => {
+    const date = new Date(parseInt(timestamp));
     const now = new Date();
-    const diff = now.getTime() - date.getTime();
-    const seconds = Math.floor(diff / 1000);
+    const seconds = Math.floor((now.getTime() - date.getTime()) / 1000);
     const minutes = Math.floor(seconds / 60);
     const hours = Math.floor(minutes / 60);
 
-    // Handle future timestamps (client clock ahead of server)
+    // Server timestamps should never be in the future
     if (seconds < 0) {
-      const absDiff = Math.abs(seconds);
-      if (absDiff < 60) return 'just now'; // Less than 1 minute in the future
-      if (absDiff < 3600) return `in ${Math.floor(absDiff / 60)}m`; // Show as future
-      return `in ${Math.floor(absDiff / 3600)}h`;
+      return 'just now'; // Treat any negative value as "just now"
     }
 
     if (seconds < 60) return `${seconds}s ago`;
@@ -323,7 +321,7 @@ const Events: React.FC<EventsProps> = ({ gameInfo, isCollapsed = false }) => {
                     <Activity size={14} />
                     <span className="event-name">{event.eventName}</span>
                   </div>
-                  <span className="event-time">{formatTime(event.timestamp)}</span>
+                  <span className="event-time">{formatTime(event.createdAt || event.timestamp)}</span>
                 </div>
 
                 <div className="event-summary">

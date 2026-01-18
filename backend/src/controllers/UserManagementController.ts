@@ -87,6 +87,13 @@ export class UserManagementController {
         try {
             const { id } = req.params;
 
+            if (!id) {
+                return res.status(400).json({
+                    success: false,
+                    error: 'User ID is required',
+                });
+            }
+
             const user = await userManagementService.getUserById(id);
 
             return res.json({

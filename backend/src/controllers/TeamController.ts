@@ -100,6 +100,13 @@ export class TeamController {
         try {
             const { id } = req.params;
 
+            if (!id) {
+                return res.status(400).json({
+                    success: false,
+                    error: 'Team ID is required',
+                });
+            }
+
             const team = await teamService.getTeamById(id);
 
             if (!team) {
@@ -136,6 +143,13 @@ export class TeamController {
             const { id } = req.params;
             const { name, description, slug } = req.body;
 
+            if (!id) {
+                return res.status(400).json({
+                    success: false,
+                    error: 'Team ID is required',
+                });
+            }
+
             const team = await teamService.updateTeam(
                 id,
                 { name, description, slug },
@@ -168,6 +182,13 @@ export class TeamController {
 
             const { id } = req.params;
 
+            if (!id) {
+                return res.status(400).json({
+                    success: false,
+                    error: 'Team ID is required',
+                });
+            }
+
             await teamService.deleteTeam(id, req.dashboardUser.id);
 
             return res.json({
@@ -188,6 +209,13 @@ export class TeamController {
     async getTeamMembers(req: DashboardAuthRequest, res: Response<ApiResponse>) {
         try {
             const { id } = req.params;
+
+            if (!id) {
+                return res.status(400).json({
+                    success: false,
+                    error: 'Team ID is required',
+                });
+            }
 
             const members = await teamService.getTeamMembers(id);
 
@@ -217,6 +245,13 @@ export class TeamController {
 
             const { id } = req.params;
             const { userId, role } = req.body;
+
+            if (!id) {
+                return res.status(400).json({
+                    success: false,
+                    error: 'Team ID is required',
+                });
+            }
 
             if (!userId || !role) {
                 return res.status(400).json({
@@ -259,6 +294,20 @@ export class TeamController {
             const { id, userId } = req.params;
             const { role } = req.body;
 
+            if (!id) {
+                return res.status(400).json({
+                    success: false,
+                    error: 'Team ID is required',
+                });
+            }
+
+            if (!userId) {
+                return res.status(400).json({
+                    success: false,
+                    error: 'User ID is required',
+                });
+            }
+
             if (!role) {
                 return res.status(400).json({
                     success: false,
@@ -298,6 +347,20 @@ export class TeamController {
             }
 
             const { id, userId } = req.params;
+
+            if (!id) {
+                return res.status(400).json({
+                    success: false,
+                    error: 'Team ID is required',
+                });
+            }
+
+            if (!userId) {
+                return res.status(400).json({
+                    success: false,
+                    error: 'User ID is required',
+                });
+            }
 
             await teamService.removeMember(id, userId, req.dashboardUser.id);
 

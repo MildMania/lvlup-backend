@@ -15,8 +15,24 @@ const app = express();
 const PORT = process.env.PORT ? parseInt(process.env.PORT) : 3000;
 
 // Apply middleware
+const allowedOrigins = [
+    'http://localhost:5173', // Local development (Vite default)
+    'http://localhost:5174', // Alternative local port
+    'https://lvlup.mildmania.com', // Production frontend
+    process.env.FRONTEND_URL, // Additional custom origin from env
+].filter(Boolean); // Remove undefined values
+
 app.use(cors({
-    origin: process.env.FRONTEND_URL || 'http://localhost:5173',
+    origin: (origin, callback) => {
+        // Allow requests with no origin (mobile apps, Postman, etc.)
+        if (!origin) return callback(null, true);
+        
+        if (allowedOrigins.includes(origin)) {
+            callback(null, true);
+        } else {
+            callback(new Error(`Origin ${origin} not allowed by CORS`));
+        }
+    },
     credentials: true, // Allow cookies
 }));
 app.use(helmet());

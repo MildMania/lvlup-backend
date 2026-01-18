@@ -120,18 +120,25 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     }, [accessToken]);
 
     const login = async (email: string, password: string) => {
-        const response = await axios.post(`${API_URL}/auth/login`, {
-            email,
-            password,
-        });
+        try {
+            const response = await axios.post(`${API_URL}/auth/login`, {
+                email,
+                password,
+            });
 
-        if (response.data.success) {
-            const { accessToken: token, user: userData } = response.data.data;
-            setAccessToken(token);
-            localStorage.setItem('accessToken', token);
-            setUser(userData);
-        } else {
-            throw new Error(response.data.error || 'Login failed');
+            if (response.data.success) {
+                const { accessToken: token, user: userData } = response.data.data;
+                setAccessToken(token);
+                localStorage.setItem('accessToken', token);
+                setUser(userData);
+            } else {
+                throw new Error(response.data.error || 'Login failed');
+            }
+        } catch (error: any) {
+            // Better error handling to show actual backend error
+            const errorMessage = error.response?.data?.error || error.message || 'Login failed';
+            console.error('Login error:', errorMessage);
+            throw new Error(errorMessage);
         }
     };
 

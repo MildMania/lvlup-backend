@@ -116,6 +116,13 @@ export class UserManagementController {
             const { id } = req.params;
             const { firstName, lastName, email, isActive, teamId, role } = req.body;
 
+            if (!id) {
+                return res.status(400).json({
+                    success: false,
+                    error: 'User ID is required',
+                });
+            }
+
             await userManagementService.updateUser(
                 id,
                 { firstName, lastName, email, isActive, teamId, role },
@@ -148,6 +155,13 @@ export class UserManagementController {
 
             const { id } = req.params;
 
+            if (!id) {
+                return res.status(400).json({
+                    success: false,
+                    error: 'User ID is required',
+                });
+            }
+
             await userManagementService.deactivateUser(id, req.dashboardUser.id);
 
             return res.json({
@@ -175,6 +189,13 @@ export class UserManagementController {
             }
 
             const { id } = req.params;
+
+            if (!id) {
+                return res.status(400).json({
+                    success: false,
+                    error: 'User ID is required',
+                });
+            }
 
             await userManagementService.deleteUser(id, req.dashboardUser.id);
 
@@ -204,6 +225,13 @@ export class UserManagementController {
 
             const { id } = req.params;
 
+            if (!id) {
+                return res.status(400).json({
+                    success: false,
+                    error: 'User ID is required',
+                });
+            }
+
             await userManagementService.activateUser(id, req.dashboardUser.id);
 
             return res.json({
@@ -232,6 +260,13 @@ export class UserManagementController {
 
             const { id } = req.params;
 
+            if (!id) {
+                return res.status(400).json({
+                    success: false,
+                    error: 'User ID is required',
+                });
+            }
+
             await userManagementService.unlockUser(id, req.dashboardUser.id);
 
             return res.json({
@@ -259,6 +294,13 @@ export class UserManagementController {
             }
 
             const { id } = req.params;
+
+            if (!id) {
+                return res.status(400).json({
+                    success: false,
+                    error: 'User ID is required',
+                });
+            }
 
             // Generate automatic password - no longer accept password from request
             const result = await userManagementService.resetUserPassword(

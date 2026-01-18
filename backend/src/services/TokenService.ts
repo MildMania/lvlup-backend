@@ -42,7 +42,7 @@ export class TokenService {
         // Generate access token (short-lived)
         const accessToken = jwt.sign(payload, this.accessSecret, {
             expiresIn: this.accessExpires,
-        });
+        } as jwt.SignOptions);
 
         // Generate refresh token (long-lived)
         const refreshToken = crypto.randomBytes(64).toString('hex');
@@ -57,8 +57,8 @@ export class TokenService {
                 userId,
                 token: refreshToken,
                 expiresAt,
-                userAgent,
-                ipAddress,
+                ...(userAgent && { userAgent }),
+                ...(ipAddress && { ipAddress }),
             },
         });
 

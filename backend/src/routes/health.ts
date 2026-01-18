@@ -1,9 +1,29 @@
 import { Router } from 'express';
 import { HealthMetricsController } from '../controllers/HealthMetricsController';
 import { authenticateEither } from '../middleware/authenticateEither';
+import { sessionMonitoring } from '../services/SessionMonitoringService';
+import { ApiResponse } from '../types/api';
+import logger from '../utils/logger';
 
 const router = Router();
 const healthController = new HealthMetricsController();
+
+// Get session health check
+router.get('/sessions', async (req, res) => {
+  try {
+    const report = await sessionMonitoring.runSessionHealthCheck();
+    res.status(200).json({
+      success: true,
+      data: report
+    } as ApiResponse);
+  } catch (error) {
+    logger.error('Error in session health check endpoint:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Failed to get session health check'
+    } as ApiResponse);
+  }
+});
 
 // Get health metrics overview
 router.get(
@@ -41,4 +61,6 @@ router.post(
 );
 
 export default router;
+
+
 

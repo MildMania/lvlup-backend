@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { RefreshCw } from 'lucide-react';
 import apiClient from '../lib/apiClient';
 import Health from './Health';
@@ -69,7 +69,7 @@ const EngagementTab: React.FC<{ gameInfo: any }> = ({ gameInfo }) => {
   const [cohortData, setCohortData] = useState<any[]>([]);
   const [metricData, setMetricData] = useState<any[]>([]);
   const [loading, setLoading] = useState(false);
-  const [selectedMetric, setSelectedMetric] = useState<'retention' | 'playtime' | 'session-count' | 'session-length'>('retention');
+  const [selectedMetric, setSelectedMetric] = useState<'retention' | 'playtime' | 'session-count' | 'session-length' | 'avg-completed-levels' | 'avg-reached-level'>('retention');
   const [showDaySelector, setShowDaySelector] = useState(false);
   const [showPlatformSelector, setShowPlatformSelector] = useState(false);
   const [showCountrySelector, setShowCountrySelector] = useState(false);
@@ -90,6 +90,33 @@ const EngagementTab: React.FC<{ gameInfo: any }> = ({ gameInfo }) => {
   const [availableCountries, setAvailableCountries] = useState<string[]>(['All']);
   const [availableVersions, setAvailableVersions] = useState<string[]>(['All']);
   const [availablePlatforms, setAvailablePlatforms] = useState<string[]>(['All']);
+
+  // Refs for dropdowns
+  const dayDropdownRef = useRef<HTMLDivElement>(null);
+  const platformDropdownRef = useRef<HTMLDivElement>(null);
+  const countryDropdownRef = useRef<HTMLDivElement>(null);
+  const versionDropdownRef = useRef<HTMLDivElement>(null);
+
+  // Click outside to close dropdowns
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (dayDropdownRef.current && !dayDropdownRef.current.contains(event.target as Node)) {
+        setShowDaySelector(false);
+      }
+      if (platformDropdownRef.current && !platformDropdownRef.current.contains(event.target as Node)) {
+        setShowPlatformSelector(false);
+      }
+      if (countryDropdownRef.current && !countryDropdownRef.current.contains(event.target as Node)) {
+        setShowCountrySelector(false);
+      }
+      if (versionDropdownRef.current && !versionDropdownRef.current.contains(event.target as Node)) {
+        setShowVersionSelector(false);
+      }
+    };
+
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
 
   const fetchCohortData = async () => {
     setLoading(true);
@@ -151,6 +178,12 @@ const EngagementTab: React.FC<{ gameInfo: any }> = ({ gameInfo }) => {
         case 'session-length':
           endpoint = '/analytics/cohort/session-length';
           break;
+        case 'avg-completed-levels':
+          endpoint = '/analytics/cohort/avg-completed-levels';
+          break;
+        case 'avg-reached-level':
+          endpoint = '/analytics/cohort/avg-reached-level';
+          break;
         default:
           return fetchCohortData();
       }
@@ -168,7 +201,8 @@ const EngagementTab: React.FC<{ gameInfo: any }> = ({ gameInfo }) => {
         const transformedData = response.data.data.map((item: any) => ({
           date: item.installDate,
           userCount: item.installCount,
-          metricsByDay: item.retentionByDay
+          metricsByDay: item.retentionByDay,
+          userCountByDay: item.userCountByDay
         }));
         setMetricData(transformedData);
       } else {
@@ -310,13 +344,15 @@ const EngagementTab: React.FC<{ gameInfo: any }> = ({ gameInfo }) => {
           <label>Metric</label>
           <select
             value={selectedMetric}
-            onChange={(e) => setSelectedMetric(e.target.value as 'retention' | 'playtime' | 'session-count' | 'session-length')}
+            onChange={(e) => setSelectedMetric(e.target.value as 'retention' | 'playtime' | 'session-count' | 'session-length' | 'avg-completed-levels' | 'avg-reached-level')}
             style={{ padding: '8px', borderRadius: '4px', border: '1px solid #ddd' }}
           >
             <option value="retention">Retention Cohort</option>
             <option value="playtime">Avg Daily Playtime</option>
             <option value="session-count">Avg Session Count</option>
             <option value="session-length">Avg Session Length</option>
+            <option value="avg-completed-levels">Avg Completed Levels</option>
+            <option value="avg-reached-level">Avg Reached Level</option>
           </select>
         </div>
       </div>
@@ -339,11 +375,16 @@ const EngagementTab: React.FC<{ gameInfo: any }> = ({ gameInfo }) => {
             onChange={(e) => handleFilterChange('endDate', e.target.value)}
           />
         </div>
-        <div className="filter-group day-selector-group">
+        <div className="filter-group day-selector-group" ref={dayDropdownRef}>
           <label>Days to Show</label>
           <button 
             className="day-selector-button"
-            onClick={() => setShowDaySelector(!showDaySelector)}
+            onClick={() => {
+              setShowDaySelector(!showDaySelector);
+              setShowPlatformSelector(false);
+              setShowCountrySelector(false);
+              setShowVersionSelector(false);
+            }}
           >
             {selectedDays.length} days selected ▾
           </button>
@@ -368,11 +409,16 @@ const EngagementTab: React.FC<{ gameInfo: any }> = ({ gameInfo }) => {
             </div>
           )}
         </div>
-        <div className="filter-group day-selector-group">
+        <div className="filter-group day-selector-group" ref={platformDropdownRef}>
           <label>Platform</label>
           <button 
             className="day-selector-button"
-            onClick={() => setShowPlatformSelector(!showPlatformSelector)}
+            onClick={() => {
+              setShowPlatformSelector(!showPlatformSelector);
+              setShowDaySelector(false);
+              setShowCountrySelector(false);
+              setShowVersionSelector(false);
+            }}
           >
             {selectedPlatforms.length > 0 ? `${selectedPlatforms.length} selected` : 'All platforms'} ▾
           </button>
@@ -397,11 +443,16 @@ const EngagementTab: React.FC<{ gameInfo: any }> = ({ gameInfo }) => {
             </div>
           )}
         </div>
-        <div className="filter-group day-selector-group">
+        <div className="filter-group day-selector-group" ref={countryDropdownRef}>
           <label>Country</label>
           <button 
             className="day-selector-button"
-            onClick={() => setShowCountrySelector(!showCountrySelector)}
+            onClick={() => {
+              setShowCountrySelector(!showCountrySelector);
+              setShowDaySelector(false);
+              setShowPlatformSelector(false);
+              setShowVersionSelector(false);
+            }}
           >
             {selectedCountries.length > 0 ? `${selectedCountries.length} selected` : 'All countries'} ▾
           </button>
@@ -426,11 +477,16 @@ const EngagementTab: React.FC<{ gameInfo: any }> = ({ gameInfo }) => {
             </div>
           )}
         </div>
-        <div className="filter-group day-selector-group">
+        <div className="filter-group day-selector-group" ref={versionDropdownRef}>
           <label>Build/Version</label>
           <button 
             className="day-selector-button"
-            onClick={() => setShowVersionSelector(!showVersionSelector)}
+            onClick={() => {
+              setShowVersionSelector(!showVersionSelector);
+              setShowDaySelector(false);
+              setShowPlatformSelector(false);
+              setShowCountrySelector(false);
+            }}
           >
             {selectedVersions.length > 0 ? `${selectedVersions.length} selected` : 'All versions'} ▾
           </button>
@@ -489,13 +545,17 @@ const EngagementTab: React.FC<{ gameInfo: any }> = ({ gameInfo }) => {
                     <td className="install-count">{cohort.installCount}</td>
                     {selectedDays.map(day => {
                       const value = cohort.retentionByDay[day];
+                      const userCount = cohort.userCountByDay?.[day];
                       const isNotAvailable = value < 0;
                       return (
                         <td
                           key={day}
                           className={`retention-cell ${isNotAvailable ? 'not-available' : getRetentionColor(value)}`}
                         >
-                          {isNotAvailable ? 'N/A' : `${value}%`}
+                          <div className="metric-value">{isNotAvailable ? 'N/A' : `${value}%`}</div>
+                          {!isNotAvailable && userCount !== undefined && (
+                            <div className="metric-user-count">{userCount} users</div>
+                          )}
                         </td>
                       );
                     })}
@@ -531,6 +591,7 @@ const EngagementTab: React.FC<{ gameInfo: any }> = ({ gameInfo }) => {
                     <td className="install-count">{row.userCount || 0}</td>
                     {selectedDays.map(day => {
                       const value = row.metricsByDay?.[day];
+                      const userCount = row.userCountByDay?.[day];
                       const isNotAvailable = value === undefined || value === null || value < 0;
                       const formattedValue = isNotAvailable
                         ? 'N/A'
@@ -538,13 +599,22 @@ const EngagementTab: React.FC<{ gameInfo: any }> = ({ gameInfo }) => {
                         ? `${value.toFixed(1)}m`
                         : selectedMetric === 'session-count'
                         ? value.toFixed(2)
-                        : `${value.toFixed(1)}m`;
+                        : selectedMetric === 'session-length'
+                        ? `${value.toFixed(1)}m`
+                        : selectedMetric === 'avg-completed-levels'
+                        ? value.toFixed(1)
+                        : selectedMetric === 'avg-reached-level'
+                        ? `L${value.toFixed(0)}`
+                        : value.toFixed(1);
                       
                       const colorClass = getMetricColor(day, value);
                       
                       return (
                         <td key={day} className={`retention-cell ${colorClass}`}>
-                          {formattedValue}
+                          <div className="metric-value">{formattedValue}</div>
+                          {!isNotAvailable && userCount !== undefined && (
+                            <div className="metric-user-count">{userCount} users</div>
+                          )}
                         </td>
                       );
                     })}

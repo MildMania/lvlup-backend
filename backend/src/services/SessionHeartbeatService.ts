@@ -105,7 +105,8 @@ export class SessionHeartbeatService {
 
             for (const session of inactiveSessions) {
                 try {
-                    // Calculate endTime and duration based on last heartbeat
+                    // Calculate endTime based on last heartbeat
+                    // Use lastHeartbeat if available, otherwise use startTime (for sessions that never got a heartbeat)
                     const endTime = session.lastHeartbeat || session.startTime;
                     const duration = Math.floor((endTime.getTime() - session.startTime.getTime()) / 1000);
 

@@ -9,6 +9,46 @@ export class AnalyticsService {
     constructor(prismaClient?: PrismaClient) {
         this.prisma = prismaClient || new PrismaClient();
     }
+
+    /**
+     * Validate and use client timestamp with fallback to server time
+     * 
+     * Strategy for EVENTS:
+     * - Reject future timestamps (client clock ahead of server)
+     * - Accept timestamps up to 7 days in the past (offline events)
+     * - Preserves temporal accuracy for offline events
+     * - Protects against clock manipulation
+     * 
+     * Critical for: DAU/MAU, retention analysis, funnel timing
+     */
+    private validateClientTimestamp(clientTs?: number): Date {
+        const serverTime = new Date();
+        
+        if (!clientTs) {
+            return serverTime;
+        }
+
+        const clientTime = new Date(clientTs);
+        const timeDiff = serverTime.getTime() - clientTime.getTime();
+        const MAX_PAST_DRIFT = 7 * 24 * 60 * 60 * 1000; // 7 days in milliseconds
+
+        // Reject future timestamps (client clock is ahead)
+        if (timeDiff < 0) {
+            const futureHours = Math.floor(Math.abs(timeDiff) / 1000 / 60 / 60);
+            logger.warn(`Client timestamp rejected (${futureHours}h in future): ${clientTs}, using server time`);
+            return serverTime;
+        }
+
+        // Reject timestamps too far in the past (>7 days old)
+        if (timeDiff > MAX_PAST_DRIFT) {
+            const pastHours = Math.floor(timeDiff / 1000 / 60 / 60);
+            logger.warn(`Client timestamp rejected (${pastHours}h in past): ${clientTs}, using server time`);
+            return serverTime;
+        }
+
+        // Client timestamp is reasonable, use it
+        return clientTime;
+    }
     // Create or get user
     async getOrCreateUser(gameId: string, userProfile: UserProfile) {
         try {
@@ -58,7 +98,7 @@ export class AnalyticsService {
                     userId: userId,
                     startTime: new Date(sessionData.startTime),
                     platform: sessionData.platform ?? null,
-                    version: sessionData.version ?? null
+                    version: sessionData.appVersion ?? sessionData.version ?? null // Use appVersion first, fallback to version
                 }
             });
 
@@ -81,18 +121,25 @@ export class AnalyticsService {
                 throw new Error('Session not found');
             }
 
-            const endDateTime = new Date(endTime);
-            const duration = Math.floor((endDateTime.getTime() - session.startTime.getTime()) / 1000);
+            const requestedEndTime = new Date(endTime);
+            
+            // Use the later of requested endTime or lastHeartbeat
+            // This handles cases where heartbeats arrived after endSession was called
+            const actualEndTime = session.lastHeartbeat && session.lastHeartbeat > requestedEndTime 
+                ? session.lastHeartbeat 
+                : requestedEndTime;
+            
+            const duration = Math.floor((actualEndTime.getTime() - session.startTime.getTime()) / 1000);
 
             const updatedSession = await this.prisma.session.update({
                 where: { id: sessionId },
                 data: {
-                    endTime: endDateTime,
-                    duration: duration
+                    endTime: actualEndTime, // Use actualEndTime, not requested endTime
+                    duration: Math.max(duration, 0) // Ensure non-negative duration
                 }
             });
 
-            logger.info(`Session ${sessionId} ended, duration: ${duration}s`);
+            logger.info(`Session ${sessionId} ended, duration: ${duration}s (requested: ${requestedEndTime.toISOString()}, actual: ${actualEndTime.toISOString()}, lastHeartbeat: ${session.lastHeartbeat?.toISOString() || 'none'})`);
             return updatedSession;
         } catch (error) {
             logger.error('Error ending session:', error);
@@ -101,16 +148,32 @@ export class AnalyticsService {
     }
 
     // Update session heartbeat
+    // Updates lastHeartbeat, endTime, and duration on every heartbeat
+    // This ensures sessions have accurate data even if endSession is never called
     async updateSessionHeartbeat(sessionId: string) {
         try {
+            const session = await this.prisma.session.findUnique({
+                where: { id: sessionId },
+                select: { startTime: true }
+            });
+
+            if (!session) {
+                throw new Error('Session not found');
+            }
+
+            const now = new Date();
+            const duration = Math.floor((now.getTime() - session.startTime.getTime()) / 1000);
+
             await this.prisma.session.update({
                 where: { id: sessionId },
                 data: {
-                    lastHeartbeat: new Date()
+                    lastHeartbeat: now,
+                    endTime: now,
+                    duration: Math.max(duration, 0)
                 }
             });
 
-            logger.debug(`Updated heartbeat for session ${sessionId}`);
+            logger.debug(`Updated heartbeat, endTime, and duration (${duration}s) for session ${sessionId}`);
         } catch (error) {
             logger.error('Error updating session heartbeat:', error);
             throw error;
@@ -134,6 +197,11 @@ export class AnalyticsService {
             delete (properties as any).levelFunnel;
             delete (properties as any).levelFunnelVersion;
             
+            // Use validated client timestamp for accurate temporal ordering
+            // Critical for offline events and analytics accuracy (DAU, retention, funnels)
+            const eventTimestamp = this.validateClientTimestamp(eventData.clientTs);
+            const serverTime = new Date(); // Actual server receipt time
+            
             const event = await this.prisma.event.create({
                 data: {
                     gameId: gameId,
@@ -141,11 +209,14 @@ export class AnalyticsService {
                     sessionId: sessionId,
                     eventName: eventData.eventName,
                     properties: properties,
-                    timestamp: eventData.timestamp ? new Date(eventData.timestamp) : new Date(),
+                    timestamp: eventTimestamp, // Use validated client timestamp
                     
                     // Event metadata
                     eventUuid: eventData.eventUuid ?? null,
-                    clientTs: eventData.clientTs ? BigInt(eventData.clientTs) : null,
+                    // Store original client timestamp for reference
+                    clientTs: eventData.clientTs ? BigInt(eventData.clientTs) : 
+                              (eventData.timestamp ? BigInt(new Date(eventData.timestamp).getTime()) : null),
+                    serverReceivedAt: serverTime, // Track when server received the event
                     
                     // Device & Platform info
                     platform: eventData.platform ?? null,
@@ -226,17 +297,23 @@ export class AnalyticsService {
                 delete (properties as any).levelFunnel;
                 delete (properties as any).levelFunnelVersion;
                 
+                // Use validated client timestamp for each event in batch
+                // Critical for offline events to preserve temporal sequence
+                const eventTimestamp = this.validateClientTimestamp(eventData.clientTs);
+                const serverTime = new Date(); // Server receipt time
+                
                 return {
                     gameId: gameId,
                     userId: user.id,
                     sessionId: batchData.sessionId || null,
                     eventName: eventData.eventName,
                     properties: properties,
-                    timestamp: eventData.timestamp ? new Date(eventData.timestamp) : new Date(),
+                    timestamp: eventTimestamp, // Use validated client timestamp
                     
                     // Event metadata
                     eventUuid: eventData.eventUuid ?? null,
                     clientTs: eventData.clientTs ? BigInt(eventData.clientTs) : null,
+                    serverReceivedAt: serverTime, // Track when server received
                     
                     // Device & Platform info - prefer event-level, fallback to deviceInfo
                     platform: eventData.platform ?? deviceInfo.platform ?? null,
@@ -506,11 +583,12 @@ export class AnalyticsService {
                     userId: true,
                     sessionId: true,
                     properties: true,
-                    timestamp: true,
+                    timestamp: true, // Event timestamp (validated client time or server time)
                     
                     // Event metadata
                     eventUuid: true,
-                    clientTs: true,
+                    clientTs: true, // Original client timestamp (for reference)
+                    serverReceivedAt: true, // When server received the event
                     
                     // Device & Platform info
                     platform: true,
@@ -542,7 +620,7 @@ export class AnalyticsService {
                     timezone: true,
                 },
                 orderBy: {
-                    timestamp: sort === 'desc' ? 'desc' : 'asc'
+                    timestamp: sort === 'desc' ? 'desc' : 'asc' // timestamp is server time
                 },
                 take: limit,
                 skip: offset

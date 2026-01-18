@@ -8,11 +8,12 @@ interface Event {
   userId: string;
   sessionId?: string;
   properties?: Record<string, any>;
-  timestamp: string;
+  timestamp: string; // Event timestamp (validated client time or server time)
   
   // Event metadata
   eventUuid?: string;
-  clientTs?: number;
+  clientTs?: string; // Original client timestamp (milliseconds since epoch)
+  serverReceivedAt?: string; // When server received the event
   
   // Device & Platform info
   platform?: string;
@@ -65,6 +66,7 @@ const Events: React.FC<EventsProps> = ({ gameInfo, isCollapsed = false }) => {
   const [searchTerm, setSearchTerm] = useState('');
   const [filterEventType, setFilterEventType] = useState('all');
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
+  const [clearedAtTimestamp, setClearedAtTimestamp] = useState<string | null>(null);
 
   const fetchEvents = useCallback(async () => {
     if (!gameInfo || gameInfo.id === 'default') {
@@ -92,11 +94,14 @@ const Events: React.FC<EventsProps> = ({ gameInfo, isCollapsed = false }) => {
 
       if (response.ok) {
         const data = await response.json();
-        console.log('[Events] Response data:', data);
+        let eventsData = data.data || data;
         
-        const eventsData = data.data || data;
-        console.log('[Events] Events data:', eventsData);
-        console.log('[Events] Number of events:', eventsData?.length || 0);
+        // If user has cleared events, filter out events older than the clear timestamp
+        if (clearedAtTimestamp) {
+          eventsData = eventsData.filter((event: Event) => {
+            return event.timestamp > clearedAtTimestamp;
+          });
+        }
         
         setEvents(eventsData);
         setLastUpdated(new Date());
@@ -109,7 +114,7 @@ const Events: React.FC<EventsProps> = ({ gameInfo, isCollapsed = false }) => {
     } finally {
       setLoading(false); // Always reset loading state
     }
-  }, [gameInfo]);
+  }, [gameInfo, clearedAtTimestamp]);
 
   // Initial load
   useEffect(() => {
@@ -148,13 +153,26 @@ const Events: React.FC<EventsProps> = ({ gameInfo, isCollapsed = false }) => {
   // Get unique event types for filter
   const eventTypes = ['all', ...Array.from(new Set(events.map(e => e.eventName)))];
 
-  const formatTime = (dateString: string) => {
-    const date = new Date(dateString);
+  const formatTime = (timestamp: string) => {
+    // Handle both ISO string format and millisecond timestamp
+    let date: Date;
+    if (timestamp.includes('T') || timestamp.includes('-')) {
+      // ISO string format (e.g., "2026-01-17T10:30:00.000Z")
+      date = new Date(timestamp);
+    } else {
+      // Millisecond timestamp (e.g., "1737112200000")
+      date = new Date(parseInt(timestamp));
+    }
+    
     const now = new Date();
-    const diff = now.getTime() - date.getTime();
-    const seconds = Math.floor(diff / 1000);
+    const seconds = Math.floor((now.getTime() - date.getTime()) / 1000);
     const minutes = Math.floor(seconds / 60);
     const hours = Math.floor(minutes / 60);
+
+    // Handle timestamps that appear to be in the future (edge cases like clock sync issues)
+    if (seconds < 0) {
+      return 'just now';
+    }
 
     if (seconds < 60) return `${seconds}s ago`;
     if (minutes < 60) return `${minutes}m ago`;
@@ -253,6 +271,27 @@ const Events: React.FC<EventsProps> = ({ gameInfo, isCollapsed = false }) => {
               </select>
             )}
           </div>
+
+          {/* Clear/Reset button */}
+          <button
+            className="clear-btn"
+            onClick={() => {
+              if (clearedAtTimestamp) {
+                // Reset - show all events again
+                setClearedAtTimestamp(null);
+                fetchEvents(); // Re-fetch to get all events
+              } else {
+                // Clear - set timestamp to filter old events
+                setClearedAtTimestamp(new Date().toISOString());
+                setEvents([]);
+              }
+              setLastUpdated(new Date());
+            }}
+            disabled={events.length === 0 && !clearedAtTimestamp}
+            title={clearedAtTimestamp ? "Show all events again" : "Clear and track only new events"}
+          >
+            {clearedAtTimestamp ? '🔄 Reset' : 'Clear'}
+          </button>
 
           {/* Manual refresh */}
           <button
@@ -456,10 +495,22 @@ const Events: React.FC<EventsProps> = ({ gameInfo, isCollapsed = false }) => {
                       </div>
                     )}
 
+                    <div className="detail-item">
+                      <span className="detail-label">Event Timestamp:</span>
+                      <code className="detail-value">{new Date(event.timestamp).toISOString()}</code>
+                    </div>
+
                     {event.clientTs && (
                       <div className="detail-item">
-                        <span className="detail-label">Client Timestamp:</span>
+                        <span className="detail-label">Client Timestamp (Original):</span>
                         <code className="detail-value">{new Date(Number(event.clientTs)).toISOString()}</code>
+                      </div>
+                    )}
+
+                    {event.serverReceivedAt && (
+                      <div className="detail-item">
+                        <span className="detail-label">Server Received At:</span>
+                        <code className="detail-value">{new Date(event.serverReceivedAt).toISOString()}</code>
                       </div>
                     )}
 

@@ -63,6 +63,13 @@ export class GameAccessController {
 
             const { accessId } = req.params;
 
+            if (!accessId) {
+                return res.status(400).json({
+                    success: false,
+                    error: 'Access ID is required',
+                });
+            }
+
             await gameAccessService.revokeAccess(accessId, req.dashboardUser.id);
 
             return res.json({
@@ -91,6 +98,13 @@ export class GameAccessController {
 
             const { accessId } = req.params;
             const { accessLevel } = req.body;
+
+            if (!accessId) {
+                return res.status(400).json({
+                    success: false,
+                    error: 'Access ID is required',
+                });
+            }
 
             if (!accessLevel) {
                 return res.status(400).json({
@@ -124,6 +138,13 @@ export class GameAccessController {
         try {
             const { gameId } = req.params;
 
+            if (!gameId) {
+                return res.status(400).json({
+                    success: false,
+                    error: 'Game ID is required',
+                });
+            }
+
             const accesses = await gameAccessService.getGameAccess(gameId);
 
             return res.json({
@@ -144,6 +165,13 @@ export class GameAccessController {
     async getUserAccessibleGames(req: DashboardAuthRequest, res: Response<ApiResponse>) {
         try {
             const { userId } = req.params;
+
+            if (!userId) {
+                return res.status(400).json({
+                    success: false,
+                    error: 'User ID is required',
+                });
+            }
 
             const result = await gameAccessService.getUserAccessibleGames(userId);
 

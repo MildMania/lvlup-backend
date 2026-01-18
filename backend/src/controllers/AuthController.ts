@@ -383,6 +383,13 @@ export class AuthController {
             const { token } = req.params;
             const { newPassword } = req.body;
 
+            if (!token) {
+                return res.status(400).json({
+                    success: false,
+                    error: 'Reset token is required',
+                });
+            }
+
             if (!newPassword) {
                 return res.status(400).json({
                     success: false,
@@ -424,6 +431,13 @@ export class AuthController {
     async verifyEmail(req: DashboardAuthRequest, res: Response<ApiResponse>) {
         try {
             const { token } = req.params;
+
+            if (!token) {
+                return res.status(400).json({
+                    success: false,
+                    error: 'Verification token is required',
+                });
+            }
 
             await authService.verifyEmail(token);
 
@@ -478,6 +492,13 @@ export class AuthController {
             }
 
             const { sessionId } = req.params;
+
+            if (!sessionId) {
+                return res.status(400).json({
+                    success: false,
+                    error: 'Session ID is required',
+                });
+            }
 
             const success = await tokenService.revokeSession(
                 req.dashboardUser.id,

@@ -905,12 +905,46 @@ export class CohortAnalyticsService {
                     const now = new Date();
                     const effectiveEndTime = targetDateEnd > now ? now : targetDateEnd;
 
-                    // Get level_complete events ONLY on this specific day (not cumulative)
-                    const eventFilters: any = {
+                    // Step 1: Find users who were ACTIVE on this specific day (retained users)
+                    const retainedUserFilters: any = {
                         userId: { in: userIds },
                         gameId: gameId,
+                        timestamp: { gte: targetDateStart, lte: effectiveEndTime } // Activity on this day
+                    };
+
+                    if (filters?.platform || filters?.version) {
+                        retainedUserFilters.session = {};
+                        if (filters?.platform) {
+                            retainedUserFilters.session.platform = Array.isArray(filters.platform)
+                                ? { in: filters.platform }
+                                : filters.platform;
+                        }
+                        if (filters?.version) {
+                            retainedUserFilters.session.version = Array.isArray(filters.version)
+                                ? { in: filters.version }
+                                : filters.version;
+                        }
+                    }
+
+                    const retainedUsers = await this.prisma.event.groupBy({
+                        by: ['userId'],
+                        where: retainedUserFilters
+                    });
+
+                    const retainedUserIds = retainedUsers.map(u => u.userId);
+
+                    if (retainedUserIds.length === 0) {
+                        retentionByDay[day] = 0;
+                        userCountByDay[day] = 0;
+                        continue;
+                    }
+
+                    // Step 2: For retained users only, count their level_complete events on this day
+                    const eventFilters: any = {
+                        userId: { in: retainedUserIds }, // Only retained users
+                        gameId: gameId,
                         eventName: 'level_complete',
-                        timestamp: { gte: targetDateStart, lte: effectiveEndTime } // Only this day, up to now
+                        timestamp: { gte: targetDateStart, lte: effectiveEndTime } // Only this day
                     };
 
                     if (filters?.platform || filters?.version) {
@@ -927,7 +961,6 @@ export class CohortAnalyticsService {
                         }
                     }
 
-                    // Count level_complete events per user using groupBy
                     const userCompletions = await this.prisma.event.groupBy({
                         by: ['userId'],
                         _count: { id: true },
@@ -935,14 +968,14 @@ export class CohortAnalyticsService {
                     });
 
                     if (userCompletions.length > 0) {
-                        // Calculate average number of completions per user
+                        // Calculate average number of completions per retained user
                         const totalCompletions = userCompletions.reduce((sum: number, u: any) => sum + u._count.id, 0);
-                        const avgCompleted = totalCompletions / userCompletions.length;
+                        const avgCompleted = totalCompletions / retainedUserIds.length; // Divide by ALL retained users, not just those with completions
                         retentionByDay[day] = Math.round(avgCompleted * 10) / 10;
-                        userCountByDay[day] = userCompletions.length;
+                        userCountByDay[day] = retainedUserIds.length; // Same as retention user count
                     } else {
                         retentionByDay[day] = 0;
-                        userCountByDay[day] = 0;
+                        userCountByDay[day] = retainedUserIds.length; // Still count retained users
                     }
                 }
 

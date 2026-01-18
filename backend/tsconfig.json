@@ -16,7 +16,7 @@
 
     // Stricter Typechecking Options
     "noUncheckedIndexedAccess": true,
-    "exactOptionalPropertyTypes": true,
+    // "exactOptionalPropertyTypes": true, // Disabled - causes issues with Express types
 
     // Recommended Options
     "strict": true,

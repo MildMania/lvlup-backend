@@ -1065,6 +1065,9 @@ export class CohortAnalyticsService {
                 const installDateObj = new Date(installDate + 'T00:00:00.000Z');
                 const retentionByDay: { [day: number]: number } = {};
                 const userCountByDay: { [day: number]: number } = {};
+                
+                // Store daily averages to accumulate for cumulative reached level
+                const dailyAverages: { [day: number]: number } = {};
 
                 for (const day of retentionDays) {
                     const targetDate = new Date(installDateObj);
@@ -1118,28 +1121,29 @@ export class CohortAnalyticsService {
                     console.log(`[Avg Reached Level] Retained users on Day ${day}: ${retainedUserIds.length}`);
 
                     if (retainedUserIds.length === 0) {
+                        dailyAverages[day] = 0;
                         retentionByDay[day] = 0;
                         userCountByDay[day] = 0;
                         continue;
                     }
 
-                    // Step 2: For retained users only, get their CUMULATIVE level_complete events up to this day
-                    const cumulativeEventFilters: any = {
-                        userId: { in: retainedUserIds }, // Only retained users
+                    // Step 2: Get the daily average for this specific day (same as Avg Completed Levels)
+                    const dailyEventFilters: any = {
+                        userId: { in: retainedUserIds },
                         gameId: gameId,
                         eventName: 'level_complete',
-                        timestamp: { lte: effectiveEndTime } // All events from install up to now
+                        timestamp: { gte: targetDateStart, lte: effectiveEndTime } // Only this day
                     };
 
                     if (filters?.platform || filters?.version) {
-                        cumulativeEventFilters.session = {};
+                        dailyEventFilters.session = {};
                         if (filters?.platform) {
-                            cumulativeEventFilters.session.platform = Array.isArray(filters.platform)
+                            dailyEventFilters.session.platform = Array.isArray(filters.platform)
                                 ? { in: filters.platform }
                                 : filters.platform;
                         }
                         if (filters?.version) {
-                            cumulativeEventFilters.session.version = Array.isArray(filters.version)
+                            dailyEventFilters.session.version = Array.isArray(filters.version)
                                 ? { in: filters.version }
                                 : filters.version;
                         }
@@ -1148,23 +1152,31 @@ export class CohortAnalyticsService {
                     const userCompletions = await this.prisma.event.groupBy({
                         by: ['userId'],
                         _count: { id: true },
-                        where: cumulativeEventFilters
+                        where: dailyEventFilters
                     });
 
-                    console.log(`[Avg Reached Level] Users with cumulative level_complete events: ${userCompletions.length}`);
-
                     if (userCompletions.length > 0) {
-                        // Calculate average cumulative completions for retained users only
                         const totalCompletions = userCompletions.reduce((sum: number, u: any) => sum + u._count.id, 0);
-                        const avgReached = totalCompletions / retainedUserIds.length; // Divide by ALL retained users for consistency
-                        console.log(`[Avg Reached Level] Day ${day} - Total cumulative events: ${totalCompletions}, Retained users: ${retainedUserIds.length}, Avg: ${avgReached.toFixed(2)}`);
-                        retentionByDay[day] = Math.round(avgReached * 10) / 10;
-                        userCountByDay[day] = retainedUserIds.length; // Use retained user count, not event user count
+                        const dailyAvg = totalCompletions / retainedUserIds.length;
+                        dailyAverages[day] = dailyAvg;
+                        
+                        console.log(`[Avg Reached Level] Day ${day} daily average: ${dailyAvg.toFixed(2)}`);
                     } else {
-                        console.log(`[Avg Reached Level] Day ${day} - No cumulative level_complete events`);
-                        retentionByDay[day] = 0;
-                        userCountByDay[day] = retainedUserIds.length; // Still count retained users
+                        dailyAverages[day] = 0;
                     }
+
+                    // Step 3: Calculate cumulative reached level by summing daily averages
+                    let cumulativeAvg = 0;
+                    for (let d = 0; d <= day; d++) {
+                        if (dailyAverages[d] !== undefined && dailyAverages[d] !== null) {
+                            cumulativeAvg += dailyAverages[d]!;
+                        }
+                    }
+
+                    console.log(`[Avg Reached Level] Day ${day} cumulative (sum of daily avgs): ${cumulativeAvg.toFixed(2)}`);
+                    
+                    retentionByDay[day] = Math.round(cumulativeAvg * 10) / 10;
+                    userCountByDay[day] = retainedUserIds.length;
                 }
 
                 cohortData.push({ installDate, installCount: userIds.length, retentionByDay, userCountByDay });

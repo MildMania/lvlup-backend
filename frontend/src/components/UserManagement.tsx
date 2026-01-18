@@ -39,8 +39,6 @@ const UserManagement: React.FC<UserManagementProps> = ({ isCollapsed = false }) 
     const [editingUser, setEditingUser] = useState<User | null>(null);
     const [showPasswordReset, setShowPasswordReset] = useState(false);
     const [passwordResetUserId, setPasswordResetUserId] = useState<string | null>(null);
-    const [newPassword, setNewPassword] = useState('');
-    const [confirmPassword, setConfirmPassword] = useState('');
     const [deleteConfirm, setDeleteConfirm] = useState<string | null>(null);
     const [formData, setFormData] = useState({
         email: '',
@@ -632,7 +630,7 @@ const UserManagement: React.FC<UserManagementProps> = ({ isCollapsed = false }) 
 
             {users.length === 0 ? (
                 <div className="empty-users-state">
-                    <UserIcon className="empty-users-icon" />
+                    <UserPlus className="empty-users-icon" />
                     <h3>No users yet</h3>
                     <p>Get started by creating your first user</p>
                 </div>

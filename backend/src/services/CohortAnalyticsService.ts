@@ -933,9 +933,6 @@ export class CohortAnalyticsService {
 
                     const retainedUserIds = retainedUsers.map(u => u.userId);
 
-                    console.log(`[Avg Completed Levels] Day ${day}, Install: ${installDate}`);
-                    console.log(`[Avg Completed Levels] Total cohort users: ${userIds.length}`);
-                    console.log(`[Avg Completed Levels] Retained users on Day ${day}: ${retainedUserIds.length}`);
 
                     if (retainedUserIds.length === 0) {
                         retentionByDay[day] = 0;
@@ -971,17 +968,13 @@ export class CohortAnalyticsService {
                         where: eventFilters
                     });
 
-                    console.log(`[Avg Completed Levels] Users with level_complete events on Day ${day}: ${userCompletions.length}`);
-
                     if (userCompletions.length > 0) {
                         // Calculate average number of completions per retained user
                         const totalCompletions = userCompletions.reduce((sum: number, u: any) => sum + u._count.id, 0);
                         const avgCompleted = totalCompletions / retainedUserIds.length; // Divide by ALL retained users, not just those with completions
-                        console.log(`[Avg Completed Levels] Day ${day} - Total events: ${totalCompletions}, Avg: ${avgCompleted.toFixed(2)}`);
                         retentionByDay[day] = Math.round(avgCompleted * 10) / 10;
                         userCountByDay[day] = retainedUserIds.length; // Same as retention user count
                     } else {
-                        console.log(`[Avg Completed Levels] Day ${day} - No level_complete events`);
                         retentionByDay[day] = 0;
                         userCountByDay[day] = retainedUserIds.length; // Still count retained users
                     }
@@ -1116,9 +1109,6 @@ export class CohortAnalyticsService {
 
                     const retainedUserIds = retainedUsers.map(u => u.userId);
 
-                    console.log(`[Avg Reached Level] Day ${day}, Install: ${installDate}`);
-                    console.log(`[Avg Reached Level] Total cohort users: ${userIds.length}`);
-                    console.log(`[Avg Reached Level] Retained users on Day ${day}: ${retainedUserIds.length}`);
 
                     if (retainedUserIds.length === 0) {
                         dailyAverages[day] = 0;
@@ -1159,8 +1149,6 @@ export class CohortAnalyticsService {
                         const totalCompletions = userCompletions.reduce((sum: number, u: any) => sum + u._count.id, 0);
                         const dailyAvg = totalCompletions / retainedUserIds.length;
                         dailyAverages[day] = dailyAvg;
-                        
-                        console.log(`[Avg Reached Level] Day ${day} daily average: ${dailyAvg.toFixed(2)}`);
                     } else {
                         dailyAverages[day] = 0;
                     }
@@ -1172,8 +1160,6 @@ export class CohortAnalyticsService {
                             cumulativeAvg += dailyAverages[d]!;
                         }
                     }
-
-                    console.log(`[Avg Reached Level] Day ${day} cumulative (sum of daily avgs): ${cumulativeAvg.toFixed(2)}`);
                     
                     retentionByDay[day] = Math.round(cumulativeAvg * 10) / 10;
                     userCountByDay[day] = retainedUserIds.length;

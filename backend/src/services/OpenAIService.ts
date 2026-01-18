@@ -82,8 +82,7 @@ export class OpenAIService {
                 model: this.model,
                 messages,
                 temperature: 0.1, // Low temperature for consistent, factual responses
-                max_tokens: 800,
-                response_format: { type: 'json_object' }
+                max_tokens: 800
             });
 
             const responseContent = completion.choices[0]?.message?.content;
@@ -91,7 +90,23 @@ export class OpenAIService {
                 throw new Error('No response from OpenAI');
             }
 
-            const parsedResponse = JSON.parse(responseContent);
+            // Try to parse JSON from the response
+            let parsedResponse;
+            try {
+                // Extract JSON if wrapped in markdown code blocks
+                const jsonMatch = responseContent.match(/```json\s*([\s\S]*?)\s*```/) || 
+                                 responseContent.match(/```\s*([\s\S]*?)\s*```/);
+                const jsonText = jsonMatch ? jsonMatch[1] : responseContent;
+                parsedResponse = JSON.parse(jsonText!);
+            } catch (parseError) {
+                logger.warn('Failed to parse JSON response, using fallback', parseError);
+                // Fallback if JSON parsing fails
+                parsedResponse = {
+                    response: responseContent,
+                    confidence: 0.5,
+                    reasoning: 'AI response could not be parsed as structured data'
+                };
+            }
 
             return {
                 response: parsedResponse.response,
@@ -130,14 +145,23 @@ export class OpenAIService {
 
 Available metrics: ${availableMetrics.join(', ')}
 
-Return a JSON object with:
+You must respond with ONLY a JSON object (no other text) with these fields:
 - intent: one of "metric_query", "trend_analysis", "anomaly_detection", "comparison", "insight_request"
 - metrics: array of relevant metric names from the available metrics
 - timeframe: object with "days_back" (number of days from today)
 - confidence: number between 0 and 1
 - reasoning: brief explanation of your analysis
 
-Today's date: ${new Date().toISOString().split('T')[0]}`;
+Today's date: ${new Date().toISOString().split('T')[0]}
+
+Example response format:
+{
+  "intent": "metric_query",
+  "metrics": ["retention", "playtime"],
+  "timeframe": {"days_back": 7},
+  "confidence": 0.9,
+  "reasoning": "User is asking about retention and playtime metrics for the past week"
+}`;
 
             const completion = await this.openai.chat.completions.create({
                 model: this.model,
@@ -146,8 +170,7 @@ Today's date: ${new Date().toISOString().split('T')[0]}`;
                     { role: 'user', content: query }
                 ],
                 temperature: 0.1,
-                max_tokens: 300,
-                response_format: { type: 'json_object' }
+                max_tokens: 300
             });
 
             const responseContent = completion.choices[0]?.message?.content;
@@ -155,19 +178,37 @@ Today's date: ${new Date().toISOString().split('T')[0]}`;
                 throw new Error('No response from OpenAI');
             }
 
-            const parsed = JSON.parse(responseContent);
+            // Try to parse JSON from the response
+            let parsedIntent;
+            try {
+                // Extract JSON if wrapped in markdown code blocks
+                const jsonMatch = responseContent.match(/```json\s*([\s\S]*?)\s*```/) || 
+                                 responseContent.match(/```\s*([\s\S]*?)\s*```/);
+                const jsonText = jsonMatch ? jsonMatch[1] : responseContent;
+                parsedIntent = JSON.parse(jsonText!);
+            } catch (parseError) {
+                logger.warn('Failed to parse intent JSON, using fallback', parseError);
+                // Fallback with basic intent extraction
+                parsedIntent = {
+                    intent: 'metric_query',
+                    metrics: [],
+                    timeframe: { days_back: 7 },
+                    confidence: 0.3,
+                    reasoning: 'Failed to parse structured response'
+                };
+            }
 
             // Convert days_back to actual dates
             const now = new Date();
-            const daysBack = parsed.timeframe?.days_back || 7;
+            const daysBack = parsedIntent.timeframe?.days_back || 7;
             const start = new Date(now.getTime() - (daysBack * 24 * 60 * 60 * 1000));
 
             return {
-                intent: parsed.intent,
-                metrics: parsed.metrics || [],
+                intent: parsedIntent.intent,
+                metrics: parsedIntent.metrics || [],
                 timeframe: { start, end: now },
-                confidence: parsed.confidence || 0.5,
-                reasoning: parsed.reasoning || ''
+                confidence: parsedIntent.confidence || 0.5,
+                reasoning: parsedIntent.reasoning || ''
             };
 
         } catch (error) {
@@ -192,7 +233,7 @@ Guidelines:
 - Consider multiple perspectives (technical, business, user experience)
 - Be honest about limitations or areas needing more investigation
 
-Respond in JSON format with:
+You must respond with ONLY a valid JSON object (no other text) in this exact format:
 {
   "response": "Main response to the user",
   "confidence": 0.8,

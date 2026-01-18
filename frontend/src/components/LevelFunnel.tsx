@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
+import { RefreshCw } from 'lucide-react';
 import { useGame } from '../contexts/GameContext';
 import apiClient from '../lib/apiClient';
 import './LevelFunnel.css';
@@ -486,8 +487,9 @@ export default function LevelFunnel({ isCollapsed = false }: LevelFunnelProps) {
 
             {/* Loading State */}
             {loading && (
-                <div className="loading-container">
-                    <div className="loading-spinner"></div>
+                <div className="loading-state">
+                    <RefreshCw size={32} className="spinning" />
+                    <p>Loading funnel data...</p>
                 </div>
             )}
 

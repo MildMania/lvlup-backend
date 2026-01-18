@@ -353,6 +353,12 @@ const Sidebar: React.FC<SidebarProps> = ({
         <div className="sidebar-footer">
           {!isCollapsed && (
             <div className="footer-content">
+              {user && (
+                <div className="user-info">
+                  <div className="user-name">{user.firstName} {user.lastName}</div>
+                  <div className="user-email">{user.email}</div>
+                </div>
+              )}
               <button 
                 className="theme-toggle"
                 onClick={toggleTheme}

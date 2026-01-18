@@ -500,6 +500,26 @@
   gap: 12px;
 }
 
+.user-info {
+  padding: 12px;
+  background: var(--bg-tertiary);
+  border-radius: 8px;
+  margin-bottom: 4px;
+}
+
+.user-name {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text-primary);
+  margin-bottom: 4px;
+}
+
+.user-email {
+  font-size: 12px;
+  color: var(--text-secondary);
+  word-break: break-word;
+}
+
 .theme-toggle {
   display: flex;
   align-items: center;

@@ -33,10 +33,5 @@ body {
     min-height: 44px;
     min-width: 44px;
   }
-
-  /* Prevent zoom on input focus */
-  input, select, textarea {
-    font-size: 16px;
-  }
 }
 

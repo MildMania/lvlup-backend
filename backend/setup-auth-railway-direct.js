@@ -142,87 +142,122 @@ rl.question('Paste your Railway DATABASE_URL here: ', async (databaseUrl) => {
         console.log(`   User ID: ${superAdmin.id}\n`);
 
         console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
-        console.log('STEP 3: Creating "System Administrators" team...');
+        console.log('STEP 3: Getting or creating "System Administrators" team...');
         console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n');
 
-        // Create default "System" team
-        const createTeamQuery = `
-            INSERT INTO "teams" (
-                id,
-                name,
-                description,
-                slug,
-                "createdAt",
-                "updatedAt"
-            ) VALUES (
-                gen_random_uuid(),
-                'System Administrators',
-                'Default team for system administrators',
-                'system-admins',
-                NOW(),
-                NOW()
-            )
-            RETURNING id, name
+        // Check if team already exists
+        const checkTeamQuery = `
+            SELECT id, name FROM "teams" WHERE slug = 'system-admins'
         `;
+        const teamCheckResult = await client.query(checkTeamQuery);
 
-        const teamResult = await client.query(createTeamQuery);
-        const systemTeam = teamResult.rows[0];
-        console.log('✅ Team created!');
-        console.log(`   Team ID: ${systemTeam.id}\n`);
+        let systemTeam;
+        if (teamCheckResult.rows.length > 0) {
+            systemTeam = teamCheckResult.rows[0];
+            console.log('✅ Team already exists!');
+            console.log(`   Team ID: ${systemTeam.id}\n`);
+        } else {
+            // Create default "System" team
+            const createTeamQuery = `
+                INSERT INTO "teams" (
+                    id,
+                    name,
+                    description,
+                    slug,
+                    "createdAt",
+                    "updatedAt"
+                ) VALUES (
+                    gen_random_uuid(),
+                    'System Administrators',
+                    'Default team for system administrators',
+                    'system-admins',
+                    NOW(),
+                    NOW()
+                )
+                RETURNING id, name
+            `;
+
+            const teamResult = await client.query(createTeamQuery);
+            systemTeam = teamResult.rows[0];
+            console.log('✅ Team created!');
+            console.log(`   Team ID: ${systemTeam.id}\n`);
+        }
 
         console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
         console.log('STEP 4: Adding super admin to team...');
         console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n');
 
-        // Add super admin to system team with SUPER_ADMIN role
-        const addMemberQuery = `
-            INSERT INTO "team_members" (
-                id,
-                "teamId",
-                "userId",
-                role,
-                "createdAt",
-                "updatedAt"
-            ) VALUES (
-                gen_random_uuid(),
-                $1,
-                $2,
-                'SUPER_ADMIN',
-                NOW(),
-                NOW()
-            )
-            RETURNING id
+        // Check if user is already a member
+        const checkMemberQuery = `
+            SELECT id FROM "team_members" 
+            WHERE "teamId" = $1 AND "userId" = $2
         `;
+        const memberCheckResult = await client.query(checkMemberQuery, [systemTeam.id, superAdmin.id]);
 
-        await client.query(addMemberQuery, [systemTeam.id, superAdmin.id]);
-        console.log('✅ Super admin added to team!\n');
+        if (memberCheckResult.rows.length > 0) {
+            console.log('✅ Super admin already a team member!\n');
+        } else {
+            // Add super admin to system team with SUPER_ADMIN role
+            const addMemberQuery = `
+                INSERT INTO "team_members" (
+                    id,
+                    "teamId",
+                    "userId",
+                    role,
+                    "joinedAt",
+                    "updatedAt"
+                ) VALUES (
+                    gen_random_uuid(),
+                    $1,
+                    $2,
+                    'SUPER_ADMIN',
+                    NOW(),
+                    NOW()
+                )
+                RETURNING id
+            `;
+
+            await client.query(addMemberQuery, [systemTeam.id, superAdmin.id]);
+            console.log('✅ Super admin added to team!\n');
+        }
 
         console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
         console.log('STEP 5: Granting access to all games...');
         console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n');
 
-        // Grant access to all games
-        const grantAccessQuery = `
-            INSERT INTO "game_accesses" (
-                id,
-                "userId",
-                "allGames",
-                "accessLevel",
-                "grantedBy",
-                "grantedAt"
-            ) VALUES (
-                gen_random_uuid(),
-                $1,
-                true,
-                'OWNER',
-                $1,
-                NOW()
-            )
-            RETURNING id
+        // Check if access already granted
+        const checkAccessQuery = `
+            SELECT id FROM "game_accesses" 
+            WHERE "userId" = $1 AND "allGames" = true
         `;
+        const accessCheckResult = await client.query(checkAccessQuery, [superAdmin.id]);
 
-        await client.query(grantAccessQuery, [superAdmin.id]);
-        console.log('✅ Access granted to all games!\n');
+        if (accessCheckResult.rows.length > 0) {
+            console.log('✅ Access to all games already granted!\n');
+        } else {
+            // Grant access to all games
+            const grantAccessQuery = `
+                INSERT INTO "game_accesses" (
+                    id,
+                    "userId",
+                    "allGames",
+                    "accessLevel",
+                    "grantedBy",
+                    "grantedAt"
+                ) VALUES (
+                    gen_random_uuid(),
+                    $1,
+                    true,
+                    'OWNER',
+                    $1,
+                    NOW()
+                )
+                RETURNING id
+            `;
+
+            await client.query(grantAccessQuery, [superAdmin.id]);
+            console.log('✅ Access granted to all games!\n');
+        }
 
         console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
         console.log('✅ SETUP COMPLETE!');

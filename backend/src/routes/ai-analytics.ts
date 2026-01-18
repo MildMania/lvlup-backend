@@ -8,7 +8,7 @@ const aiAnalyticsController = new AIAnalyticsController();
 router.post('/query', aiAnalyticsController.processQuery);
 
 // Helper endpoints
+router.get('/health', aiAnalyticsController.checkHealth);
 router.get('/examples', aiAnalyticsController.getExampleQueries);
-router.get('/health', aiAnalyticsController.healthCheck);
 
 export default router;

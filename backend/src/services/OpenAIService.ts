@@ -28,18 +28,31 @@ export class OpenAIService {
     private isEnabled: boolean;
 
     constructor() {
-        if (!process.env.OPENAI_API_KEY) {
+        const apiKey = process.env.OPENAI_API_KEY;
+        
+        if (!apiKey) {
             logger.warn('OPENAI_API_KEY not set. AI features will be disabled.');
             this.openai = null;
             this.isEnabled = false;
             this.model = 'gpt-4';
         } else {
-            this.openai = new OpenAI({
-                apiKey: process.env.OPENAI_API_KEY,
-            });
-            this.model = process.env.OPENAI_MODEL || 'gpt-4';
-            this.isEnabled = true;
-            logger.info('OpenAI service initialized successfully');
+            try {
+                // Log partial key for debugging (first 7 chars only)
+                const maskedKey = apiKey.substring(0, 7) + '...' + apiKey.substring(apiKey.length - 4);
+                logger.info(`Initializing OpenAI with key: ${maskedKey}`);
+                
+                this.openai = new OpenAI({
+                    apiKey: apiKey,
+                });
+                this.model = process.env.OPENAI_MODEL || 'gpt-4';
+                this.isEnabled = true;
+                logger.info('OpenAI service initialized successfully with model: ' + this.model);
+            } catch (error) {
+                logger.error('Failed to initialize OpenAI service:', error);
+                this.openai = null;
+                this.isEnabled = false;
+                this.model = 'gpt-4';
+            }
         }
     }
 
@@ -90,7 +103,11 @@ export class OpenAIService {
 
         } catch (error) {
             logger.error('Error in OpenAI analysis:', error);
-            throw new Error('Failed to analyze query with AI');
+            if (error instanceof Error) {
+                logger.error('Error message:', error.message);
+                logger.error('Error stack:', error.stack);
+            }
+            throw new Error(`Failed to analyze query with AI: ${error instanceof Error ? error.message : 'Unknown error'}`);
         }
     }
 

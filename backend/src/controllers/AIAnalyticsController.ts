@@ -38,7 +38,39 @@ export class AIAnalyticsController {
             });
         } catch (error) {
             console.error('Error processing AI analytics query:', error);
-            res.status(500).json({ error: 'Failed to process query' });
+            const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+            res.status(500).json({ 
+                success: false,
+                error: 'Failed to process query',
+                details: errorMessage
+            });
+        }
+    };
+
+    /**
+     * Check AI service health and configuration
+     * GET /api/ai-analytics/health
+     */
+    checkHealth = async (req: Request, res: Response): Promise<void> => {
+        try {
+            const isEnabled = this.aiAnalyticsService.isAIEnabled();
+            const apiKeySet = !!process.env.OPENAI_API_KEY;
+            const apiKeyPrefix = process.env.OPENAI_API_KEY ? process.env.OPENAI_API_KEY.substring(0, 7) : 'Not set';
+            
+            res.json({
+                success: true,
+                aiEnabled: isEnabled,
+                apiKeyConfigured: apiKeySet,
+                apiKeyPrefix: apiKeyPrefix,
+                model: process.env.OPENAI_MODEL || 'gpt-4',
+                status: isEnabled ? 'operational' : 'disabled'
+            });
+        } catch (error) {
+            console.error('Error checking AI health:', error);
+            res.status(500).json({ 
+                success: false,
+                error: 'Failed to check AI health' 
+            });
         }
     };
 

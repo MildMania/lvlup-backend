@@ -8,11 +8,12 @@ interface Event {
   userId: string;
   sessionId?: string;
   properties?: Record<string, any>;
-  timestamp: string; // Server timestamp (set by server when event is received) - always accurate
+  timestamp: string; // Event timestamp (validated client time or server time)
   
   // Event metadata
   eventUuid?: string;
-  clientTs?: number; // Client-provided timestamp (for reference only - may be inaccurate)
+  clientTs?: string; // Original client timestamp (milliseconds since epoch)
+  serverReceivedAt?: string; // When server received the event
   
   // Device & Platform info
   platform?: string;
@@ -495,14 +496,21 @@ const Events: React.FC<EventsProps> = ({ gameInfo, isCollapsed = false }) => {
                     )}
 
                     <div className="detail-item">
-                      <span className="detail-label">Server Timestamp:</span>
+                      <span className="detail-label">Event Timestamp:</span>
                       <code className="detail-value">{new Date(event.timestamp).toISOString()}</code>
                     </div>
 
                     {event.clientTs && (
                       <div className="detail-item">
-                        <span className="detail-label">Client Timestamp:</span>
+                        <span className="detail-label">Client Timestamp (Original):</span>
                         <code className="detail-value">{new Date(Number(event.clientTs)).toISOString()}</code>
+                      </div>
+                    )}
+
+                    {event.serverReceivedAt && (
+                      <div className="detail-item">
+                        <span className="detail-label">Server Received At:</span>
+                        <code className="detail-value">{new Date(event.serverReceivedAt).toISOString()}</code>
                       </div>
                     )}
 

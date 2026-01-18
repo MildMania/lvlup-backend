@@ -82,7 +82,7 @@ model Event {
   sessionId  String?
   eventName  String
   properties Json?
-  timestamp  DateTime @default(now())
+  timestamp  DateTime @default(now())  // Event time (validated client timestamp or server time)
   
   // AB Test assignments - stored directly in event for fast filtering
   abTests    Json?    // { "test_id_1": "variant_a", "test_id_2": "variant_b" }
@@ -92,8 +92,9 @@ model Event {
   levelFunnelVersion Int?     // Incremental version number: 1, 2, 3, etc.
   
   // Event metadata (like GameAnalytics)
-  eventUuid     String?  // Unique event identifier from client
-  clientTs      BigInt?  // Client-side Unix timestamp
+  eventUuid        String?   // Unique event identifier from client
+  clientTs         BigInt?   // Client-side Unix timestamp (milliseconds)
+  serverReceivedAt DateTime? // Server timestamp when event was received
   
   // Device & Platform info
   platform      String?  // e.g., "android", "ios", "webgl"

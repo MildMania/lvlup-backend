@@ -9,6 +9,46 @@ export class AnalyticsService {
     constructor(prismaClient?: PrismaClient) {
         this.prisma = prismaClient || new PrismaClient();
     }
+
+    /**
+     * Validate and use client timestamp with fallback to server time
+     * 
+     * Strategy for EVENTS:
+     * - Reject future timestamps (client clock ahead of server)
+     * - Accept timestamps up to 7 days in the past (offline events)
+     * - Preserves temporal accuracy for offline events
+     * - Protects against clock manipulation
+     * 
+     * Critical for: DAU/MAU, retention analysis, funnel timing
+     */
+    private validateClientTimestamp(clientTs?: number): Date {
+        const serverTime = new Date();
+        
+        if (!clientTs) {
+            return serverTime;
+        }
+
+        const clientTime = new Date(clientTs);
+        const timeDiff = serverTime.getTime() - clientTime.getTime();
+        const MAX_PAST_DRIFT = 7 * 24 * 60 * 60 * 1000; // 7 days in milliseconds
+
+        // Reject future timestamps (client clock is ahead)
+        if (timeDiff < 0) {
+            const futureHours = Math.floor(Math.abs(timeDiff) / 1000 / 60 / 60);
+            logger.warn(`Client timestamp rejected (${futureHours}h in future): ${clientTs}, using server time`);
+            return serverTime;
+        }
+
+        // Reject timestamps too far in the past (>7 days old)
+        if (timeDiff > MAX_PAST_DRIFT) {
+            const pastHours = Math.floor(timeDiff / 1000 / 60 / 60);
+            logger.warn(`Client timestamp rejected (${pastHours}h in past): ${clientTs}, using server time`);
+            return serverTime;
+        }
+
+        // Client timestamp is reasonable, use it
+        return clientTime;
+    }
     // Create or get user
     async getOrCreateUser(gameId: string, userProfile: UserProfile) {
         try {
@@ -157,6 +197,11 @@ export class AnalyticsService {
             delete (properties as any).levelFunnel;
             delete (properties as any).levelFunnelVersion;
             
+            // Use validated client timestamp for accurate temporal ordering
+            // Critical for offline events and analytics accuracy (DAU, retention, funnels)
+            const eventTimestamp = this.validateClientTimestamp(eventData.clientTs);
+            const serverTime = new Date(); // Actual server receipt time
+            
             const event = await this.prisma.event.create({
                 data: {
                     gameId: gameId,
@@ -164,13 +209,14 @@ export class AnalyticsService {
                     sessionId: sessionId,
                     eventName: eventData.eventName,
                     properties: properties,
-                    timestamp: new Date(), // Always use server time for consistency
+                    timestamp: eventTimestamp, // Use validated client timestamp
                     
                     // Event metadata
                     eventUuid: eventData.eventUuid ?? null,
-                    // If client sent a timestamp, store it in clientTs for reference
+                    // Store original client timestamp for reference
                     clientTs: eventData.clientTs ? BigInt(eventData.clientTs) : 
                               (eventData.timestamp ? BigInt(new Date(eventData.timestamp).getTime()) : null),
+                    serverReceivedAt: serverTime, // Track when server received the event
                     
                     // Device & Platform info
                     platform: eventData.platform ?? null,
@@ -251,17 +297,23 @@ export class AnalyticsService {
                 delete (properties as any).levelFunnel;
                 delete (properties as any).levelFunnelVersion;
                 
+                // Use validated client timestamp for each event in batch
+                // Critical for offline events to preserve temporal sequence
+                const eventTimestamp = this.validateClientTimestamp(eventData.clientTs);
+                const serverTime = new Date(); // Server receipt time
+                
                 return {
                     gameId: gameId,
                     userId: user.id,
                     sessionId: batchData.sessionId || null,
                     eventName: eventData.eventName,
                     properties: properties,
-                    timestamp: eventData.timestamp ? new Date(eventData.timestamp) : new Date(),
+                    timestamp: eventTimestamp, // Use validated client timestamp
                     
                     // Event metadata
                     eventUuid: eventData.eventUuid ?? null,
                     clientTs: eventData.clientTs ? BigInt(eventData.clientTs) : null,
+                    serverReceivedAt: serverTime, // Track when server received
                     
                     // Device & Platform info - prefer event-level, fallback to deviceInfo
                     platform: eventData.platform ?? deviceInfo.platform ?? null,
@@ -531,11 +583,12 @@ export class AnalyticsService {
                     userId: true,
                     sessionId: true,
                     properties: true,
-                    timestamp: true, // Server timestamp - always reliable (set by server on creation)
+                    timestamp: true, // Event timestamp (validated client time or server time)
                     
                     // Event metadata
                     eventUuid: true,
-                    clientTs: true, // Client-provided timestamp (for reference/debugging)
+                    clientTs: true, // Original client timestamp (for reference)
+                    serverReceivedAt: true, // When server received the event
                     
                     // Device & Platform info
                     platform: true,

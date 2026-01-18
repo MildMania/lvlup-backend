@@ -650,6 +650,46 @@
     padding: 10px 12px;
     font-size: 0.8125rem;
   }
+
+  .filters-grid {
+    gap: 12px;
+  }
+
+  .filter-group label {
+    font-size: 0.875rem;
+  }
+
+  select, input {
+    font-size: 0.875rem;
+  }
+}
+
+@media (max-width: 480px) {
+  .level-funnel {
+    padding: 12px;
+  }
+
+  .level-funnel-title h1 {
+    font-size: 1.25rem;
+  }
+
+  .level-funnel-table th,
+  .level-funnel-table td {
+    padding: 8px 10px;
+    font-size: 0.75rem;
+  }
+
+  .summary-card {
+    padding: 12px;
+  }
+
+  .summary-label {
+    font-size: 0.75rem;
+  }
+
+  .summary-value {
+    font-size: 1.25rem;
+  }
 }
 
 /* Metric Tooltip Styles */

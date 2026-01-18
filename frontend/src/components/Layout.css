@@ -25,9 +25,19 @@
 }
 
 @media (max-width: 768px) {
+  .layout {
+    flex-direction: column;
+  }
+
+  .main-content {
+    margin-left: 0;
+    width: 100%;
+  }
+
   .page-placeholder {
     margin-left: 0;
     padding: 20px;
     text-align: center;
+    min-height: calc(100vh - 60px);
   }
 }

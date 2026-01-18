@@ -74,7 +74,7 @@ rl.question('Paste your Railway DATABASE_URL here: ', async (databaseUrl) => {
         // Check if super admin already exists
         const checkQuery = `
             SELECT id, email, "firstName", "lastName", "isActive", "isEmailVerified"
-            FROM "DashboardUser"
+            FROM "dashboard_users"
             WHERE email = $1
         `;
         const checkResult = await client.query(checkQuery, [email]);
@@ -106,7 +106,7 @@ rl.question('Paste your Railway DATABASE_URL here: ', async (databaseUrl) => {
 
         // Create super admin user
         const createUserQuery = `
-            INSERT INTO "DashboardUser" (
+            INSERT INTO "dashboard_users" (
                 id,
                 email,
                 "passwordHash",
@@ -147,7 +147,7 @@ rl.question('Paste your Railway DATABASE_URL here: ', async (databaseUrl) => {
 
         // Create default "System" team
         const createTeamQuery = `
-            INSERT INTO "Team" (
+            INSERT INTO "teams" (
                 id,
                 name,
                 description,
@@ -176,7 +176,7 @@ rl.question('Paste your Railway DATABASE_URL here: ', async (databaseUrl) => {
 
         // Add super admin to system team with SUPER_ADMIN role
         const addMemberQuery = `
-            INSERT INTO "TeamMember" (
+            INSERT INTO "team_members" (
                 id,
                 "teamId",
                 "userId",
@@ -203,21 +203,19 @@ rl.question('Paste your Railway DATABASE_URL here: ', async (databaseUrl) => {
 
         // Grant access to all games
         const grantAccessQuery = `
-            INSERT INTO "GameAccess" (
+            INSERT INTO "game_accesses" (
                 id,
                 "userId",
                 "allGames",
                 "accessLevel",
                 "grantedBy",
-                "createdAt",
-                "updatedAt"
+                "grantedAt"
             ) VALUES (
                 gen_random_uuid(),
                 $1,
                 true,
                 'OWNER',
                 $1,
-                NOW(),
                 NOW()
             )
             RETURNING id

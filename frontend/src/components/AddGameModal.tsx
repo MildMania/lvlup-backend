@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { X } from 'lucide-react';
+import apiClient from '../lib/apiClient';
 import './AddGameModal.css';
 
 interface AddGameModalProps {
@@ -22,42 +23,18 @@ const AddGameModal: React.FC<AddGameModalProps> = ({ isOpen, onClose, onGameAdde
     setIsLoading(true);
 
     try {
-      const apiBaseUrl = import.meta.env.VITE_API_BASE_URL || 'http://localhost:3000/api';
-      
-      console.log('Creating game with API URL:', apiBaseUrl);
-      console.log('Game name:', gameName);
+      console.log('Creating game with name:', gameName);
       console.log('Game description:', gameDescription);
       
-      const response = await fetch(`${apiBaseUrl}/games`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          name: gameName,
-          description: gameDescription,
-        }),
+      const response = await apiClient.post('/games', {
+        name: gameName,
+        description: gameDescription,
       });
 
-      console.log('Response status:', response.status);
-
-      if (!response.ok) {
-        // Try to get error details from response
-        let errorMessage = `Failed to create game: ${response.statusText}`;
-        try {
-          const errorData = await response.json();
-          errorMessage = errorData.error || errorData.message || errorMessage;
-        } catch {
-          // If response is not JSON, use status text
-        }
-        throw new Error(errorMessage);
-      }
-
-      const responseData = await response.json();
-      console.log('Game created successfully:', responseData);
+      console.log('Game created successfully:', response.data);
       
       // Backend returns {success: true, data: {...game}}
-      const gameData = responseData.data || responseData;
+      const gameData = response.data.data || response.data;
       
       setCreatedGame(gameData);
       setSuccess(true);
@@ -68,9 +45,10 @@ const AddGameModal: React.FC<AddGameModalProps> = ({ isOpen, onClose, onGameAdde
         handleClose();
       }, 3000);
 
-    } catch (err) {
+    } catch (err: any) {
       console.error('Error creating game:', err);
-      setError(err instanceof Error ? err.message : 'Failed to create game');
+      const errorMessage = err.response?.data?.error || err.response?.data?.message || err.message || 'Failed to create game';
+      setError(errorMessage);
     } finally {
       setIsLoading(false);
     }

@@ -162,7 +162,13 @@ export class CohortAnalyticsController {
 
     async getAvgCompletedLevels(req: AuthenticatedRequest, res: Response<ApiResponse>) {
         try {
-            const gameId = req.game!.id;
+            // Get gameId from query parameter or from authenticated game
+            const gameId = (req.query.gameId as string) || req.game?.id;
+            
+            if (!gameId) {
+                res.status(400).json({ success: false, error: 'gameId is required' });
+                return;
+            }
 
             const filters: any = {
                 startDate: req.query.startDate as string,
@@ -193,7 +199,13 @@ export class CohortAnalyticsController {
 
     async getAvgReachedLevel(req: AuthenticatedRequest, res: Response<ApiResponse>) {
         try {
-            const gameId = req.game!.id;
+            // Get gameId from query parameter or from authenticated game
+            const gameId = (req.query.gameId as string) || req.game?.id;
+            
+            if (!gameId) {
+                res.status(400).json({ success: false, error: 'gameId is required' });
+                return;
+            }
 
             const filters: any = {
                 startDate: req.query.startDate as string,

@@ -339,6 +339,7 @@
   font-weight: 500;
   position: relative;
   overflow: hidden;
+  font-family: inherit;
 }
 
 .nav-link:hover {

@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { Link } from 'react-router-dom';
 import { 
   BarChart3, 
   Users, 
@@ -265,10 +266,10 @@ const Sidebar: React.FC<SidebarProps> = ({
               const IconComponent = item.icon;
               return (
                 <li key={item.id} className="nav-item">
-                  <button
+                  <Link
+                    to={`/${item.id}`}
                     className={`nav-link ${currentPage === item.id ? 'active' : ''}`}
                     onClick={() => {
-                      onPageChange(item.id);
                       if (window.innerWidth <= 768) {
                         setIsMobileOpen(false);
                       }
@@ -277,7 +278,7 @@ const Sidebar: React.FC<SidebarProps> = ({
                   >
                     <IconComponent className="nav-icon" size={20} />
                     {!isCollapsed && <span className="nav-label">{item.label}</span>}
-                  </button>
+                  </Link>
                 </li>
               );
             })}
@@ -306,10 +307,10 @@ const Sidebar: React.FC<SidebarProps> = ({
                       const IconComponent = item.icon;
                       return (
                         <li key={item.id} className="submenu-item">
-                          <button
+                          <Link
+                            to={`/${item.id}`}
                             className={`nav-link submenu-link ${currentPage === item.id ? 'active' : ''}`}
                             onClick={() => {
-                              onPageChange(item.id);
                               if (window.innerWidth <= 768) {
                                 setIsMobileOpen(false);
                               }
@@ -317,7 +318,7 @@ const Sidebar: React.FC<SidebarProps> = ({
                           >
                             <IconComponent className="nav-icon" size={18} />
                             <span className="nav-label">{item.label}</span>
-                          </button>
+                          </Link>
                         </li>
                       );
                     })}
@@ -330,10 +331,10 @@ const Sidebar: React.FC<SidebarProps> = ({
                 const IconComponent = item.icon;
                 return (
                   <li key={item.id} className="nav-item">
-                    <button
+                    <Link
+                      to={`/${item.id}`}
                       className={`nav-link ${currentPage === item.id ? 'active' : ''}`}
                       onClick={() => {
-                        onPageChange(item.id);
                         if (window.innerWidth <= 768) {
                           setIsMobileOpen(false);
                         }
@@ -341,7 +342,7 @@ const Sidebar: React.FC<SidebarProps> = ({
                       title={item.label}
                     >
                       <IconComponent className="nav-icon" size={20} />
-                    </button>
+                    </Link>
                   </li>
                 );
               })

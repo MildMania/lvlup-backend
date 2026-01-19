@@ -5,6 +5,7 @@
   background: var(--bg-primary);
   min-height: 100vh;
   margin-left: 280px;
+  overflow-x: hidden;
   transition: margin-left 0.3s cubic-bezier(0.4, 0, 0.2, 1), background-color 0.3s ease;
 }
 
@@ -315,22 +316,77 @@
   border-radius: 12px;
   box-shadow: var(--card-shadow);
   border: 1px solid var(--border-primary);
-  overflow: visible;
   margin-bottom: 24px;
-  margin-top: 50px; /* Space for tooltips above */
+  margin-top: 80px; /* Space for tooltips above */
+  position: relative;
+  max-width: calc(100vw - 280px - 64px); /* viewport - sidebar - padding */
+  overflow: hidden;
+}
+
+.level-funnel.sidebar-collapsed .level-funnel-table-container {
+  max-width: calc(100vw - 80px - 64px); /* viewport - collapsed sidebar - padding */
+}
+
+.level-funnel-table-scroll {
+  overflow-x: auto;
+  overflow-y: auto;
+  max-height: 70vh;
+  min-height: 400px;
+  width: 100%;
+  max-width: 100%;
+  position: relative;
+  display: block;
+  -webkit-overflow-scrolling: touch;
+}
+
+/* Force scrollbars to always be visible */
+.level-funnel-table-scroll::-webkit-scrollbar {
+  height: 14px;
+  width: 14px;
+  -webkit-appearance: none;
+}
+
+.level-funnel-table-scroll::-webkit-scrollbar-track {
+  background: var(--bg-tertiary);
+  border-radius: 7px;
+  margin: 4px;
+}
+
+.level-funnel-table-scroll::-webkit-scrollbar-thumb {
+  background: var(--accent-primary);
+  border-radius: 7px;
+  border: 3px solid var(--bg-tertiary);
+  min-height: 40px;
+  min-width: 40px;
+}
+
+.level-funnel-table-scroll::-webkit-scrollbar-thumb:hover {
+  background: var(--accent-secondary);
+}
+
+.level-funnel-table-scroll::-webkit-scrollbar-corner {
+  background: var(--bg-tertiary);
+}
+
+/* Firefox scrollbar */
+.level-funnel-table-scroll {
+  scrollbar-width: auto;
+  scrollbar-color: var(--accent-primary) var(--bg-tertiary);
 }
 
 .level-funnel-table {
   width: 100%;
-  border-collapse: collapse;
-  overflow-x: auto;
-  overflow-y: visible;
+  min-width: 1600px;
+  border-collapse: separate;
+  border-spacing: 0;
+  table-layout: auto;
 }
 
 .level-funnel-table thead {
-  background: linear-gradient(135deg, rgba(59, 130, 246, 0.08) 0%, rgba(99, 102, 241, 0.08) 100%);
-  position: relative;
+  position: sticky;
+  top: 0;
   z-index: 50;
+  background: var(--bg-secondary);
 }
 
 .level-funnel-table th {
@@ -342,15 +398,25 @@
   text-transform: uppercase;
   letter-spacing: 0.05em;
   border-bottom: 2px solid rgba(59, 130, 246, 0.2);
+  background: var(--bg-secondary);
   position: relative;
-  z-index: 100;
+  white-space: nowrap;
 }
 
 .level-funnel-table th:first-child {
   position: sticky;
   left: 0;
-  z-index: 110;
+  z-index: 120;
+  background: var(--bg-secondary);
+  box-shadow: 2px 0 8px -2px rgba(0, 0, 0, 0.15);
+}
+
+.level-funnel-table th:first-child::before {
+  content: '';
+  position: absolute;
+  inset: 0;
   background: linear-gradient(135deg, rgba(59, 130, 246, 0.08) 0%, rgba(99, 102, 241, 0.08) 100%);
+  z-index: -1;
 }
 
 .level-funnel-table tbody tr {
@@ -359,7 +425,6 @@
 
 .level-funnel-table tbody tr:hover {
   background: rgba(59, 130, 246, 0.05);
-  transform: scale(1.001);
 }
 
 .level-funnel-table td {
@@ -373,10 +438,11 @@
 .level-funnel-table td:first-child {
   position: sticky;
   left: 0;
-  z-index: 5;
+  z-index: 10;
   background: var(--bg-secondary);
   font-weight: 600;
   color: #3b82f6;
+  box-shadow: 2px 0 8px -2px rgba(0, 0, 0, 0.15);
 }
 
 .level-funnel-table tbody tr:hover td:first-child {
@@ -623,9 +689,6 @@
     grid-template-columns: 1fr;
   }
 
-  .level-funnel-table-container {
-    overflow-x: auto;
-  }
 
   .summary-grid {
     grid-template-columns: repeat(2, 1fr);

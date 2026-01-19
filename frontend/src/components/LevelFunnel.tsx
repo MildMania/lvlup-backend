@@ -503,7 +503,8 @@ export default function LevelFunnel({ isCollapsed = false }: LevelFunnelProps) {
             {/* Data Table */}
             {!loading && !error && levels.length > 0 && (
                 <div className="level-funnel-table-container">
-                    <table className="level-funnel-table">
+                    <div className="level-funnel-table-scroll">
+                        <table className="level-funnel-table">
                         <thead>
                             <tr>
                                 <th><MetricTooltip text={METRIC_TOOLTIPS['Level']}>Level</MetricTooltip></th>
@@ -609,6 +610,7 @@ export default function LevelFunnel({ isCollapsed = false }: LevelFunnelProps) {
                             ))}
                         </tbody>
                     </table>
+                    </div>
                 </div>
             )}
 

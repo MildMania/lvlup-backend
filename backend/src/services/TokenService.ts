@@ -24,7 +24,7 @@ export class TokenService {
     constructor() {
         this.accessSecret = process.env.JWT_ACCESS_SECRET || 'default-access-secret-change-me';
         this.refreshSecret = process.env.JWT_REFRESH_SECRET || 'default-refresh-secret-change-me';
-        this.accessExpires = process.env.JWT_ACCESS_EXPIRES || '15m';
+        this.accessExpires = process.env.JWT_ACCESS_EXPIRES || '1h'; // Increased from 15m to 1h
         this.refreshExpires = process.env.JWT_REFRESH_EXPIRES || '7d';
     }
 

@@ -9,6 +9,7 @@ if (!apiBaseUrl) {
 
 export const apiClient = axios.create({
   baseURL: apiBaseUrl,
+  withCredentials: true, // Enable sending cookies (for refresh token)
   headers: {
     'Content-Type': 'application/json',
   },

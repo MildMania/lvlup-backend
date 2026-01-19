@@ -26,16 +26,37 @@ const METRIC_TOOLTIPS: Record<string, string> = {
 // Tooltip component
 const MetricTooltip: React.FC<{ text: string; children: React.ReactNode }> = ({ text, children }) => {
     const [show, setShow] = useState(false);
+    const [position, setPosition] = useState({ left: 0, top: 0 });
+    const containerRef = useRef<HTMLDivElement>(null);
+    
+    const handleMouseEnter = () => {
+        if (containerRef.current) {
+            const rect = containerRef.current.getBoundingClientRect();
+            setPosition({
+                left: rect.left + rect.width / 2,
+                top: rect.top
+            });
+        }
+        setShow(true);
+    };
     
     return (
         <div 
+            ref={containerRef}
             className="metric-tooltip-container"
-            onMouseEnter={() => setShow(true)}
+            onMouseEnter={handleMouseEnter}
             onMouseLeave={() => setShow(false)}
         >
             {children}
             <span className="metric-tooltip-icon">?</span>
-            {show && <div className="metric-tooltip-text">{text}</div>}
+            {show && (
+                <div 
+                    className="metric-tooltip-text"
+                    style={{ left: `${position.left}px`, top: `${position.top}px` }}
+                >
+                    {text}
+                </div>
+            )}
         </div>
     );
 };

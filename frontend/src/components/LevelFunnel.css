@@ -746,11 +746,9 @@
 }
 
 .metric-tooltip-text {
-  position: absolute;
-  bottom: 100%;
-  left: 50%;
-  transform: translateX(-50%);
-  margin-bottom: 8px;
+  position: fixed;
+  transform: translate(-50%, -100%);
+  margin-top: -8px;
   padding: 8px 12px;
   background: var(--bg-primary);
   border: 1px solid var(--border-primary);
@@ -759,7 +757,7 @@
   color: var(--text-primary);
   white-space: nowrap;
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
-  z-index: 9999;
+  z-index: 10000;
   pointer-events: none;
 }
 

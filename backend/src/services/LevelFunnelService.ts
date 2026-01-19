@@ -414,9 +414,10 @@ export class LevelFunnelService {
 
     /**
      * Calculate durations between start and end events for the same user
+     * Uses IQR (Interquartile Range) method to filter outliers
      */
     private calculateDurations(startEvents: any[], endEvents: any[]): number[] {
-        const durations: number[] = [];
+        const rawDurations: number[] = [];
         
         // Create a map of user's start events
         const userStarts = new Map<string, any[]>();
@@ -436,12 +437,52 @@ export class LevelFunnelService {
                 if (validStarts.length > 0) {
                     const closestStart = validStarts[validStarts.length - 1];
                     const duration = (endEvent.timestamp.getTime() - closestStart.timestamp.getTime()) / 1000;
-                    durations.push(duration);
+                    if (duration > 0) {
+                        rawDurations.push(duration);
+                    }
                 }
             }
         }
 
-        return durations;
+        // Filter outliers using IQR method
+        return this.filterOutliers(rawDurations);
+    }
+
+    /**
+     * Filter outliers using IQR (Interquartile Range) method
+     * Removes values below Q1 - 1.5*IQR or above Q3 + 1.5*IQR
+     */
+    private filterOutliers(values: number[]): number[] {
+        if (values.length < 4) {
+            return values; // Not enough data for IQR
+        }
+
+        // Sort values
+        const sorted = [...values].sort((a, b) => a - b);
+        
+        // Calculate Q1 (25th percentile) and Q3 (75th percentile)
+        const q1Index = Math.floor(sorted.length * 0.25);
+        const q3Index = Math.floor(sorted.length * 0.75);
+        const q1 = sorted[q1Index];
+        const q3 = sorted[q3Index];
+        
+        // Calculate IQR
+        const iqr = q3 - q1;
+        
+        // Define bounds
+        const lowerBound = q1 - 1.5 * iqr;
+        const upperBound = q3 + 1.5 * iqr;
+        
+        // Filter outliers
+        const filtered = values.filter(v => v >= lowerBound && v <= upperBound);
+        
+        // Log outlier removal for monitoring
+        const outliersRemoved = values.length - filtered.length;
+        if (outliersRemoved > 0) {
+            logger.debug(`Filtered ${outliersRemoved} outliers (${((outliersRemoved / values.length) * 100).toFixed(1)}%) using IQR method. Bounds: [${lowerBound.toFixed(2)}, ${upperBound.toFixed(2)}]`);
+        }
+        
+        return filtered;
     }
 
     /**

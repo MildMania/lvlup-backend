@@ -400,8 +400,9 @@
   border-bottom: 2px solid rgba(59, 130, 246, 0.2);
   background: var(--bg-secondary);
   position: relative;
-  white-space: nowrap;
   max-width: 150px;
+  word-wrap: break-word;
+  overflow-wrap: break-word;
 }
 
 .level-funnel-table th:first-child {

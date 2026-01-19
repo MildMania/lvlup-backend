@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Routes, Route, useNavigate, useLocation } from 'react-router-dom';
+import { Routes, Route, useLocation } from 'react-router-dom';
 import Sidebar from './Sidebar';
 import Dashboard from './Dashboard';
 import Analytics from './Analytics';
@@ -15,7 +15,6 @@ import { setApiKey } from '../lib/apiClient';
 import './Layout.css';
 
 const Layout: React.FC = () => {
-  const navigate = useNavigate();
   const location = useLocation();
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
   const { currentGame, availableGames, setCurrentGame, refreshGames } = useGame();
@@ -28,9 +27,6 @@ const Layout: React.FC = () => {
     setApiKey(currentGame.apiKey);
   }, [currentGame]);
 
-  const handlePageChange = (page: string) => {
-    navigate(`/${page}`);
-  };
 
   const handleGameChange = (gameId: string) => {
     const game = availableGames.find(g => g.id === gameId);
@@ -89,8 +85,7 @@ const Layout: React.FC = () => {
   return (
     <div className="layout">
       <Sidebar 
-        currentPage={currentPage} 
-        onPageChange={handlePageChange}
+        currentPage={currentPage}
         gameInfo={currentGame}
         availableGames={availableGames}
         onGameChange={handleGameChange}

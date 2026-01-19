@@ -463,8 +463,8 @@ export class LevelFunnelService {
         // Calculate Q1 (25th percentile) and Q3 (75th percentile)
         const q1Index = Math.floor(sorted.length * 0.25);
         const q3Index = Math.floor(sorted.length * 0.75);
-        const q1 = sorted[q1Index];
-        const q3 = sorted[q3Index];
+        const q1 = sorted[q1Index] ?? 0;
+        const q3 = sorted[q3Index] ?? 0;
         
         // Calculate IQR
         const iqr = q3 - q1;

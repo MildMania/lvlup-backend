@@ -368,17 +368,23 @@ export class LevelFunnelService {
             ? (usersWithBoosters.size / uniquePlayers) * 100
             : 0;
 
-        // EGP (End Game Purchase) Rate: % of failing users who made revive purchase
+        // EGP (End Game Purchase) Rate: % of users who made revive purchase
+        // Check both level_complete (if user failed then revived and completed) and level_failed events
+        // EGP is now an integer representing the number of purchases
         const usersWithEGP = new Set(
-            failEvents
+            [...completeEvents, ...failEvents]
                 .filter(e => {
                     const props = e.properties as any;
-                    return props?.egp === true || props?.endGamePurchase === true;
+                    // Check if egp exists and is > 0 (integer) or true (backwards compatibility)
+                    const egpValue = props?.egp ?? props?.endGamePurchase;
+                    return (typeof egpValue === 'number' && egpValue > 0) || egpValue === true;
                 })
                 .map(e => e.userId)
         );
-        const egpRate = usersWhoFailed.size > 0
-            ? (usersWithEGP.size / usersWhoFailed.size) * 100
+        // Calculate rate based on all players who reached completion/fail (not just failed)
+        // This is because users can fail -> revive with EGP -> complete
+        const egpRate = uniquePlayers > 0
+            ? (usersWithEGP.size / uniquePlayers) * 100
             : 0;
 
         // Custom Metrics - aggregate from event properties
@@ -463,8 +469,13 @@ export class LevelFunnelService {
         // Calculate Q1 (25th percentile) and Q3 (75th percentile)
         const q1Index = Math.floor(sorted.length * 0.25);
         const q3Index = Math.floor(sorted.length * 0.75);
-        const q1 = sorted[q1Index] ?? 0;
-        const q3 = sorted[q3Index] ?? 0;
+        const q1 = sorted[q1Index];
+        const q3 = sorted[q3Index];
+        
+        // Ensure q1 and q3 are defined
+        if (q1 === undefined || q3 === undefined) {
+            return values;
+        }
         
         // Calculate IQR
         const iqr = q3 - q1;

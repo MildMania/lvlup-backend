@@ -131,15 +131,70 @@ export class HealthMetricsController {
       const { gameId } = req.params;
       const crashData = req.body;
 
-      const crash = await healthService.reportCrash({
-        gameId,
-        ...crashData,
-      });
+      // Validate required fields
+      const requiredFields = ['crashType', 'severity', 'message'];
+      const missingFields = requiredFields.filter(field => 
+        !crashData[field] && !crashData[field.charAt(0).toUpperCase() + field.slice(1)]
+      );
 
-      res.status(201).json(crash);
-    } catch (error) {
+      if (missingFields.length > 0) {
+        return res.status(400).json({ 
+          error: `Missing required fields: ${missingFields.join(', ')}` 
+        });
+      }
+
+      // Normalize field names from PascalCase (Unity SDK) to camelCase
+      const normalizedData = {
+        gameId: crashData.GameId || gameId,
+        userId: crashData.UserId || crashData.userId || null,
+        sessionId: crashData.SessionId || crashData.sessionId || null,
+        crashType: crashData.CrashType || crashData.crashType,
+        severity: crashData.Severity || crashData.severity,
+        message: crashData.Message || crashData.message,
+        stackTrace: crashData.StackTrace || crashData.stackTrace || '',
+        exceptionType: crashData.ExceptionType || crashData.exceptionType,
+        platform: crashData.platform,
+        osVersion: crashData.osVersion,
+        manufacturer: crashData.manufacturer,
+        device: crashData.device,
+        deviceId: crashData.deviceId,
+        appVersion: crashData.appVersion,
+        appBuild: crashData.appBuild,
+        bundleId: crashData.bundleId,
+        engineVersion: crashData.engineVersion,
+        sdkVersion: crashData.sdkVersion,
+        country: crashData.country,
+        connectionType: crashData.connectionType,
+        memoryUsage: crashData.memoryUsage,
+        batteryLevel: crashData.batteryLevel,
+        diskSpace: crashData.diskSpace,
+        breadcrumbs: crashData.Breadcrumbs || crashData.breadcrumbs,
+        customData: {
+          eventUuid: crashData.eventUuid,
+          appSignature: crashData.appSignature,
+          channelId: crashData.channelId,
+          countryCode: crashData.countryCode,
+          region: crashData.region,
+          city: crashData.city,
+          timezone: crashData.timezone,
+          ...(crashData.customData || {}),
+        },
+      };
+
+      const crash = await healthService.reportCrash(normalizedData);
+
+      res.status(201).json({ 
+        success: true, 
+        data: crash 
+      });
+    } catch (error: any) {
       console.error('Error reporting crash:', error);
-      res.status(500).json({ error: 'Failed to report crash' });
+      console.error('Crash data received:', JSON.stringify(req.body, null, 2));
+      res.status(500).json({ 
+        success: false,
+        error: 'Failed to report crash',
+        message: error?.message || 'Unknown error'
+      });
     }
   }
 }

@@ -14,7 +14,12 @@ import teamRoutes from './teams';
 import userRoutes from './users';
 import gameAccessRoutes from './game-access';
 
+// Import controllers for top-level routes
+import { HealthMetricsController } from '../controllers/HealthMetricsController';
+import { authenticateEither } from '../middleware/authenticateEither';
+
 const router = Router();
+const healthController = new HealthMetricsController();
 
 
 // Health check endpoint
@@ -25,6 +30,10 @@ router.get('/health', (req, res) => {
         service: 'lvlup-backend'
     });
 });
+
+// Crash reporting endpoint (from SDK) - uses API key in X-API-Key header
+// Must be BEFORE other routes to avoid conflicts
+router.post('/crashes', authenticateEither, (req, res) => healthController.reportCrash(req, res));
 
 // Authentication & Authorization Routes (most specific first)
 router.use('/auth', authRoutes);

@@ -128,8 +128,16 @@ export class HealthMetricsController {
 
   async reportCrash(req: Request, res: Response) {
     try {
-      const { gameId } = req.params;
       const crashData = req.body;
+
+      // Get game from middleware (set by authenticateEither)
+      const game = (req as any).game;
+      
+      if (!game) {
+        return res.status(403).json({ 
+          error: 'Game not found or access denied' 
+        });
+      }
 
       // Validate required fields
       const requiredFields = ['crashType', 'severity', 'message'];
@@ -144,8 +152,9 @@ export class HealthMetricsController {
       }
 
       // Normalize field names from PascalCase (Unity SDK) to camelCase
+      // Use the actual game.id (CUID) for the database foreign key
       const normalizedData = {
-        gameId: crashData.GameId || gameId,
+        gameId: game.id,
         userId: crashData.UserId || crashData.userId || null,
         sessionId: crashData.SessionId || crashData.sessionId || null,
         crashType: crashData.CrashType || crashData.crashType,

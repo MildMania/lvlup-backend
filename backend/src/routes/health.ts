@@ -33,12 +33,6 @@ router.get(
   (req, res) => healthController.getCrashDetails(req, res)
 );
 
-// Report a crash (from SDK)
-router.post(
-  '/:gameId/crashes',
-  authenticateEither,
-  (req, res) => healthController.reportCrash(req, res)
-);
 
 export default router;
 

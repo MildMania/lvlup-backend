@@ -6,12 +6,21 @@ import rateLimit from 'express-rate-limit';
 const router = Router();
 
 // Rate limiter for auth endpoints
+// More lenient in development, stricter in production
+const isProduction = process.env.NODE_ENV === 'production';
 const authLimiter = rateLimit({
     windowMs: parseInt(process.env.RATE_LIMIT_WINDOW_MS || '900000'), // 15 minutes
-    max: parseInt(process.env.RATE_LIMIT_MAX_REQUESTS || '5'),
+    max: parseInt(process.env.RATE_LIMIT_MAX_REQUESTS || (isProduction ? '5' : '100')),
     message: 'Too many requests from this IP, please try again later.',
     standardHeaders: true,
     legacyHeaders: false,
+    skip: (req) => {
+        // Skip rate limiting for localhost in development
+        if (!isProduction && (req.ip === '::1' || req.ip === '127.0.0.1' || req.ip === '::ffff:127.0.0.1')) {
+            return true;
+        }
+        return false;
+    }
 });
 
 // Public routes

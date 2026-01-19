@@ -640,38 +640,6 @@
   .sidebar.collapsed {
     width: 280px;
   }
-
-  /* Mobile-optimized footer */
-  .sidebar-footer {
-    padding: 16px;
-  }
-
-  .footer-content {
-    gap: 10px;
-  }
-
-  .user-info {
-    padding: 10px;
-  }
-
-  .user-name {
-    font-size: 13px;
-  }
-
-  .user-email {
-    font-size: 11px;
-    line-height: 1.3;
-  }
-
-  .theme-toggle,
-  .logout-btn {
-    padding: 10px;
-    font-size: 11px;
-  }
-
-  .version {
-    font-size: 11px;
-  }
 }
 
 /* Scrollbar Styling */

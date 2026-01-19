@@ -3,7 +3,6 @@
   text-rendering: optimizeLegibility;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
-  -webkit-tap-highlight-color: transparent;
 }
 
 a {
@@ -15,23 +14,8 @@ body {
   min-width: 320px;
   min-height: 100vh;
   background-color: #f8fafc;
-  overflow-x: hidden;
 }
 
 * {
   box-sizing: border-box;
 }
-
-/* Mobile-friendly scrolling */
-@media (max-width: 768px) {
-  body {
-    -webkit-overflow-scrolling: touch;
-  }
-
-  /* Improve touch targets */
-  button, a, input, select, textarea {
-    min-height: 44px;
-    min-width: 44px;
-  }
-}
-

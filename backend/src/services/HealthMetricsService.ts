@@ -290,6 +290,34 @@ export class HealthMetricsService {
     });
   }
 
+  async getErrorInstances(
+    gameId: string,
+    message: string,
+    exceptionType: string,
+    filters: HealthFilters
+  ) {
+    const { startDate, endDate, platform, country, appVersion } = filters;
+
+    const where: any = {
+      gameId,
+      message,
+      exceptionType,
+      timestamp: {
+        gte: startDate,
+        lte: endDate,
+      },
+    };
+
+    if (platform) where.platform = platform;
+    if (country) where.country = country;
+    if (appVersion) where.appVersion = appVersion;
+
+    return prisma.crashLog.findMany({
+      where,
+      orderBy: { timestamp: 'desc' },
+    });
+  }
+
   async getCrashLogs(
     gameId: string,
     filters: HealthFilters & {

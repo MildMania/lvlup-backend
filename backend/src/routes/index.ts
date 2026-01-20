@@ -17,6 +17,7 @@ import gameAccessRoutes from './game-access';
 // Import controllers for top-level routes
 import { HealthMetricsController } from '../controllers/HealthMetricsController';
 import { authenticateEither } from '../middleware/authenticateEither';
+import { truncateCrashData } from '../middleware/truncateCrashData';
 
 const router = Router();
 const healthController = new HealthMetricsController();
@@ -33,7 +34,8 @@ router.get('/health', (req, res) => {
 
 // Crash reporting endpoint (from SDK) - uses API key in X-API-Key header
 // Must be BEFORE other routes to avoid conflicts
-router.post('/crashes', authenticateEither, (req, res) => healthController.reportCrash(req, res));
+// Truncate large crash data fields to prevent 413 errors
+router.post('/crashes', truncateCrashData, authenticateEither, (req, res) => healthController.reportCrash(req, res));
 
 // Authentication & Authorization Routes (most specific first)
 router.use('/auth', authRoutes);

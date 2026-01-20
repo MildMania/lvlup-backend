@@ -177,11 +177,16 @@ export class AnalyticsController {
                     });
                 }
 
-                // Prevent future dates
-                if (startDate > new Date()) {
+                // Prevent future dates (with 5 second tolerance for clock drift)
+                const serverTime = new Date();
+                const timeDiffMs = startDate.getTime() - serverTime.getTime();
+                const FUTURE_TOLERANCE_MS = 5000; // 5 seconds tolerance
+                
+                if (timeDiffMs > FUTURE_TOLERANCE_MS) {
+                    const diffSeconds = (timeDiffMs / 1000).toFixed(2);
                     logger.warn(
-                        `startTime is in the future, resetting to current time. Client Timestamp: ${sessionData.startTime}, Server Timestamp: ${new Date().toISOString()}`);
-                    sessionData.startTime = new Date().toISOString();
+                        `startTime is ${diffSeconds}s in the future (beyond tolerance), resetting to current time. Client Timestamp: ${sessionData.startTime}, Server Timestamp: ${serverTime.toISOString()}`);
+                    sessionData.startTime = serverTime.toISOString();
                 }
             }
 

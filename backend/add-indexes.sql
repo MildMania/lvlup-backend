@@ -12,24 +12,24 @@
 
 -- Composite index for game + timestamp queries (used by 90% of analytics queries)
 CREATE INDEX IF NOT EXISTS idx_event_game_timestamp 
-ON "Event"("gameId", "timestamp" DESC);
+ON "events"("gameId", "timestamp" DESC);
 
 -- Composite index for retention queries (game + timestamp + userId)
 CREATE INDEX IF NOT EXISTS idx_event_game_timestamp_user 
-ON "Event"("gameId", "timestamp", "userId");
+ON "events"("gameId", "timestamp", "userId");
 
 -- Index for userId lookups
 CREATE INDEX IF NOT EXISTS idx_event_user 
-ON "Event"("userId");
+ON "events"("userId");
 
 -- Index for session-based queries
 CREATE INDEX IF NOT EXISTS idx_event_session 
-ON "Event"("sessionId") 
+ON "events"("sessionId") 
 WHERE "sessionId" IS NOT NULL;
 
 -- Index for country filtering (analytics with geographic filters)
 CREATE INDEX IF NOT EXISTS idx_event_country 
-ON "Event"("countryCode") 
+ON "events"("countryCode") 
 WHERE "countryCode" IS NOT NULL;
 
 -- ============================================================================
@@ -38,20 +38,20 @@ WHERE "countryCode" IS NOT NULL;
 
 -- Composite index for game + startTime queries
 CREATE INDEX IF NOT EXISTS idx_session_game_start 
-ON "Session"("gameId", "startTime" DESC);
+ON "sessions"("gameId", "startTime" DESC);
 
 -- Index for duration-based queries (playtime analytics)
 CREATE INDEX IF NOT EXISTS idx_session_duration 
-ON "Session"("gameId", "duration") 
+ON "sessions"("gameId", "duration") 
 WHERE "duration" IS NOT NULL;
 
 -- Index for userId lookups
 CREATE INDEX IF NOT EXISTS idx_session_user 
-ON "Session"("userId");
+ON "sessions"("userId");
 
 -- Index for platform filtering
 CREATE INDEX IF NOT EXISTS idx_session_platform 
-ON "Session"("platform") 
+ON "sessions"("platform") 
 WHERE "platform" IS NOT NULL;
 
 -- ============================================================================
@@ -60,11 +60,11 @@ WHERE "platform" IS NOT NULL;
 
 -- Composite index for game + createdAt (retention and new user queries)
 CREATE INDEX IF NOT EXISTS idx_user_game_created 
-ON "User"("gameId", "createdAt" DESC);
+ON "users"("gameId", "createdAt" DESC);
 
 -- Index for platform filtering
 CREATE INDEX IF NOT EXISTS idx_user_platform 
-ON "User"("platform") 
+ON "users"("platform") 
 WHERE "platform" IS NOT NULL;
 
 -- ============================================================================
@@ -73,15 +73,15 @@ WHERE "platform" IS NOT NULL;
 
 -- Composite index for game + checkpoint queries
 CREATE INDEX IF NOT EXISTS idx_checkpoint_game_checkpoint 
-ON "PlayerCheckpoint"("gameId", "checkpointId");
+ON "player_checkpoints"("gameId", "checkpointId");
 
 -- Composite index for game + timestamp
 CREATE INDEX IF NOT EXISTS idx_checkpoint_game_timestamp 
-ON "PlayerCheckpoint"("gameId", "timestamp" DESC);
+ON "player_checkpoints"("gameId", "timestamp" DESC);
 
 -- Index for userId lookups
 CREATE INDEX IF NOT EXISTS idx_checkpoint_user 
-ON "PlayerCheckpoint"("userId");
+ON "player_checkpoints"("userId");
 
 -- ============================================================================
 -- Verify Indexes Were Created

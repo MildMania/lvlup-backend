@@ -96,6 +96,7 @@ const Health: React.FC<{ gameId: string }> = ({ gameId }) => {
   const [errorInstances, setErrorInstances] = useState<CrashLog[]>([]);
   const [currentInstanceIndex, setCurrentInstanceIndex] = useState(0);
   const [loadingInstances, setLoadingInstances] = useState(false);
+  const [clickedErrorId, setClickedErrorId] = useState<string | null>(null);
 
   // Filters
   const [dateRange, setDateRange] = useState('7d');
@@ -252,10 +253,12 @@ const Health: React.FC<{ gameId: string }> = ({ gameId }) => {
       setErrorInstances([]);
     } finally {
       setLoadingInstances(false);
+      setClickedErrorId(null);
     }
   };
 
   const handleTopErrorClick = (error: HealthMetrics['topCrashes'][0]) => {
+    setClickedErrorId(error.id);
     fetchErrorInstances(error.message, error.exceptionType);
   };
 
@@ -620,12 +623,21 @@ const Health: React.FC<{ gameId: string }> = ({ gameId }) => {
                   key={crash.id}
                   onClick={() => handleTopErrorClick(crash)}
                   style={{ cursor: 'pointer' }}
-                  className="clickable-row"
+                  className={`clickable-row ${clickedErrorId === crash.id ? 'loading-row' : ''}`}
                 >
                   <td>
                     <code className="exception-type">{crash.exceptionType}</code>
                   </td>
-                  <td className="crash-message">{crash.message}</td>
+                  <td className="crash-message">
+                    {clickedErrorId === crash.id ? (
+                      <span className="loading-text">
+                        <span className="spinner"></span>
+                        Loading instances...
+                      </span>
+                    ) : (
+                      crash.message
+                    )}
+                  </td>
                   <td>{crash.count}</td>
                   <td>{crash.affectedUsers}</td>
                   <td>{new Date(crash.lastOccurrence).toLocaleString()}</td>

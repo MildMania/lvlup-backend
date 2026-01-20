@@ -695,3 +695,32 @@
   }
 }
 
+/* Loading State for Top Error Rows */
+.loading-row {
+  background-color: var(--bg-tertiary) !important;
+  opacity: 0.7;
+  pointer-events: none;
+}
+
+.loading-text {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  color: var(--accent-primary);
+  font-weight: 500;
+}
+
+.spinner {
+  width: 14px;
+  height: 14px;
+  border: 2px solid var(--border-primary);
+  border-top-color: var(--accent-primary);
+  border-radius: 50%;
+  animation: spin 0.6s linear infinite;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}

@@ -119,6 +119,7 @@ export interface SessionData {
     platform?: string;
     version?: string;      // Legacy field
     appVersion?: string;   // Primary field from SDK (same as events)
+    countryCode?: string;  // ISO country code (e.g., "MX", "US", "TR")
 }
 
 // Remote config request

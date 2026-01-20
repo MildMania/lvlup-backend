@@ -66,12 +66,14 @@ model Session {
   lastHeartbeat DateTime? // Track last heartbeat for automatic session closure
   platform      String?
   version       String?
+  countryCode   String? // ISO country code (e.g., "MX", "US", "TR")
   events        Event[]
   user          User      @relation(fields: [userId], references: [id], onDelete: Cascade)
   game          Game      @relation(fields: [gameId], references: [id], onDelete: Cascade)
 
   @@index([gameId, userId, startTime])
   @@index([gameId, startTime])
+  @@index([gameId, countryCode, startTime]) // Index for country-based analytics
   @@index([endTime, lastHeartbeat]) // Index for heartbeat cleanup queries
   @@map("sessions")
 }
@@ -83,52 +85,52 @@ model Event {
   sessionId  String?
   eventName  String
   properties Json?
-  timestamp  DateTime @default(now())  // Event time (validated client timestamp or server time)
-  
+  timestamp  DateTime @default(now()) // Event time (validated client timestamp or server time)
+
   // AB Test assignments - stored directly in event for fast filtering
-  abTests    Json?    // { "test_id_1": "variant_a", "test_id_2": "variant_b" }
-  
+  abTests Json? // { "test_id_1": "variant_a", "test_id_2": "variant_b" }
+
   // Level Funnel tracking - for comparing different level design iterations
-  levelFunnel        String?  // e.g., "live_v1", "live_v2", "test_hard"
-  levelFunnelVersion Int?     // Incremental version number: 1, 2, 3, etc.
-  
+  levelFunnel        String? // e.g., "live_v1", "live_v2", "test_hard"
+  levelFunnelVersion Int? // Incremental version number: 1, 2, 3, etc.
+
   // Event metadata (like GameAnalytics)
-  eventUuid        String?   // Unique event identifier from client
-  clientTs         BigInt?   // Client-side Unix timestamp (milliseconds)
+  eventUuid        String? // Unique event identifier from client
+  clientTs         BigInt? // Client-side Unix timestamp (milliseconds)
   serverReceivedAt DateTime? // Server timestamp when event was received
-  
+
   // Device & Platform info
-  platform      String?  // e.g., "android", "ios", "webgl"
-  osVersion     String?  // e.g., "android 13", "iOS 16.0"
-  manufacturer  String?  // e.g., "TECNO", "Apple"
-  device        String?  // e.g., "TECNO BG6", "iPhone 14"
-  deviceId      String?  // Unique device identifier
-  
+  platform     String? // e.g., "android", "ios", "webgl"
+  osVersion    String? // e.g., "android 13", "iOS 16.0"
+  manufacturer String? // e.g., "TECNO", "Apple"
+  device       String? // e.g., "TECNO BG6", "iPhone 14"
+  deviceId     String? // Unique device identifier
+
   // App info
-  appVersion    String?  // e.g., "0.0.3"
-  appBuild      String?  // e.g., "30087"
-  bundleId      String?  // e.g., "com.mildmania.packperfect"
-  engineVersion String?  // e.g., "unity 2022.3.62"
-  sdkVersion    String?  // e.g., "unity 1.0.0"
-  
+  appVersion    String? // e.g., "0.0.3"
+  appBuild      String? // e.g., "30087"
+  bundleId      String? // e.g., "com.mildmania.packperfect"
+  engineVersion String? // e.g., "unity 2022.3.62"
+  sdkVersion    String? // e.g., "unity 1.0.0"
+
   // Network & Additional
-  connectionType String?  // e.g., "wifi", "wwan", "offline"
-  sessionNum     Int?     // Session number for this user
-  appSignature   String?  // Android app signature
-  channelId      String?  // e.g., "com.android.vending"
-  
+  connectionType String? // e.g., "wifi", "wwan", "offline"
+  sessionNum     Int? // Session number for this user
+  appSignature   String? // Android app signature
+  channelId      String? // e.g., "com.android.vending"
+
   // Geographic location
-  country        String?  // ISO country code, e.g., "US", "TR"
-  countryCode    String?  // ISO 3166-1 alpha-2, e.g., "US"
-  region         String?  // Region/State, e.g., "California", "Istanbul"
-  city           String?  // City name, e.g., "San Francisco", "Istanbul"
-  latitude       Float?   // Latitude coordinate
-  longitude      Float?   // Longitude coordinate
-  timezone       String?  // IANA timezone, e.g., "America/Los_Angeles"
-  
-  session    Session? @relation(fields: [sessionId], references: [id])
-  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  game       Game     @relation(fields: [gameId], references: [id], onDelete: Cascade)
+  country     String? // ISO country code, e.g., "US", "TR"
+  countryCode String? // ISO 3166-1 alpha-2, e.g., "US"
+  region      String? // Region/State, e.g., "California", "Istanbul"
+  city        String? // City name, e.g., "San Francisco", "Istanbul"
+  latitude    Float? // Latitude coordinate
+  longitude   Float? // Longitude coordinate
+  timezone    String? // IANA timezone, e.g., "America/Los_Angeles"
+
+  session Session? @relation(fields: [sessionId], references: [id])
+  user    User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  game    Game     @relation(fields: [gameId], references: [id], onDelete: Cascade)
 
   @@index([gameId, eventName, timestamp])
   @@index([userId, timestamp])
@@ -335,48 +337,48 @@ model ContextMetadata {
 }
 
 model CrashLog {
-  id            String         @id @default(cuid())
-  gameId        String
-  userId        String?
-  sessionId     String?
-  
+  id        String  @id @default(cuid())
+  gameId    String
+  userId    String?
+  sessionId String?
+
   // Crash details
-  crashType     String         // "exception", "crash", "anr"
-  severity      String         @default("ERROR") // "LOW", "MEDIUM", "HIGH", "CRITICAL", "ERROR", "WARNING"
+  crashType     String // "exception", "crash", "anr"
+  severity      String  @default("ERROR") // "LOW", "MEDIUM", "HIGH", "CRITICAL", "ERROR", "WARNING"
   message       String
   stackTrace    String
-  exceptionType String?        // e.g., "NullReferenceException", "IndexOutOfRangeException"
-  
+  exceptionType String? // e.g., "NullReferenceException", "IndexOutOfRangeException"
+
   // Device & Platform info
-  platform      String?
-  osVersion     String?
-  manufacturer  String?
-  device        String?
-  deviceId      String?
-  
+  platform     String?
+  osVersion    String?
+  manufacturer String?
+  device       String?
+  deviceId     String?
+
   // App info
   appVersion    String?
   appBuild      String?
   bundleId      String?
   engineVersion String?
   sdkVersion    String?
-  
+
   // Context
-  country       String?
+  country        String?
   connectionType String?
-  memoryUsage   Int?           // Memory usage in bytes (using Int instead of BigInt for SQLite)
-  batteryLevel  Float?         // Battery level 0-1
-  diskSpace     Int?           // Available disk space in bytes (using Int instead of BigInt for SQLite)
-  
+  memoryUsage    Int? // Memory usage in bytes (using Int instead of BigInt for SQLite)
+  batteryLevel   Float? // Battery level 0-1
+  diskSpace      Int? // Available disk space in bytes (using Int instead of BigInt for SQLite)
+
   // Additional metadata
-  breadcrumbs   String?        // JSON string of breadcrumbs leading to crash
-  customData    String?        // JSON string of custom key-value pairs
-  
-  timestamp     DateTime       @default(now())
-  resolved      Boolean        @default(false)
-  resolvedAt    DateTime?
-  
-  game          Game           @relation(fields: [gameId], references: [id], onDelete: Cascade)
+  breadcrumbs String? // JSON string of breadcrumbs leading to crash
+  customData  String? // JSON string of custom key-value pairs
+
+  timestamp  DateTime  @default(now())
+  resolved   Boolean   @default(false)
+  resolvedAt DateTime?
+
+  game Game @relation(fields: [gameId], references: [id], onDelete: Cascade)
 
   @@index([gameId, timestamp])
   @@index([gameId, platform, timestamp])
@@ -392,109 +394,109 @@ model CrashLog {
 
 // Dashboard user account (developers/admins accessing analytics dashboard)
 model DashboardUser {
-  id                String            @id @default(cuid())
-  email             String            @unique
-  passwordHash      String
-  firstName         String
-  lastName          String
-  
+  id           String @id @default(cuid())
+  email        String @unique
+  passwordHash String
+  firstName    String
+  lastName     String
+
   // Account status
-  isEmailVerified   Boolean           @default(false)
-  emailVerificationToken String?      @unique
+  isEmailVerified          Boolean   @default(false)
+  emailVerificationToken   String?   @unique
   emailVerificationExpires DateTime?
-  
-  isActive          Boolean           @default(true)
-  isLocked          Boolean           @default(false)
-  lockReason        String?
-  
+
+  isActive   Boolean @default(true)
+  isLocked   Boolean @default(false)
+  lockReason String?
+
   // Password reset
-  passwordResetToken String?         @unique
+  passwordResetToken   String?   @unique
   passwordResetExpires DateTime?
-  
+
   // Failed login tracking
-  failedLoginAttempts Int            @default(0)
-  lastFailedLogin   DateTime?
-  
+  failedLoginAttempts Int       @default(0)
+  lastFailedLogin     DateTime?
+
   // Metadata
-  lastLogin         DateTime?
-  lastLoginIp       String?
-  createdAt         DateTime          @default(now())
-  updatedAt         DateTime          @updatedAt
-  
+  lastLogin   DateTime?
+  lastLoginIp String?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
   // Relations
-  teamMemberships   TeamMember[]
-  gameAccesses      GameAccess[]
-  sentInvitations   Invitation[]      @relation("InvitedBy")
-  receivedInvitation Invitation?      @relation("InvitedUser")
-  refreshTokens     RefreshToken[]
-  twoFactorAuth     TwoFactorAuth?
-  auditLogs         AuditLog[]
-  createdBy         String?           // DashboardUser ID who created this account
-  
+  teamMemberships    TeamMember[]
+  gameAccesses       GameAccess[]
+  sentInvitations    Invitation[]   @relation("InvitedBy")
+  receivedInvitation Invitation?    @relation("InvitedUser")
+  refreshTokens      RefreshToken[]
+  twoFactorAuth      TwoFactorAuth?
+  auditLogs          AuditLog[]
+  createdBy          String? // DashboardUser ID who created this account
+
   @@map("dashboard_users")
 }
 
 // Teams for organizing users and game access
 model Team {
-  id          String         @id @default(cuid())
+  id          String  @id @default(cuid())
   name        String
   description String?
-  slug        String         @unique
-  
-  isActive    Boolean        @default(true)
-  
-  createdAt   DateTime       @default(now())
-  updatedAt   DateTime       @updatedAt
-  
+  slug        String  @unique
+
+  isActive Boolean @default(true)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
   // Relations
-  members     TeamMember[]
+  members      TeamMember[]
   gameAccesses GameAccess[]
-  invitations Invitation[]
-  
+  invitations  Invitation[]
+
   @@map("teams")
 }
 
 // Team membership with roles
 model TeamMember {
-  id        String       @id @default(cuid())
-  teamId    String
-  userId    String
-  role      DashboardRole
-  
-  joinedAt  DateTime     @default(now())
-  updatedAt DateTime     @updatedAt
-  
-  team      Team         @relation(fields: [teamId], references: [id], onDelete: Cascade)
-  user      DashboardUser @relation(fields: [userId], references: [id], onDelete: Cascade)
-  
+  id     String        @id @default(cuid())
+  teamId String
+  userId String
+  role   DashboardRole
+
+  joinedAt  DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  team Team          @relation(fields: [teamId], references: [id], onDelete: Cascade)
+  user DashboardUser @relation(fields: [userId], references: [id], onDelete: Cascade)
+
   @@unique([teamId, userId])
   @@map("team_members")
 }
 
 // Game access for teams or individual users
 model GameAccess {
-  id        String         @id @default(cuid())
-  
+  id String @id @default(cuid())
+
   // Access can be team-based or user-based
-  teamId    String?
-  userId    String?
-  
+  teamId String?
+  userId String?
+
   // Access can be for specific game or all games
-  gameId    String?
-  allGames  Boolean        @default(false)
-  
+  gameId   String?
+  allGames Boolean @default(false)
+
   // Access level
   accessLevel AccessLevel
-  
+
   // Grant info
-  grantedAt DateTime       @default(now())
-  grantedBy String?        // DashboardUser ID
+  grantedAt DateTime  @default(now())
+  grantedBy String? // DashboardUser ID
   expiresAt DateTime?
-  
-  team      Team?          @relation(fields: [teamId], references: [id], onDelete: Cascade)
-  user      DashboardUser? @relation(fields: [userId], references: [id], onDelete: Cascade)
-  game      Game?          @relation(fields: [gameId], references: [id], onDelete: Cascade)
-  
+
+  team Team?          @relation(fields: [teamId], references: [id], onDelete: Cascade)
+  user DashboardUser? @relation(fields: [userId], references: [id], onDelete: Cascade)
+  game Game?          @relation(fields: [gameId], references: [id], onDelete: Cascade)
+
   @@index([teamId, gameId])
   @@index([userId, gameId])
   @@map("game_accesses")
@@ -502,34 +504,34 @@ model GameAccess {
 
 // Email invitations
 model Invitation {
-  id          String           @id @default(cuid())
-  email       String
-  token       String           @unique
-  
+  id    String @id @default(cuid())
+  email String
+  token String @unique
+
   // Invitation details
-  teamId      String?
-  role        DashboardRole
-  
+  teamId String?
+  role   DashboardRole
+
   // Game access included in invitation
-  gameIds     Json?            // Array of game IDs or null for all
+  gameIds     Json? // Array of game IDs or null for all
   accessLevel AccessLevel
-  
+
   // Status
-  status      InvitationStatus @default(PENDING)
-  
+  status InvitationStatus @default(PENDING)
+
   // Metadata
-  invitedBy   String
-  acceptedBy  String?          @unique
-  
-  createdAt   DateTime         @default(now())
-  expiresAt   DateTime
-  acceptedAt  DateTime?
-  revokedAt   DateTime?
-  
-  inviter     DashboardUser    @relation("InvitedBy", fields: [invitedBy], references: [id], onDelete: Cascade)
-  acceptedUser DashboardUser?  @relation("InvitedUser", fields: [acceptedBy], references: [id])
-  team        Team?            @relation(fields: [teamId], references: [id], onDelete: Cascade)
-  
+  invitedBy  String
+  acceptedBy String? @unique
+
+  createdAt  DateTime  @default(now())
+  expiresAt  DateTime
+  acceptedAt DateTime?
+  revokedAt  DateTime?
+
+  inviter      DashboardUser  @relation("InvitedBy", fields: [invitedBy], references: [id], onDelete: Cascade)
+  acceptedUser DashboardUser? @relation("InvitedUser", fields: [acceptedBy], references: [id])
+  team         Team?          @relation(fields: [teamId], references: [id], onDelete: Cascade)
+
   @@index([email, status])
   @@index([token])
   @@map("invitations")
@@ -537,55 +539,55 @@ model Invitation {
 
 // JWT refresh tokens
 model RefreshToken {
-  id        String        @id @default(cuid())
-  userId    String
-  token     String        @unique
-  
+  id     String @id @default(cuid())
+  userId String
+  token  String @unique
+
   expiresAt DateTime
-  createdAt DateTime      @default(now())
-  
+  createdAt DateTime @default(now())
+
   // Device/session tracking
   userAgent String?
   ipAddress String?
-  
-  user      DashboardUser @relation(fields: [userId], references: [id], onDelete: Cascade)
-  
+
+  user DashboardUser @relation(fields: [userId], references: [id], onDelete: Cascade)
+
   @@index([userId, expiresAt])
   @@map("refresh_tokens")
 }
 
 // Two-factor authentication
 model TwoFactorAuth {
-  id            String        @id @default(cuid())
-  userId        String        @unique
-  
-  isEnabled     Boolean       @default(false)
-  secret        String        // Encrypted TOTP secret
-  backupCodes   Json          // Array of hashed backup codes
-  
-  createdAt     DateTime      @default(now())
-  lastUsedAt    DateTime?
-  
-  user          DashboardUser @relation(fields: [userId], references: [id], onDelete: Cascade)
-  
+  id     String @id @default(cuid())
+  userId String @unique
+
+  isEnabled   Boolean @default(false)
+  secret      String // Encrypted TOTP secret
+  backupCodes Json // Array of hashed backup codes
+
+  createdAt  DateTime  @default(now())
+  lastUsedAt DateTime?
+
+  user DashboardUser @relation(fields: [userId], references: [id], onDelete: Cascade)
+
   @@map("two_factor_auth")
 }
 
 // Audit logs for security and compliance
 model AuditLog {
-  id          String        @id @default(cuid())
-  userId      String?
-  action      String        // e.g., "USER_LOGIN", "GAME_CREATED", "ROLE_CHANGED"
-  resource    String?       // e.g., "Game:abc123", "Team:xyz789"
-  details     Json?
-  
-  ipAddress   String?
-  userAgent   String?
-  
-  createdAt   DateTime      @default(now())
-  
-  user        DashboardUser? @relation(fields: [userId], references: [id])
-  
+  id       String  @id @default(cuid())
+  userId   String?
+  action   String // e.g., "USER_LOGIN", "GAME_CREATED", "ROLE_CHANGED"
+  resource String? // e.g., "Game:abc123", "Team:xyz789"
+  details  Json?
+
+  ipAddress String?
+  userAgent String?
+
+  createdAt DateTime @default(now())
+
+  user DashboardUser? @relation(fields: [userId], references: [id])
+
   @@index([userId, createdAt])
   @@index([action, createdAt])
   @@map("audit_logs")
@@ -601,9 +603,9 @@ enum DashboardRole {
 }
 
 enum AccessLevel {
-  OWNER    // Full control
-  EDITOR   // Can modify
-  VIEWER   // Read-only
+  OWNER // Full control
+  EDITOR // Can modify
+  VIEWER // Read-only
 }
 
 enum InvitationStatus {
@@ -619,5 +621,3 @@ enum TestStatus {
   PAUSED
   COMPLETED
 }
-
-

@@ -319,6 +319,9 @@ export class CohortAnalyticsService {
                         duration: { gt: 0 } // Exclude zero-duration sessions
                     };
 
+                    if (filters?.country) {
+                        sessionFilters.countryCode = Array.isArray(filters.country) ? { in: filters.country } : filters.country;
+                    }
                     if (filters?.platform) {
                         sessionFilters.platform = Array.isArray(filters.platform) ? { in: filters.platform } : filters.platform;
                     }
@@ -482,6 +485,9 @@ export class CohortAnalyticsService {
                         duration: { gt: 0 } // Exclude zero-duration sessions
                     };
 
+                    if (filters?.country) {
+                        sessionFilters.countryCode = Array.isArray(filters.country) ? { in: filters.country } : filters.country;
+                    }
                     if (filters?.platform) {
                         sessionFilters.platform = Array.isArray(filters.platform) ? { in: filters.platform } : filters.platform;
                     }
@@ -619,6 +625,9 @@ export class CohortAnalyticsService {
                     }
                     if (filters?.version) {
                         sessionFilters.version = Array.isArray(filters.version) ? { in: filters.version } : filters.version;
+                    }
+                    if (filters?.country) {
+                        sessionFilters.countryCode = Array.isArray(filters.country) ? { in: filters.country } : filters.country;
                     }
 
                     const sessions = await this.prisma.session.findMany({

@@ -99,7 +99,8 @@ export class AnalyticsService {
                     userId: userId,
                     startTime: new Date(sessionData.startTime),
                     platform: sessionData.platform ?? null,
-                    version: sessionData.appVersion ?? sessionData.version ?? null // Use appVersion first, fallback to version
+                    version: sessionData.appVersion ?? sessionData.version ?? null, // Use appVersion first, fallback to version
+                    countryCode: sessionData.countryCode ?? null // Store country code directly on session
                 }
             });
 

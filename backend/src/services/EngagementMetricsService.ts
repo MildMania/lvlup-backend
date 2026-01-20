@@ -66,18 +66,11 @@ export class EngagementMetricsService {
                 gameId: gameId,
             };
 
-            // Apply optional user filters (these will be used in user lookup)
-            const userFilters: any = {};
-
+            // Apply country filter directly on session
             if (filters?.country) {
-                // Filter users by their events' countryCode
-                userFilters.events = {
-                    some: {
-                        countryCode: Array.isArray(filters.country)
-                            ? { in: filters.country }
-                            : filters.country
-                    }
-                };
+                baseFilters.countryCode = Array.isArray(filters.country)
+                    ? { in: filters.country }
+                    : filters.country;
             }
 
             // Process each day in the date range
@@ -112,10 +105,6 @@ export class EngagementMetricsService {
                         : filters.version;
                 }
 
-                // If we have user filters, include them through the user relation
-                if (Object.keys(userFilters).length > 0) {
-                    sessionFilters.user = userFilters;
-                }
 
                 // Get the sessions for this day, grouped by user
                 const userSessions = await this.prisma.session.groupBy({
@@ -239,18 +228,11 @@ export class EngagementMetricsService {
                 duration: { not: null }
             };
 
-            // Apply optional user filters (these will be used in user lookup)
-            const userFilters: any = {};
-
+            // Apply country filter directly on session
             if (filters?.country) {
-                // Filter users by their events' countryCode
-                userFilters.events = {
-                    some: {
-                        countryCode: Array.isArray(filters.country)
-                            ? { in: filters.country }
-                            : filters.country
-                    }
-                };
+                baseFilters.countryCode = Array.isArray(filters.country)
+                    ? { in: filters.country }
+                    : filters.country;
             }
 
             // Process each day in the date range
@@ -285,10 +267,6 @@ export class EngagementMetricsService {
                         : filters.version;
                 }
 
-                // If we have user filters, include them through the user relation
-                if (Object.keys(userFilters).length > 0) {
-                    sessionFilters.user = userFilters;
-                }
 
                 // Get all sessions with durations for this day
                 const sessions = await this.prisma.session.findMany({

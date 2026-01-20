@@ -292,6 +292,65 @@ const Health: React.FC<{ gameId: string }> = ({ gameId }) => {
     }
   };
 
+  const parseBreadcrumbs = (breadcrumbsStr: string) => {
+    try {
+      const parsed = JSON.parse(breadcrumbsStr);
+      if (Array.isArray(parsed)) {
+        return parsed;
+      }
+      return [];
+    } catch (e) {
+      console.error('Failed to parse breadcrumbs:', e);
+      return [];
+    }
+  };
+
+  const getBreadcrumbTypeColor = (type: string) => {
+    switch (type?.toUpperCase()) {
+      case 'ERROR':
+        return '#ef4444';
+      case 'WARNING':
+        return '#f59e0b';
+      case 'LOG':
+        return '#6b7280';
+      default:
+        return '#3b82f6';
+    }
+  };
+
+  const formatBreadcrumbTimestamp = (timestamp: any) => {
+    if (!timestamp) return null;
+    
+    try {
+      // Handle different timestamp formats
+      let date: Date | null = null;
+      
+      if (typeof timestamp === 'string') {
+        date = new Date(timestamp);
+      } else if (typeof timestamp === 'number') {
+        date = new Date(timestamp);
+      } else if (timestamp && typeof timestamp === 'object') {
+        // If it's an object with properties, try to construct a date
+        if (timestamp.year && timestamp.month && timestamp.day) {
+          date = new Date(timestamp.year, timestamp.month - 1, timestamp.day, 
+                         timestamp.hour || 0, timestamp.minute || 0, timestamp.second || 0);
+        } else if (timestamp.seconds) {
+          // Unix timestamp in seconds
+          date = new Date(timestamp.seconds * 1000);
+        } else if (timestamp.milliseconds) {
+          date = new Date(timestamp.milliseconds);
+        }
+      }
+      
+      if (date && !isNaN(date.getTime())) {
+        return date.toLocaleString();
+      }
+      return null;
+    } catch (e) {
+      return null;
+    }
+  };
+
   if (loading) {
     return (
       <div className="health-container">
@@ -606,36 +665,174 @@ const Health: React.FC<{ gameId: string }> = ({ gameId }) => {
 
       {selectedCrash && (
         <div className="crash-modal" onClick={() => setSelectedCrash(null)}>
-          <div className="modal-content" onClick={(e) => e.stopPropagation()}>
+          <div className="modal-content error-instances-modal" onClick={(e) => e.stopPropagation()}>
             <div className="modal-header">
-              <h2>Error Details</h2>
+              <div>
+                <h2>Error Details</h2>
+              </div>
               <button onClick={() => setSelectedCrash(null)}>×</button>
             </div>
+            
             <div className="modal-body">
-              <div className="detail-row">
-                <strong>Type:</strong> {selectedCrash.crashType}
+              <div className="detail-section">
+                <h3>Error Information</h3>
+                <div className="detail-row">
+                  <strong>Type:</strong> {selectedCrash.crashType}
+                </div>
+                <div className="detail-row">
+                  <strong>Severity:</strong> 
+                  <span 
+                    className="severity-badge" 
+                    style={{ backgroundColor: getSeverityColor(selectedCrash.severity) }}
+                  >
+                    {selectedCrash.severity}
+                  </span>
+                </div>
+                <div className="detail-row">
+                  <strong>Exception:</strong> 
+                  <code>{selectedCrash.exceptionType}</code>
+                </div>
+                <div className="detail-row">
+                  <strong>Timestamp:</strong> {new Date(selectedCrash.timestamp).toLocaleString()}
+                </div>
+                <div className="detail-row">
+                  <strong>Message:</strong>
+                  <div className="message-text">{selectedCrash.message}</div>
+                </div>
               </div>
-              <div className="detail-row">
-                <strong>Severity:</strong> {selectedCrash.severity}
+
+              <div className="detail-section">
+                <h3>Device & Platform</h3>
+                <div className="detail-grid">
+                  <div className="detail-row">
+                    <strong>Platform:</strong> {selectedCrash.platform || 'N/A'}
+                  </div>
+                  <div className="detail-row">
+                    <strong>OS Version:</strong> {selectedCrash.osVersion || 'N/A'}
+                  </div>
+                  <div className="detail-row">
+                    <strong>Device:</strong> {selectedCrash.device || 'N/A'}
+                  </div>
+                  <div className="detail-row">
+                    <strong>Manufacturer:</strong> {selectedCrash.manufacturer || 'N/A'}
+                  </div>
+                  <div className="detail-row">
+                    <strong>Device ID:</strong> {selectedCrash.deviceId || 'N/A'}
+                  </div>
+                </div>
               </div>
-              <div className="detail-row">
-                <strong>Exception:</strong> {selectedCrash.exceptionType}
+
+              <div className="detail-section">
+                <h3>App Information</h3>
+                <div className="detail-grid">
+                  <div className="detail-row">
+                    <strong>App Version:</strong> {selectedCrash.appVersion || 'N/A'}
+                  </div>
+                  <div className="detail-row">
+                    <strong>App Build:</strong> {selectedCrash.appBuild || 'N/A'}
+                  </div>
+                  <div className="detail-row">
+                    <strong>Bundle ID:</strong> {selectedCrash.bundleId || 'N/A'}
+                  </div>
+                  <div className="detail-row">
+                    <strong>Engine Version:</strong> {selectedCrash.engineVersion || 'N/A'}
+                  </div>
+                  <div className="detail-row">
+                    <strong>SDK Version:</strong> {selectedCrash.sdkVersion || 'N/A'}
+                  </div>
+                </div>
               </div>
-              <div className="detail-row">
-                <strong>Platform:</strong> {selectedCrash.platform}
+
+              <div className="detail-section">
+                <h3>Context</h3>
+                <div className="detail-grid">
+                  <div className="detail-row">
+                    <strong>User ID:</strong> {selectedCrash.userId || 'Anonymous'}
+                  </div>
+                  <div className="detail-row">
+                    <strong>Country:</strong> {selectedCrash.country || 'N/A'}
+                  </div>
+                  <div className="detail-row">
+                    <strong>Connection:</strong> {selectedCrash.connectionType || 'N/A'}
+                  </div>
+                  {selectedCrash.memoryUsage && (
+                    <div className="detail-row">
+                      <strong>Memory Usage:</strong> {(selectedCrash.memoryUsage / 1024 / 1024).toFixed(2)} MB
+                    </div>
+                  )}
+                  {selectedCrash.batteryLevel !== null && selectedCrash.batteryLevel !== undefined && (
+                    <div className="detail-row">
+                      <strong>Battery Level:</strong> {(selectedCrash.batteryLevel * 100).toFixed(0)}%
+                    </div>
+                  )}
+                  {selectedCrash.diskSpace && (
+                    <div className="detail-row">
+                      <strong>Disk Space:</strong> {(selectedCrash.diskSpace / 1024 / 1024 / 1024).toFixed(2)} GB
+                    </div>
+                  )}
+                </div>
               </div>
-              <div className="detail-row">
-                <strong>Version:</strong> {selectedCrash.appVersion}
-              </div>
-              <div className="detail-row">
-                <strong>Timestamp:</strong> {new Date(selectedCrash.timestamp).toLocaleString()}
-              </div>
-              <div className="detail-row">
-                <strong>Message:</strong>
-                <div className="message-text">{selectedCrash.message}</div>
-              </div>
-              <div className="detail-row">
-                <strong>Stack Trace:</strong>
+
+              {selectedCrash.breadcrumbs && (
+                <div className="detail-section">
+                  <h3>Breadcrumbs ({parseBreadcrumbs(selectedCrash.breadcrumbs).length} entries)</h3>
+                  <div className="breadcrumbs-timeline">
+                    {(() => {
+                      const breadcrumbs = parseBreadcrumbs(selectedCrash.breadcrumbs);
+                      const totalEntries = breadcrumbs.length;
+                      return breadcrumbs.reverse().map((crumb: any, index: number) => {
+                        const originalIndex = totalEntries - index;
+                        const timestamp = formatBreadcrumbTimestamp(crumb.Timestamp);
+                        return (
+                        <div key={index} className="breadcrumb-entry">
+                          <div className="breadcrumb-header">
+                            <span className="breadcrumb-index">#{originalIndex}</span>
+                            <span 
+                              className="breadcrumb-type"
+                              style={{ 
+                                backgroundColor: getBreadcrumbTypeColor(crumb.Type),
+                                color: 'white',
+                                padding: '2px 8px',
+                                borderRadius: '4px',
+                                fontSize: '11px',
+                                fontWeight: 600
+                              }}
+                            >
+                              {crumb.Type || 'Log'}
+                            </span>
+                            <span className="breadcrumb-timestamp">
+                              {timestamp || `Entry ${originalIndex}`}
+                            </span>
+                          </div>
+                          <div className="breadcrumb-message">{crumb.Message || 'No message'}</div>
+                          {crumb.Data && (
+                            <div className="breadcrumb-data">
+                              <strong>Data:</strong>
+                              <pre>{JSON.stringify(crumb.Data, null, 2)}</pre>
+                            </div>
+                          )}
+                        </div>
+                      );
+                      });
+                    })()}
+                  </div>
+                </div>
+              )}
+
+              {selectedCrash.customData && (
+                <div className="detail-section">
+                  <h3>Custom Data</h3>
+                  <pre className="custom-data-text">
+                    {typeof selectedCrash.customData === 'string'
+                      ? JSON.stringify(JSON.parse(selectedCrash.customData), null, 2)
+                      : JSON.stringify(selectedCrash.customData, null, 2)
+                    }
+                  </pre>
+                </div>
+              )}
+
+              <div className="detail-section">
+                <h3>Stack Trace</h3>
                 <pre className="stack-trace">{selectedCrash.stackTrace}</pre>
               </div>
             </div>
@@ -791,13 +988,47 @@ const Health: React.FC<{ gameId: string }> = ({ gameId }) => {
 
                         {instance.breadcrumbs && (
                           <div className="detail-section">
-                            <h3>Breadcrumbs</h3>
-                            <pre className="breadcrumbs-text">
-                              {typeof instance.breadcrumbs === 'string' 
-                                ? JSON.stringify(JSON.parse(instance.breadcrumbs), null, 2)
-                                : JSON.stringify(instance.breadcrumbs, null, 2)
-                              }
-                            </pre>
+                            <h3>Breadcrumbs ({parseBreadcrumbs(instance.breadcrumbs).length} entries)</h3>
+                            <div className="breadcrumbs-timeline">
+                              {(() => {
+                                const breadcrumbs = parseBreadcrumbs(instance.breadcrumbs);
+                                const totalEntries = breadcrumbs.length;
+                                return breadcrumbs.reverse().map((crumb: any, index: number) => {
+                                  const originalIndex = totalEntries - index;
+                                  const timestamp = formatBreadcrumbTimestamp(crumb.Timestamp);
+                                  return (
+                                  <div key={index} className="breadcrumb-entry">
+                                    <div className="breadcrumb-header">
+                                      <span className="breadcrumb-index">#{originalIndex}</span>
+                                      <span 
+                                        className="breadcrumb-type"
+                                        style={{ 
+                                          backgroundColor: getBreadcrumbTypeColor(crumb.Type),
+                                          color: 'white',
+                                          padding: '2px 8px',
+                                          borderRadius: '4px',
+                                          fontSize: '11px',
+                                          fontWeight: 600
+                                        }}
+                                      >
+                                        {crumb.Type || 'Log'}
+                                      </span>
+                                      <span className="breadcrumb-timestamp">
+                                        {timestamp || `Entry ${originalIndex}`}
+                                      </span>
+                                    </div>
+                                    <div className="breadcrumb-message">{crumb.Message || 'No message'}</div>
+                                    {crumb.Data && (
+                                      <div className="breadcrumb-data">
+                                        <strong>Data:</strong>
+                                        <pre>{JSON.stringify(crumb.Data, null, 2)}</pre>
+                                      </div>
+                                    )}
+                                  </div>
+                                );
+                                });
+                              })()}
+                            </div>
                           </div>
                         )}
 

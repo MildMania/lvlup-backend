@@ -47,7 +47,7 @@ interface SidebarProps {
 
 const Sidebar: React.FC<SidebarProps> = ({ 
   currentPage, 
-  onPageChange, 
+  // onPageChange,  // TODO: Remove if not needed, or implement usage
   gameInfo, 
   availableGames = [], 
   onGameChange,

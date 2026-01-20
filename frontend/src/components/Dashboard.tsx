@@ -38,7 +38,7 @@ interface MetricCardProps {
   description?: string;
 }
 
-const MetricCard: React.FC<MetricCardProps> = ({ 
+const MetricCard: React.FC<MetricCardProps> = React.memo(({ 
   title, 
   value, 
   icon, 
@@ -72,7 +72,7 @@ const MetricCard: React.FC<MetricCardProps> = ({
       </div>
     )}
   </div>
-);
+));
 
 interface ChartContainerProps {
   title: string;
@@ -83,7 +83,7 @@ interface ChartContainerProps {
   description?: string;
 }
 
-const ChartContainer: React.FC<ChartContainerProps> = ({ 
+const ChartContainer: React.FC<ChartContainerProps> = React.memo(({ 
   title, 
   children, 
   className = '', 
@@ -114,7 +114,7 @@ const ChartContainer: React.FC<ChartContainerProps> = ({
       )}
     </div>
   </div>
-);
+));
 
 interface DashboardProps {
   gameInfo?: {

@@ -2,6 +2,7 @@ import { PrismaClient } from '@prisma/client';
 import { EventData, BatchEventData, UserProfile, SessionData } from '../types/api';
 import logger from '../utils/logger';
 import { v4 as uuidv4 } from 'uuid';
+import { cache, generateCacheKey } from '../utils/simpleCache';
 
 export class AnalyticsService {
     private prisma: PrismaClient;
@@ -366,6 +367,18 @@ export class AnalyticsService {
     // Get analytics data (for dashboard)
     async getAnalytics(gameId: string, startDate: Date, endDate: Date) {
         try {
+            // Generate cache key based on game ID and date range
+            const cacheKey = generateCacheKey('analytics', gameId, startDate.toISOString(), endDate.toISOString());
+            
+            // Try to get from cache first (5 minute TTL)
+            const cached = cache.get(cacheKey);
+            if (cached) {
+                logger.debug(`Cache hit for analytics: ${cacheKey}`);
+                return cached;
+            }
+
+            logger.debug(`Cache miss for analytics: ${cacheKey}, fetching from database`);
+
             const [
                 totalEvents,
                 newUsers,
@@ -547,7 +560,7 @@ export class AnalyticsService {
                 }
             });
 
-            return {
+            const result = {
                 totalUsers: totalActiveUsers, // Frontend expects totalUsers
                 totalActiveUsers, // Deprecated but kept for backward compatibility
                 newUsers,
@@ -565,6 +578,11 @@ export class AnalyticsService {
                     count: event._count.eventName
                 }))
             };
+
+            // Cache the result for 5 minutes (300 seconds)
+            cache.set(cacheKey, result, 300);
+
+            return result;
         } catch (error) {
             logger.error('Error getting analytics:', error);
             throw error;

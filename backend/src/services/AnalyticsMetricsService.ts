@@ -1,6 +1,7 @@
 import { PrismaClient } from '@prisma/client';
 import logger from '../utils/logger';
 import { AnalyticsFilterParams } from '../types/api';
+import { cache, generateCacheKey } from '../utils/simpleCache';
 
 export interface RetentionData {
     day: number;
@@ -37,6 +38,24 @@ export class AnalyticsMetricsService {
         filters?: AnalyticsFilterParams
     ): Promise<RetentionData[]> {
         try {
+            // Generate cache key
+            const cacheKey = generateCacheKey(
+                'retention',
+                gameId,
+                startDate.toISOString(),
+                endDate.toISOString(),
+                JSON.stringify(filters || {})
+            );
+
+            // Check cache first (10 minute TTL for retention since it's expensive)
+            const cached = cache.get<RetentionData[]>(cacheKey);
+            if (cached) {
+                logger.debug(`Cache hit for retention: ${cacheKey}`);
+                return cached;
+            }
+
+            logger.debug(`Cache miss for retention: ${cacheKey}, calculating...`);
+
             // Build user filters
             const userFilters: any = {
                 gameId: gameId,
@@ -89,17 +108,30 @@ export class AnalyticsMetricsService {
                 ? filters.retentionDays.sort((a, b) => a - b)  // Sort ascending
                 : [1, 3, 7, 14, 30];
 
-            const retentionData: RetentionData[] = [];
-
-            for (const day of retentionDays) {
+            // OPTIMIZED: Batch query approach instead of N+1 queries
+            // Process all retention days in parallel for better performance
+            const retentionPromises = retentionDays.map(async (day) => {
                 let retainedCount = 0;
                 let eligibleUsersCount = 0;
 
-                // For each user, check if they were active on their specific Day N
-                for (const user of newUsers) {
+                // Filter users whose Day N has passed
+                const eligibleUsers = newUsers.filter(user => {
                     const registrationDate = new Date(user.createdAt);
+                    const userDayN = new Date(registrationDate);
+                    userDayN.setDate(userDayN.getDate() + day);
+                    return userDayN <= endDate;
+                });
 
-                    // Calculate Day N after registration
+                eligibleUsersCount = eligibleUsers.length;
+
+                if (eligibleUsersCount === 0) {
+                    return { day, count: 0, percentage: 0 };
+                }
+
+                // Build batch query to check all users at once
+                // Instead of querying each user individually, use a single query with OR conditions
+                const userRetentionConditions = eligibleUsers.map(user => {
+                    const registrationDate = new Date(user.createdAt);
                     const userDayN = new Date(registrationDate);
                     userDayN.setDate(userDayN.getDate() + day);
                     userDayN.setHours(0, 0, 0, 0);
@@ -107,59 +139,49 @@ export class AnalyticsMetricsService {
                     const userDayNEnd = new Date(userDayN);
                     userDayNEnd.setHours(23, 59, 59, 999);
 
-                    // Only count users whose Day N has already passed (for accurate measurement)
-                    if (userDayN > endDate) {
-                        continue;
-                    }
-
-                    eligibleUsersCount++;
-
-                    // Check if user was active on their Day N
-                    const eventFilters: any = {
+                    return {
                         userId: user.id,
-                        gameId: gameId,
                         timestamp: {
                             gte: userDayN,
                             lte: userDayNEnd
                         }
                     };
+                });
 
-                    // Add optional filters for platform/version
-                    if (filters?.platform || filters?.version) {
-                        eventFilters.session = {};
-                        if (filters?.platform) {
-                            eventFilters.session.platform = Array.isArray(filters.platform)
-                                ? { in: filters.platform }
-                                : filters.platform;
-                        }
-                        if (filters?.version) {
-                            eventFilters.session.version = Array.isArray(filters.version)
-                                ? { in: filters.version }
-                                : filters.version;
-                        }
-                    }
+                // Single query to get all retained users for this day
+                // This replaces 1000+ individual queries with 1 query per retention day
+                const retainedUsers = await this.prisma.event.findMany({
+                    where: {
+                        gameId: gameId,
+                        OR: userRetentionConditions
+                    },
+                    select: {
+                        userId: true
+                    },
+                    distinct: ['userId']
+                });
 
-                    const hasActivityOnDayN = await this.prisma.event.findFirst({
-                        where: eventFilters
-                    });
-
-                    if (hasActivityOnDayN) {
-                        retainedCount++;
-                    }
-                }
+                retainedCount = retainedUsers.length;
 
                 // Calculate percentage based on eligible users for this specific retention day
                 const percentage = eligibleUsersCount > 0 ? (retainedCount / eligibleUsersCount) * 100 : 0;
 
-                retentionData.push({
+                return {
                     day,
                     count: retainedCount,
                     percentage: Math.round(percentage * 100) / 100
-                });
-            }
+                };
+            });
 
-            logger.info(`Calculated retention metrics for game ${gameId}`);
-            return retentionData;
+            // Execute all retention day calculations in parallel
+            const retentionData = await Promise.all(retentionPromises);
+            const sortedData = retentionData.sort((a, b) => a.day - b.day);
+
+            // Cache for 10 minutes (600 seconds)
+            cache.set(cacheKey, sortedData, 600);
+
+            logger.info(`Calculated retention metrics for game ${gameId} (optimized batch query)`);
+            return sortedData;
         } catch (error) {
             logger.error('Error calculating retention:', error);
             throw error;
@@ -174,6 +196,24 @@ export class AnalyticsMetricsService {
         filters?: AnalyticsFilterParams
     ): Promise<ActiveUserData[]> {
         try {
+            // Generate cache key
+            const cacheKey = generateCacheKey(
+                'activeUsers',
+                gameId,
+                startDate.toISOString(),
+                endDate.toISOString(),
+                JSON.stringify(filters || {})
+            );
+
+            // Check cache first (5 minute TTL)
+            const cached = cache.get<ActiveUserData[]>(cacheKey);
+            if (cached) {
+                logger.debug(`Cache hit for active users: ${cacheKey}`);
+                return cached;
+            }
+
+            logger.debug(`Cache miss for active users: ${cacheKey}, calculating...`);
+
             // Get daily active users for each day in the range
             const dailyData: ActiveUserData[] = [];
 
@@ -267,6 +307,9 @@ export class AnalyticsMetricsService {
                 // Move to next day
                 currentDate.setDate(currentDate.getDate() + 1);
             }
+
+            // Cache for 5 minutes (300 seconds)
+            cache.set(cacheKey, dailyData, 300);
 
             logger.info(`Calculated active user metrics for game ${gameId}`);
             return dailyData;

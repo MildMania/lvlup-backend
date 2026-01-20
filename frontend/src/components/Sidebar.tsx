@@ -36,7 +36,7 @@ interface GameInfo {
 
 interface SidebarProps {
   currentPage: string;
-  onPageChange: (page: string) => void;
+  onPageChange?: (page: string) => void;  // Optional since not currently used
   gameInfo?: GameInfo;
   availableGames?: GameInfo[];
   onGameChange?: (gameId: string) => void;

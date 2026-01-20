@@ -291,87 +291,32 @@ export class CohortAnalyticsService {
                 const userCountByDay: { [day: number]: number } = {};
 
                 for (const day of retentionDays) {
-                    // Day 0 special handling - all installed users count
-                    if (day === 0) {
-                        userCountByDay[day] = userIds.length; // Same as installCount
-                        
-                        // Calculate Day 0 playtime
-                        const targetDateStart = new Date(installDateObj);
-                        targetDateStart.setHours(0, 0, 0, 0);
-                        const targetDateEnd = new Date(installDateObj);
-                        targetDateEnd.setHours(23, 59, 59, 999);
-
-                        // Remove strict endTime/duration filters to capture all sessions
-                        const sessionFilters: any = {
-                            userId: { in: userIds },
-                            gameId: gameId,
-                            startTime: { gte: targetDateStart, lte: targetDateEnd }
-                        };
-
-                        if (filters?.platform) {
-                            sessionFilters.platform = Array.isArray(filters.platform) ? { in: filters.platform } : filters.platform;
-                        }
-                        if (filters?.version) {
-                            sessionFilters.version = Array.isArray(filters.version) ? { in: filters.version } : filters.version;
-                        }
-
-                        const sessions = await this.prisma.session.findMany({
-                            where: sessionFilters,
-                            select: { userId: true, duration: true, startTime: true, endTime: true, lastHeartbeat: true }
-                        });
-
-                        if (sessions.length > 0) {
-                            const userPlaytime = new Map<string, number>();
-                            for (const session of sessions) {
-                                let sessionDuration = session.duration || 0;
-                                
-                                // If duration is not set, calculate from startTime and endTime/lastHeartbeat
-                                if (!sessionDuration && session.startTime) {
-                                    const start = typeof session.startTime === 'bigint' ? Number(session.startTime) : new Date(session.startTime).getTime();
-                                    let end = 0;
-                                    
-                                    // Use lastHeartbeat if available and later than endTime, otherwise use endTime
-                                    if (session.lastHeartbeat) {
-                                        end = typeof session.lastHeartbeat === 'bigint' ? Number(session.lastHeartbeat) : new Date(session.lastHeartbeat).getTime();
-                                    } else if (session.endTime) {
-                                        end = typeof session.endTime === 'bigint' ? Number(session.endTime) : new Date(session.endTime).getTime();
-                                    }
-                                    
-                                    if (end > start) {
-                                        sessionDuration = Math.floor((end - start) / 1000); // Convert to seconds
-                                    }
-                                }
-                                
-                                const current = userPlaytime.get(session.userId) || 0;
-                                userPlaytime.set(session.userId, current + sessionDuration);
-                            }
-                            const totalPlaytime = Array.from(userPlaytime.values()).reduce((sum, val) => sum + val, 0);
-                            const avgPlaytime = totalPlaytime / userPlaytime.size / 60;
-                            retentionByDay[day] = Math.round(avgPlaytime * 10) / 10;
-                        } else {
-                            retentionByDay[day] = 0;
-                        }
-                        continue;
-                    }
-
-                    const targetDate = new Date(installDateObj);
-                    targetDate.setDate(targetDate.getDate() + day);
-                    const targetDateStart = new Date(targetDate);
+                    // Calculate Day 0 playtime
+                    const targetDateStart = day === 0 ? new Date(installDateObj) : (() => {
+                        const targetDate = new Date(installDateObj);
+                        targetDate.setDate(targetDate.getDate() + day);
+                        return targetDate;
+                    })();
                     targetDateStart.setHours(0, 0, 0, 0);
-                    const targetDateEnd = new Date(targetDate);
+                    const targetDateEnd = new Date(day === 0 ? installDateObj : (() => {
+                        const targetDate = new Date(installDateObj);
+                        targetDate.setDate(targetDate.getDate() + day);
+                        return targetDate;
+                    })());
                     targetDateEnd.setHours(23, 59, 59, 999);
 
-                    if (targetDateStart > new Date()) {
+                    if (day !== 0 && targetDateStart > new Date()) {
                         retentionByDay[day] = -1;
                         userCountByDay[day] = 0;
                         continue;
                     }
 
-                    // Remove strict endTime/duration filters to capture all sessions
+                    // Filter sessions with duration > 0
                     const sessionFilters: any = {
                         userId: { in: userIds },
                         gameId: gameId,
-                        startTime: { gte: targetDateStart, lte: targetDateEnd }
+                        startTime: { gte: targetDateStart, lte: targetDateEnd },
+                        duration: { gt: 0 } // Exclude zero-duration sessions
                     };
 
                     if (filters?.platform) {
@@ -386,41 +331,48 @@ export class CohortAnalyticsService {
                         select: { userId: true, duration: true, startTime: true, endTime: true, lastHeartbeat: true }
                     });
 
-                    if (sessions.length === 0) {
-                        retentionByDay[day] = 0;
-                        userCountByDay[day] = 0;
-                        continue;
-                    }
-
-                    const userPlaytime = new Map<string, number>();
-                    for (const session of sessions) {
-                        let sessionDuration = session.duration || 0;
-                        
-                        // If duration is not set, calculate from startTime and endTime/lastHeartbeat
-                        if (!sessionDuration && session.startTime) {
-                            const start = typeof session.startTime === 'bigint' ? Number(session.startTime) : new Date(session.startTime).getTime();
-                            let end = 0;
+                    if (sessions.length > 0) {
+                        const userPlaytime = new Map<string, number>();
+                        for (const session of sessions) {
+                            let sessionDuration = session.duration || 0;
                             
-                            // Use lastHeartbeat if available and later than endTime, otherwise use endTime
-                            if (session.lastHeartbeat) {
-                                end = typeof session.lastHeartbeat === 'bigint' ? Number(session.lastHeartbeat) : new Date(session.lastHeartbeat).getTime();
-                            } else if (session.endTime) {
-                                end = typeof session.endTime === 'bigint' ? Number(session.endTime) : new Date(session.endTime).getTime();
+                            // If duration is not set, calculate from startTime and endTime/lastHeartbeat
+                            if (!sessionDuration && session.startTime) {
+                                const start = typeof session.startTime === 'bigint' ? Number(session.startTime) : new Date(session.startTime).getTime();
+                                let end = 0;
+                                
+                                // Use lastHeartbeat if available and later than endTime, otherwise use endTime
+                                if (session.lastHeartbeat) {
+                                    end = typeof session.lastHeartbeat === 'bigint' ? Number(session.lastHeartbeat) : new Date(session.lastHeartbeat).getTime();
+                                } else if (session.endTime) {
+                                    end = typeof session.endTime === 'bigint' ? Number(session.endTime) : new Date(session.endTime).getTime();
+                                }
+                                
+                                if (end > start) {
+                                    sessionDuration = Math.floor((end - start) / 1000); // Convert to seconds
+                                }
                             }
                             
-                            if (end > start) {
-                                sessionDuration = Math.floor((end - start) / 1000); // Convert to seconds
+                            // Skip zero-duration sessions
+                            if (sessionDuration > 0) {
+                                const current = userPlaytime.get(session.userId) || 0;
+                                userPlaytime.set(session.userId, current + sessionDuration);
                             }
                         }
-                        
-                        const current = userPlaytime.get(session.userId) || 0;
-                        userPlaytime.set(session.userId, current + sessionDuration);
+                        if (userPlaytime.size > 0) {
+                            const totalPlaytime = Array.from(userPlaytime.values()).reduce((sum, val) => sum + val, 0);
+                            const avgPlaytime = totalPlaytime / userPlaytime.size / 60;
+                            retentionByDay[day] = Math.round(avgPlaytime * 10) / 10;
+                            userCountByDay[day] = userPlaytime.size; // Only count users who returned
+                        } else {
+                            retentionByDay[day] = 0;
+                            userCountByDay[day] = 0;
+                        }
+                    } else {
+                        retentionByDay[day] = 0;
+                        userCountByDay[day] = 0;
                     }
 
-                    const totalPlaytime = Array.from(userPlaytime.values()).reduce((sum, val) => sum + val, 0);
-                    const avgPlaytime = totalPlaytime / userPlaytime.size / 60; // Convert to minutes
-                    retentionByDay[day] = Math.round(avgPlaytime * 10) / 10;
-                    userCountByDay[day] = userPlaytime.size; // Number of unique users with sessions
                 }
 
                 cohortData.push({ installDate, installCount: userIds.length, retentionByDay, userCountByDay });
@@ -509,45 +461,6 @@ export class CohortAnalyticsService {
                 const userCountByDay: { [day: number]: number } = {};
 
                 for (const day of retentionDays) {
-                    // Day 0 special handling - all installed users count
-                    if (day === 0) {
-                        userCountByDay[day] = userIds.length; // Same as installCount
-                        
-                        // Calculate Day 0 session count
-                        const day0Start = new Date(installDateObj);
-                        day0Start.setHours(0, 0, 0, 0);
-                        const day0End = new Date(installDateObj);
-                        day0End.setHours(23, 59, 59, 999);
-
-                        const day0SessionFilters: any = {
-                            userId: { in: userIds },
-                            gameId: gameId,
-                            startTime: { gte: day0Start, lte: day0End }
-                        };
-
-                        if (filters?.platform) {
-                            day0SessionFilters.platform = Array.isArray(filters.platform) ? { in: filters.platform } : filters.platform;
-                        }
-                        if (filters?.version) {
-                            day0SessionFilters.version = Array.isArray(filters.version) ? { in: filters.version } : filters.version;
-                        }
-
-                        const userSessions = await this.prisma.session.groupBy({
-                            by: ['userId'],
-                            _count: { id: true },
-                            where: day0SessionFilters
-                        });
-
-                        if (userSessions.length > 0) {
-                            const totalSessions = userSessions.reduce((sum: number, u: any) => sum + u._count.id, 0);
-                            const avgSessions = totalSessions / userSessions.length;
-                            retentionByDay[day] = Math.round(avgSessions * 100) / 100;
-                        } else {
-                            retentionByDay[day] = 0;
-                        }
-                        continue;
-                    }
-
                     const targetDate = new Date(installDateObj);
                     targetDate.setDate(targetDate.getDate() + day);
                     const targetDateStart = new Date(targetDate);
@@ -561,10 +474,12 @@ export class CohortAnalyticsService {
                         continue;
                     }
 
+                    // Filter sessions with duration > 0
                     const sessionFilters: any = {
                         userId: { in: userIds },
                         gameId: gameId,
-                        startTime: { gte: targetDateStart, lte: targetDateEnd }
+                        startTime: { gte: targetDateStart, lte: targetDateEnd },
+                        duration: { gt: 0 } // Exclude zero-duration sessions
                     };
 
                     if (filters?.platform) {
@@ -678,66 +593,6 @@ export class CohortAnalyticsService {
                 const userCountByDay: { [day: number]: number } = {};
 
                 for (const day of retentionDays) {
-                    // Day 0 special handling - all installed users count
-                    if (day === 0) {
-                        userCountByDay[day] = userIds.length; // Same as installCount
-                        
-                        // Calculate Day 0 session length
-                        const day0Start = new Date(installDateObj);
-                        day0Start.setHours(0, 0, 0, 0);
-                        const day0End = new Date(installDateObj);
-                        day0End.setHours(23, 59, 59, 999);
-
-                        // Remove strict endTime/duration filters
-                        const day0SessionFilters: any = {
-                            userId: { in: userIds },
-                            gameId: gameId,
-                            startTime: { gte: day0Start, lte: day0End }
-                        };
-
-                        if (filters?.platform) {
-                            day0SessionFilters.platform = Array.isArray(filters.platform) ? { in: filters.platform } : filters.platform;
-                        }
-                        if (filters?.version) {
-                            day0SessionFilters.version = Array.isArray(filters.version) ? { in: filters.version } : filters.version;
-                        }
-
-                        const sessions = await this.prisma.session.findMany({
-                            where: day0SessionFilters,
-                            select: { duration: true, userId: true, startTime: true, endTime: true, lastHeartbeat: true }
-                        });
-
-                        if (sessions.length > 0) {
-                            let totalDuration = 0;
-                            for (const session of sessions) {
-                                let sessionDuration = session.duration || 0;
-                                
-                                // If duration is not set, calculate from timestamps
-                                if (!sessionDuration && session.startTime) {
-                                    const start = typeof session.startTime === 'bigint' ? Number(session.startTime) : new Date(session.startTime).getTime();
-                                    let end = 0;
-                                    
-                                    if (session.lastHeartbeat) {
-                                        end = typeof session.lastHeartbeat === 'bigint' ? Number(session.lastHeartbeat) : new Date(session.lastHeartbeat).getTime();
-                                    } else if (session.endTime) {
-                                        end = typeof session.endTime === 'bigint' ? Number(session.endTime) : new Date(session.endTime).getTime();
-                                    }
-                                    
-                                    if (end > start) {
-                                        sessionDuration = Math.floor((end - start) / 1000);
-                                    }
-                                }
-                                
-                                totalDuration += sessionDuration;
-                            }
-                            const avgDuration = totalDuration / sessions.length / 60;
-                            retentionByDay[day] = Math.round(avgDuration * 10) / 10;
-                        } else {
-                            retentionByDay[day] = 0;
-                        }
-                        continue;
-                    }
-
                     const targetDate = new Date(installDateObj);
                     targetDate.setDate(targetDate.getDate() + day);
                     const targetDateStart = new Date(targetDate);
@@ -751,11 +606,12 @@ export class CohortAnalyticsService {
                         continue;
                     }
 
-                    // Remove strict endTime/duration filters
+                    // Filter sessions with duration > 0
                     const sessionFilters: any = {
                         userId: { in: userIds },
                         gameId: gameId,
-                        startTime: { gte: targetDateStart, lte: targetDateEnd }
+                        startTime: { gte: targetDateStart, lte: targetDateEnd },
+                        duration: { gt: 0 } // Exclude zero-duration sessions
                     };
 
                     if (filters?.platform) {
@@ -777,6 +633,8 @@ export class CohortAnalyticsService {
                     }
 
                     let totalDuration = 0;
+                    const uniqueUsers = new Set<string>();
+                    
                     for (const session of sessions) {
                         let sessionDuration = session.duration || 0;
                         
@@ -796,15 +654,21 @@ export class CohortAnalyticsService {
                             }
                         }
                         
-                        totalDuration += sessionDuration;
+                        // Only include sessions with duration > 0
+                        if (sessionDuration > 0) {
+                            totalDuration += sessionDuration;
+                            uniqueUsers.add(session.userId);
+                        }
                     }
 
-                    const avgDuration = totalDuration / sessions.length / 60; // Convert to minutes
-                    retentionByDay[day] = Math.round(avgDuration * 10) / 10;
-                    
-                    // Count unique users with sessions
-                    const uniqueUsers = new Set(sessions.map(s => s.userId));
-                    userCountByDay[day] = uniqueUsers.size;
+                    if (uniqueUsers.size > 0) {
+                        const avgDuration = totalDuration / sessions.length / 60; // Convert to minutes
+                        retentionByDay[day] = Math.round(avgDuration * 10) / 10;
+                        userCountByDay[day] = uniqueUsers.size;
+                    } else {
+                        retentionByDay[day] = 0;
+                        userCountByDay[day] = 0;
+                    }
                 }
 
                 cohortData.push({ installDate, installCount: userIds.length, retentionByDay, userCountByDay });

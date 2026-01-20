@@ -126,6 +126,45 @@ export class HealthMetricsController {
     }
   }
 
+  async getErrorInstances(req: Request, res: Response) {
+    try {
+      const { gameId } = req.params;
+      const { message, exceptionType, startDate, endDate, platform, country, appVersion } = req.query;
+
+      if (!gameId) {
+        return res.status(400).json({ error: 'gameId is required' });
+      }
+
+      if (!message || !exceptionType) {
+        return res.status(400).json({ error: 'message and exceptionType are required' });
+      }
+
+      if (!startDate || !endDate) {
+        return res.status(400).json({ error: 'startDate and endDate are required' });
+      }
+
+      const filters = {
+        startDate: new Date(startDate as string),
+        endDate: new Date(endDate as string),
+        ...(platform && { platform: platform as string }),
+        ...(country && { country: country as string }),
+        ...(appVersion && { appVersion: appVersion as string }),
+      };
+
+      const instances = await healthService.getErrorInstances(
+        gameId,
+        message as string,
+        exceptionType as string,
+        filters
+      );
+
+      res.json({ instances });
+    } catch (error) {
+      console.error('Error fetching error instances:', error);
+      res.status(500).json({ error: 'Failed to fetch error instances' });
+    }
+  }
+
   async reportCrash(req: Request, res: Response) {
     try {
       const crashData = req.body;

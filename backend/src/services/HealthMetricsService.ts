@@ -59,27 +59,7 @@ export class HealthMetricsService {
       where: crashWhere,
     });
 
-    // Get unique users who experienced crashes
-    const crashedUsers = await prisma.crashLog.findMany({
-      where: crashWhere,
-      select: { userId: true },
-      distinct: ['userId'],
-    });
-    const affectedUsers = crashedUsers.filter(u => u.userId).length;
-
-    // Get total users in period
-    const userWhere: any = {
-      gameId,
-      createdAt: {
-        lte: endDate,
-      },
-    };
-
-    const totalUsers = await prisma.user.count({
-      where: userWhere,
-    });
-
-    // Get total sessions in period
+    // Get total sessions in period (with proper filters)
     const sessionWhere: any = {
       gameId,
       startTime: {
@@ -94,17 +74,44 @@ export class HealthMetricsService {
       where: sessionWhere,
     });
 
-    // Get sessions with crashes
-    const crashedSessions = await prisma.crashLog.findMany({
-      where: crashWhere,
+    // Get unique users who had sessions in this period (active users)
+    const activeUsersInPeriod = await prisma.session.findMany({
+      where: sessionWhere,
+      select: { userId: true },
+      distinct: ['userId'],
+    });
+    const totalUsers = activeUsersInPeriod.length;
+
+    // Get unique users who experienced crashes (with proper userId check)
+    const crashedUserIds = await prisma.crashLog.findMany({
+      where: {
+        ...crashWhere,
+        userId: { not: null },
+      },
+      select: { userId: true },
+      distinct: ['userId'],
+    });
+    const affectedUsers = crashedUserIds.length;
+
+    // Get sessions with crashes (sessions that have at least one crash)
+    const sessionsWithCrashIds = await prisma.crashLog.findMany({
+      where: {
+        ...crashWhere,
+        sessionId: { not: null },
+      },
       select: { sessionId: true },
       distinct: ['sessionId'],
     });
-    const sessionsWithCrashes = crashedSessions.filter(s => s.sessionId).length;
+    const sessionsWithCrashes = sessionsWithCrashIds.length;
 
     // Calculate rates
-    const crashRate = totalSessions > 0 ? (totalCrashes / totalSessions) * 100 : 0;
+    // Error Rate = (sessions with errors / total sessions) * 100
+    const crashRate = totalSessions > 0 ? (sessionsWithCrashes / totalSessions) * 100 : 0;
+    
+    // Error-Free User Rate = (users without errors / total active users) * 100
     const crashFreeUserRate = totalUsers > 0 ? ((totalUsers - affectedUsers) / totalUsers) * 100 : 100;
+    
+    // Error-Free Session Rate = (sessions without errors / total sessions) * 100
     const crashFreeSessionRate = totalSessions > 0 ? ((totalSessions - sessionsWithCrashes) / totalSessions) * 100 : 100;
 
     // Get crashes by type
@@ -287,6 +294,34 @@ export class HealthMetricsService {
   async getCrashDetails(crashId: string) {
     return prisma.crashLog.findUnique({
       where: { id: crashId },
+    });
+  }
+
+  async getErrorInstances(
+    gameId: string,
+    message: string,
+    exceptionType: string,
+    filters: HealthFilters
+  ) {
+    const { startDate, endDate, platform, country, appVersion } = filters;
+
+    const where: any = {
+      gameId,
+      message,
+      exceptionType,
+      timestamp: {
+        gte: startDate,
+        lte: endDate,
+      },
+    };
+
+    if (platform) where.platform = platform;
+    if (country) where.country = country;
+    if (appVersion) where.appVersion = appVersion;
+
+    return prisma.crashLog.findMany({
+      where,
+      orderBy: { timestamp: 'desc' },
     });
   }
 

@@ -305,7 +305,7 @@ export class AnalyticsMetricsService {
                     },
                     // Only include sessions that have ended and have duration
                     endTime: { not: null },
-                    duration: { not: null }
+                    duration: { not: null, gt: 0 }
                 };
 
                 // Apply optional filters

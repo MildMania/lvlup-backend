@@ -36,6 +36,7 @@ interface GameInfo {
 
 interface SidebarProps {
   currentPage: string;
+  onPageChange: (page: string) => void;
   gameInfo?: GameInfo;
   availableGames?: GameInfo[];
   onGameChange?: (gameId: string) => void;
@@ -46,6 +47,7 @@ interface SidebarProps {
 
 const Sidebar: React.FC<SidebarProps> = ({ 
   currentPage, 
+  // onPageChange,  // TODO: Remove if not needed, or implement usage
   gameInfo, 
   availableGames = [], 
   onGameChange,

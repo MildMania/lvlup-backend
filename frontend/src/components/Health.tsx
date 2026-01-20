@@ -65,6 +65,21 @@ interface CrashLog {
   appVersion: string;
   timestamp: string;
   userId?: string;
+  osVersion?: string;
+  manufacturer?: string;
+  device?: string;
+  deviceId?: string;
+  appBuild?: string;
+  bundleId?: string;
+  engineVersion?: string;
+  sdkVersion?: string;
+  country?: string;
+  connectionType?: string;
+  memoryUsage?: number;
+  batteryLevel?: number;
+  diskSpace?: number;
+  breadcrumbs?: string;
+  customData?: string;
 }
 
 const COLORS = ['#3b82f6', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#ec4899'];
@@ -75,6 +90,12 @@ const Health: React.FC<{ gameId: string }> = ({ gameId }) => {
   const [crashLogs, setCrashLogs] = useState<CrashLog[]>([]);
   const [loading, setLoading] = useState(true);
   const [selectedCrash, setSelectedCrash] = useState<CrashLog | null>(null);
+  
+  // Error instances modal state
+  const [showErrorInstances, setShowErrorInstances] = useState(false);
+  const [errorInstances, setErrorInstances] = useState<CrashLog[]>([]);
+  const [currentInstanceIndex, setCurrentInstanceIndex] = useState(0);
+  const [loadingInstances, setLoadingInstances] = useState(false);
 
   // Filters
   const [dateRange, setDateRange] = useState('7d');
@@ -190,6 +211,70 @@ const Health: React.FC<{ gameId: string }> = ({ gameId }) => {
     }
   };
 
+  const fetchErrorInstances = async (message: string, exceptionType: string) => {
+    setLoadingInstances(true);
+    try {
+      const { start, end } = getDateRange();
+      const params = new URLSearchParams({
+        message,
+        exceptionType,
+        startDate: start.toISOString(),
+        endDate: end.toISOString(),
+      });
+
+      if (platform) params.append('platform', platform);
+      if (country) params.append('country', country);
+      if (appVersion) params.append('appVersion', appVersion);
+
+      const apiUrl = import.meta.env.VITE_API_BASE_URL;
+      const apiKey = getApiKey();
+
+      const response = await fetch(
+        `${apiUrl}/games/${gameId}/health/error-instances?${params}`,
+        {
+          headers: {
+            'X-API-Key': apiKey,
+            'Content-Type': 'application/json',
+          },
+        }
+      );
+
+      if (!response.ok) {
+        throw new Error(`HTTP error! Status: ${response.status}`);
+      }
+
+      const data = await response.json();
+      setErrorInstances(data.instances || []);
+      setCurrentInstanceIndex(0);
+      setShowErrorInstances(true);
+    } catch (error) {
+      console.error('Error fetching error instances:', error);
+      setErrorInstances([]);
+    } finally {
+      setLoadingInstances(false);
+    }
+  };
+
+  const handleTopErrorClick = (error: HealthMetrics['topCrashes'][0]) => {
+    fetchErrorInstances(error.message, error.exceptionType);
+  };
+
+  const navigateInstance = (direction: 'prev' | 'next') => {
+    setCurrentInstanceIndex((prev) => {
+      if (direction === 'prev') {
+        return prev > 0 ? prev - 1 : prev;
+      } else {
+        return prev < errorInstances.length - 1 ? prev + 1 : prev;
+      }
+    });
+  };
+
+  const closeErrorInstancesModal = () => {
+    setShowErrorInstances(false);
+    setErrorInstances([]);
+    setCurrentInstanceIndex(0);
+  };
+
   const getSeverityColor = (severity: string) => {
     switch (severity.toUpperCase()) {
       case 'CRITICAL':
@@ -204,6 +289,65 @@ const Health: React.FC<{ gameId: string }> = ({ gameId }) => {
         return '#10b981';
       default:
         return '#6b7280';
+    }
+  };
+
+  const parseBreadcrumbs = (breadcrumbsStr: string) => {
+    try {
+      const parsed = JSON.parse(breadcrumbsStr);
+      if (Array.isArray(parsed)) {
+        return parsed;
+      }
+      return [];
+    } catch (e) {
+      console.error('Failed to parse breadcrumbs:', e);
+      return [];
+    }
+  };
+
+  const getBreadcrumbTypeColor = (type: string) => {
+    switch (type?.toUpperCase()) {
+      case 'ERROR':
+        return '#ef4444';
+      case 'WARNING':
+        return '#f59e0b';
+      case 'LOG':
+        return '#6b7280';
+      default:
+        return '#3b82f6';
+    }
+  };
+
+  const formatBreadcrumbTimestamp = (timestamp: any) => {
+    if (!timestamp) return null;
+    
+    try {
+      // Handle different timestamp formats
+      let date: Date | null = null;
+      
+      if (typeof timestamp === 'string') {
+        date = new Date(timestamp);
+      } else if (typeof timestamp === 'number') {
+        date = new Date(timestamp);
+      } else if (timestamp && typeof timestamp === 'object') {
+        // If it's an object with properties, try to construct a date
+        if (timestamp.year && timestamp.month && timestamp.day) {
+          date = new Date(timestamp.year, timestamp.month - 1, timestamp.day, 
+                         timestamp.hour || 0, timestamp.minute || 0, timestamp.second || 0);
+        } else if (timestamp.seconds) {
+          // Unix timestamp in seconds
+          date = new Date(timestamp.seconds * 1000);
+        } else if (timestamp.milliseconds) {
+          date = new Date(timestamp.milliseconds);
+        }
+      }
+      
+      if (date && !isNaN(date.getTime())) {
+        return date.toLocaleString();
+      }
+      return null;
+    } catch (e) {
+      return null;
     }
   };
 
@@ -329,9 +473,9 @@ const Health: React.FC<{ gameId: string }> = ({ gameId }) => {
             <TrendingDown size={24} />
           </div>
           <div className="metric-content">
-            <h3>Crash Rate</h3>
+            <h3>Error Rate</h3>
             <div className="metric-value">{metrics.crashRate.toFixed(2)}%</div>
-            <p className="metric-description">Crashes per session</p>
+            <p className="metric-description">Errors per session</p>
           </div>
         </div>
 
@@ -340,7 +484,7 @@ const Health: React.FC<{ gameId: string }> = ({ gameId }) => {
             <Users size={24} />
           </div>
           <div className="metric-content">
-            <h3>Crash-Free Users</h3>
+            <h3>Error-Free Users</h3>
             <div className="metric-value">{metrics.crashFreeUserRate.toFixed(1)}%</div>
             <p className="metric-description">
               {metrics.totalUsers - metrics.affectedUsers} of {metrics.totalUsers} users
@@ -353,9 +497,9 @@ const Health: React.FC<{ gameId: string }> = ({ gameId }) => {
             <Activity size={24} />
           </div>
           <div className="metric-content">
-            <h3>Crash-Free Sessions</h3>
+            <h3>Error-Free Sessions</h3>
             <div className="metric-value">{metrics.crashFreeSessionRate.toFixed(1)}%</div>
-            <p className="metric-description">Sessions without crashes</p>
+            <p className="metric-description">Sessions without errors</p>
           </div>
         </div>
 
@@ -364,7 +508,7 @@ const Health: React.FC<{ gameId: string }> = ({ gameId }) => {
             <Bug size={24} />
           </div>
           <div className="metric-content">
-            <h3>Total Crashes</h3>
+            <h3>Total Errors</h3>
             <div className="metric-value">{metrics.totalCrashes.toLocaleString()}</div>
             <p className="metric-description">
               {metrics.affectedUsers} users affected
@@ -375,7 +519,7 @@ const Health: React.FC<{ gameId: string }> = ({ gameId }) => {
 
       <div className="charts-section">
         <div className="chart-card full-width">
-          <h2>Crash Trend</h2>
+          <h2>Error Trend</h2>
           <ResponsiveContainer width="100%" height={300}>
             <LineChart data={timeline}>
               <CartesianGrid strokeDasharray="3 3" stroke="var(--border-primary)" />
@@ -394,7 +538,7 @@ const Health: React.FC<{ gameId: string }> = ({ gameId }) => {
                 dataKey="crashes"
                 stroke="#ef4444"
                 strokeWidth={2}
-                name="Crashes"
+                name="Errors"
               />
               <Line
                 type="monotone"
@@ -408,14 +552,14 @@ const Health: React.FC<{ gameId: string }> = ({ gameId }) => {
                 dataKey="crashRate"
                 stroke="#3b82f6"
                 strokeWidth={2}
-                name="Crash Rate %"
+                name="Error Rate %"
               />
             </LineChart>
           </ResponsiveContainer>
         </div>
 
         <div className="chart-card">
-          <h2>Crashes by Type</h2>
+          <h2>Errors by Type</h2>
           <ResponsiveContainer width="100%" height={300}>
             <PieChart>
               <Pie
@@ -438,7 +582,7 @@ const Health: React.FC<{ gameId: string }> = ({ gameId }) => {
         </div>
 
         <div className="chart-card">
-          <h2>Crashes by Severity</h2>
+          <h2>Errors by Severity</h2>
           <ResponsiveContainer width="100%" height={300}>
             <BarChart data={metrics.crashesBySeverity}>
               <CartesianGrid strokeDasharray="3 3" stroke="var(--border-primary)" />
@@ -458,7 +602,7 @@ const Health: React.FC<{ gameId: string }> = ({ gameId }) => {
       </div>
 
       <div className="top-crashes-section">
-        <h2>Top Crashes</h2>
+        <h2>Top Errors</h2>
         <div className="crashes-table">
           <table>
             <thead>
@@ -472,7 +616,12 @@ const Health: React.FC<{ gameId: string }> = ({ gameId }) => {
             </thead>
             <tbody>
               {metrics.topCrashes.map((crash) => (
-                <tr key={crash.id}>
+                <tr 
+                  key={crash.id}
+                  onClick={() => handleTopErrorClick(crash)}
+                  style={{ cursor: 'pointer' }}
+                  className="clickable-row"
+                >
                   <td>
                     <code className="exception-type">{crash.exceptionType}</code>
                   </td>
@@ -488,7 +637,7 @@ const Health: React.FC<{ gameId: string }> = ({ gameId }) => {
       </div>
 
       <div className="crash-logs-section">
-        <h2>Recent Crash Logs</h2>
+        <h2>Recent Error Logs</h2>
         <div className="logs-list">
           {crashLogs.map((log) => (
             <div
@@ -516,39 +665,395 @@ const Health: React.FC<{ gameId: string }> = ({ gameId }) => {
 
       {selectedCrash && (
         <div className="crash-modal" onClick={() => setSelectedCrash(null)}>
-          <div className="modal-content" onClick={(e) => e.stopPropagation()}>
+          <div className="modal-content error-instances-modal" onClick={(e) => e.stopPropagation()}>
             <div className="modal-header">
-              <h2>Crash Details</h2>
+              <div>
+                <h2>Error Details</h2>
+              </div>
               <button onClick={() => setSelectedCrash(null)}>×</button>
             </div>
+            
             <div className="modal-body">
-              <div className="detail-row">
-                <strong>Type:</strong> {selectedCrash.crashType}
+              <div className="detail-section">
+                <h3>Error Information</h3>
+                <div className="detail-row">
+                  <strong>Type:</strong> {selectedCrash.crashType}
+                </div>
+                <div className="detail-row">
+                  <strong>Severity:</strong> 
+                  <span 
+                    className="severity-badge" 
+                    style={{ backgroundColor: getSeverityColor(selectedCrash.severity) }}
+                  >
+                    {selectedCrash.severity}
+                  </span>
+                </div>
+                <div className="detail-row">
+                  <strong>Exception:</strong> 
+                  <code>{selectedCrash.exceptionType}</code>
+                </div>
+                <div className="detail-row">
+                  <strong>Timestamp:</strong> {new Date(selectedCrash.timestamp).toLocaleString()}
+                </div>
+                <div className="detail-row">
+                  <strong>Message:</strong>
+                  <div className="message-text">{selectedCrash.message}</div>
+                </div>
               </div>
-              <div className="detail-row">
-                <strong>Severity:</strong> {selectedCrash.severity}
+
+              <div className="detail-section">
+                <h3>Device & Platform</h3>
+                <div className="detail-grid">
+                  <div className="detail-row">
+                    <strong>Platform:</strong> {selectedCrash.platform || 'N/A'}
+                  </div>
+                  <div className="detail-row">
+                    <strong>OS Version:</strong> {selectedCrash.osVersion || 'N/A'}
+                  </div>
+                  <div className="detail-row">
+                    <strong>Device:</strong> {selectedCrash.device || 'N/A'}
+                  </div>
+                  <div className="detail-row">
+                    <strong>Manufacturer:</strong> {selectedCrash.manufacturer || 'N/A'}
+                  </div>
+                  <div className="detail-row">
+                    <strong>Device ID:</strong> {selectedCrash.deviceId || 'N/A'}
+                  </div>
+                </div>
               </div>
-              <div className="detail-row">
-                <strong>Exception:</strong> {selectedCrash.exceptionType}
+
+              <div className="detail-section">
+                <h3>App Information</h3>
+                <div className="detail-grid">
+                  <div className="detail-row">
+                    <strong>App Version:</strong> {selectedCrash.appVersion || 'N/A'}
+                  </div>
+                  <div className="detail-row">
+                    <strong>App Build:</strong> {selectedCrash.appBuild || 'N/A'}
+                  </div>
+                  <div className="detail-row">
+                    <strong>Bundle ID:</strong> {selectedCrash.bundleId || 'N/A'}
+                  </div>
+                  <div className="detail-row">
+                    <strong>Engine Version:</strong> {selectedCrash.engineVersion || 'N/A'}
+                  </div>
+                  <div className="detail-row">
+                    <strong>SDK Version:</strong> {selectedCrash.sdkVersion || 'N/A'}
+                  </div>
+                </div>
               </div>
-              <div className="detail-row">
-                <strong>Platform:</strong> {selectedCrash.platform}
+
+              <div className="detail-section">
+                <h3>Context</h3>
+                <div className="detail-grid">
+                  <div className="detail-row">
+                    <strong>User ID:</strong> {selectedCrash.userId || 'Anonymous'}
+                  </div>
+                  <div className="detail-row">
+                    <strong>Country:</strong> {selectedCrash.country || 'N/A'}
+                  </div>
+                  <div className="detail-row">
+                    <strong>Connection:</strong> {selectedCrash.connectionType || 'N/A'}
+                  </div>
+                  {selectedCrash.memoryUsage && (
+                    <div className="detail-row">
+                      <strong>Memory Usage:</strong> {(selectedCrash.memoryUsage / 1024 / 1024).toFixed(2)} MB
+                    </div>
+                  )}
+                  {selectedCrash.batteryLevel !== null && selectedCrash.batteryLevel !== undefined && (
+                    <div className="detail-row">
+                      <strong>Battery Level:</strong> {(selectedCrash.batteryLevel * 100).toFixed(0)}%
+                    </div>
+                  )}
+                  {selectedCrash.diskSpace && (
+                    <div className="detail-row">
+                      <strong>Disk Space:</strong> {(selectedCrash.diskSpace / 1024 / 1024 / 1024).toFixed(2)} GB
+                    </div>
+                  )}
+                </div>
               </div>
-              <div className="detail-row">
-                <strong>Version:</strong> {selectedCrash.appVersion}
-              </div>
-              <div className="detail-row">
-                <strong>Timestamp:</strong> {new Date(selectedCrash.timestamp).toLocaleString()}
-              </div>
-              <div className="detail-row">
-                <strong>Message:</strong>
-                <div className="message-text">{selectedCrash.message}</div>
-              </div>
-              <div className="detail-row">
-                <strong>Stack Trace:</strong>
+
+              {selectedCrash.breadcrumbs && (
+                <div className="detail-section">
+                  <h3>Breadcrumbs ({parseBreadcrumbs(selectedCrash.breadcrumbs).length} entries)</h3>
+                  <div className="breadcrumbs-timeline">
+                    {(() => {
+                      const breadcrumbs = parseBreadcrumbs(selectedCrash.breadcrumbs);
+                      const totalEntries = breadcrumbs.length;
+                      return breadcrumbs.reverse().map((crumb: any, index: number) => {
+                        const originalIndex = totalEntries - index;
+                        const timestamp = formatBreadcrumbTimestamp(crumb.Timestamp);
+                        return (
+                        <div key={index} className="breadcrumb-entry">
+                          <div className="breadcrumb-header">
+                            <span className="breadcrumb-index">#{originalIndex}</span>
+                            <span 
+                              className="breadcrumb-type"
+                              style={{ 
+                                backgroundColor: getBreadcrumbTypeColor(crumb.Type),
+                                color: 'white',
+                                padding: '2px 8px',
+                                borderRadius: '4px',
+                                fontSize: '11px',
+                                fontWeight: 600
+                              }}
+                            >
+                              {crumb.Type || 'Log'}
+                            </span>
+                            <span className="breadcrumb-timestamp">
+                              {timestamp || `Entry ${originalIndex}`}
+                            </span>
+                          </div>
+                          <div className="breadcrumb-message">{crumb.Message || 'No message'}</div>
+                          {crumb.Data && (
+                            <div className="breadcrumb-data">
+                              <strong>Data:</strong>
+                              <pre>{JSON.stringify(crumb.Data, null, 2)}</pre>
+                            </div>
+                          )}
+                        </div>
+                      );
+                      });
+                    })()}
+                  </div>
+                </div>
+              )}
+
+              {selectedCrash.customData && (
+                <div className="detail-section">
+                  <h3>Custom Data</h3>
+                  <pre className="custom-data-text">
+                    {typeof selectedCrash.customData === 'string'
+                      ? JSON.stringify(JSON.parse(selectedCrash.customData), null, 2)
+                      : JSON.stringify(selectedCrash.customData, null, 2)
+                    }
+                  </pre>
+                </div>
+              )}
+
+              <div className="detail-section">
+                <h3>Stack Trace</h3>
                 <pre className="stack-trace">{selectedCrash.stackTrace}</pre>
               </div>
             </div>
+          </div>
+        </div>
+      )}
+
+      {showErrorInstances && (
+        <div className="crash-modal" onClick={closeErrorInstancesModal}>
+          <div className="modal-content error-instances-modal" onClick={(e) => e.stopPropagation()}>
+            <div className="modal-header">
+              <div>
+                <h2>Error Instances</h2>
+                {errorInstances.length > 0 && (
+                  <p className="instance-counter">
+                    Instance {currentInstanceIndex + 1} of {errorInstances.length}
+                  </p>
+                )}
+              </div>
+              <button onClick={closeErrorInstancesModal}>×</button>
+            </div>
+            
+            {loadingInstances ? (
+              <div className="modal-body">
+                <div className="loading">Loading error instances...</div>
+              </div>
+            ) : errorInstances.length === 0 ? (
+              <div className="modal-body">
+                <div className="error">No instances found</div>
+              </div>
+            ) : (
+              <>
+                <div className="instance-navigation">
+                  <button
+                    onClick={() => navigateInstance('prev')}
+                    disabled={currentInstanceIndex === 0}
+                    className="nav-button"
+                  >
+                    ← Previous
+                  </button>
+                  <button
+                    onClick={() => navigateInstance('next')}
+                    disabled={currentInstanceIndex === errorInstances.length - 1}
+                    className="nav-button"
+                  >
+                    Next →
+                  </button>
+                </div>
+
+                <div className="modal-body">
+                  {(() => {
+                    const instance = errorInstances[currentInstanceIndex];
+                    return (
+                      <>
+                        <div className="detail-section">
+                          <h3>Error Information</h3>
+                          <div className="detail-row">
+                            <strong>Type:</strong> {instance.crashType}
+                          </div>
+                          <div className="detail-row">
+                            <strong>Severity:</strong> 
+                            <span 
+                              className="severity-badge" 
+                              style={{ backgroundColor: getSeverityColor(instance.severity) }}
+                            >
+                              {instance.severity}
+                            </span>
+                          </div>
+                          <div className="detail-row">
+                            <strong>Exception:</strong> 
+                            <code>{instance.exceptionType}</code>
+                          </div>
+                          <div className="detail-row">
+                            <strong>Timestamp:</strong> {new Date(instance.timestamp).toLocaleString()}
+                          </div>
+                          <div className="detail-row">
+                            <strong>Message:</strong>
+                            <div className="message-text">{instance.message}</div>
+                          </div>
+                        </div>
+
+                        <div className="detail-section">
+                          <h3>Device & Platform</h3>
+                          <div className="detail-grid">
+                            <div className="detail-row">
+                              <strong>Platform:</strong> {instance.platform || 'N/A'}
+                            </div>
+                            <div className="detail-row">
+                              <strong>OS Version:</strong> {instance.osVersion || 'N/A'}
+                            </div>
+                            <div className="detail-row">
+                              <strong>Device:</strong> {instance.device || 'N/A'}
+                            </div>
+                            <div className="detail-row">
+                              <strong>Manufacturer:</strong> {instance.manufacturer || 'N/A'}
+                            </div>
+                            <div className="detail-row">
+                              <strong>Device ID:</strong> {instance.deviceId || 'N/A'}
+                            </div>
+                          </div>
+                        </div>
+
+                        <div className="detail-section">
+                          <h3>App Information</h3>
+                          <div className="detail-grid">
+                            <div className="detail-row">
+                              <strong>App Version:</strong> {instance.appVersion || 'N/A'}
+                            </div>
+                            <div className="detail-row">
+                              <strong>App Build:</strong> {instance.appBuild || 'N/A'}
+                            </div>
+                            <div className="detail-row">
+                              <strong>Bundle ID:</strong> {instance.bundleId || 'N/A'}
+                            </div>
+                            <div className="detail-row">
+                              <strong>Engine Version:</strong> {instance.engineVersion || 'N/A'}
+                            </div>
+                            <div className="detail-row">
+                              <strong>SDK Version:</strong> {instance.sdkVersion || 'N/A'}
+                            </div>
+                          </div>
+                        </div>
+
+                        <div className="detail-section">
+                          <h3>Context</h3>
+                          <div className="detail-grid">
+                            <div className="detail-row">
+                              <strong>User ID:</strong> {instance.userId || 'Anonymous'}
+                            </div>
+                            <div className="detail-row">
+                              <strong>Country:</strong> {instance.country || 'N/A'}
+                            </div>
+                            <div className="detail-row">
+                              <strong>Connection:</strong> {instance.connectionType || 'N/A'}
+                            </div>
+                            {instance.memoryUsage && (
+                              <div className="detail-row">
+                                <strong>Memory Usage:</strong> {(instance.memoryUsage / 1024 / 1024).toFixed(2)} MB
+                              </div>
+                            )}
+                            {instance.batteryLevel !== null && instance.batteryLevel !== undefined && (
+                              <div className="detail-row">
+                                <strong>Battery Level:</strong> {(instance.batteryLevel * 100).toFixed(0)}%
+                              </div>
+                            )}
+                            {instance.diskSpace && (
+                              <div className="detail-row">
+                                <strong>Disk Space:</strong> {(instance.diskSpace / 1024 / 1024 / 1024).toFixed(2)} GB
+                              </div>
+                            )}
+                          </div>
+                        </div>
+
+                        {instance.breadcrumbs && (
+                          <div className="detail-section">
+                            <h3>Breadcrumbs ({parseBreadcrumbs(instance.breadcrumbs).length} entries)</h3>
+                            <div className="breadcrumbs-timeline">
+                              {(() => {
+                                const breadcrumbs = parseBreadcrumbs(instance.breadcrumbs);
+                                const totalEntries = breadcrumbs.length;
+                                return breadcrumbs.reverse().map((crumb: any, index: number) => {
+                                  const originalIndex = totalEntries - index;
+                                  const timestamp = formatBreadcrumbTimestamp(crumb.Timestamp);
+                                  return (
+                                  <div key={index} className="breadcrumb-entry">
+                                    <div className="breadcrumb-header">
+                                      <span className="breadcrumb-index">#{originalIndex}</span>
+                                      <span 
+                                        className="breadcrumb-type"
+                                        style={{ 
+                                          backgroundColor: getBreadcrumbTypeColor(crumb.Type),
+                                          color: 'white',
+                                          padding: '2px 8px',
+                                          borderRadius: '4px',
+                                          fontSize: '11px',
+                                          fontWeight: 600
+                                        }}
+                                      >
+                                        {crumb.Type || 'Log'}
+                                      </span>
+                                      <span className="breadcrumb-timestamp">
+                                        {timestamp || `Entry ${originalIndex}`}
+                                      </span>
+                                    </div>
+                                    <div className="breadcrumb-message">{crumb.Message || 'No message'}</div>
+                                    {crumb.Data && (
+                                      <div className="breadcrumb-data">
+                                        <strong>Data:</strong>
+                                        <pre>{JSON.stringify(crumb.Data, null, 2)}</pre>
+                                      </div>
+                                    )}
+                                  </div>
+                                );
+                                });
+                              })()}
+                            </div>
+                          </div>
+                        )}
+
+                        {instance.customData && (
+                          <div className="detail-section">
+                            <h3>Custom Data</h3>
+                            <pre className="custom-data-text">
+                              {typeof instance.customData === 'string'
+                                ? JSON.stringify(JSON.parse(instance.customData), null, 2)
+                                : JSON.stringify(instance.customData, null, 2)
+                              }
+                            </pre>
+                          </div>
+                        )}
+
+                        <div className="detail-section">
+                          <h3>Stack Trace</h3>
+                          <pre className="stack-trace">{instance.stackTrace}</pre>
+                        </div>
+                      </>
+                    );
+                  })()}
+                </div>
+              </>
+            )}
           </div>
         </div>
       )}

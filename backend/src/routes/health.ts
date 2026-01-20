@@ -33,6 +33,13 @@ router.get(
   (req, res) => healthController.getCrashDetails(req, res)
 );
 
+// Get all instances of a specific error (by message and exceptionType)
+router.get(
+  '/:gameId/health/error-instances',
+  authenticateEither,
+  (req, res) => healthController.getErrorInstances(req, res)
+);
+
 
 export default router;
 

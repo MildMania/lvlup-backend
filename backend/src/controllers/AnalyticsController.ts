@@ -179,10 +179,10 @@ export class AnalyticsController {
 
                 // Prevent future dates
                 if (startDate > new Date()) {
-                    return res.status(400).json({
-                        success: false,
-                        error: 'Session startTime cannot be in the future'
-                    });
+                    logger.warning(
+                        'startTime is in the future, resetting to current time. Client Timestamp:' 
+                        , sessionData.startTime, " Server Timestamp:", new Date().toISOString());
+                    sessionData.startTime = new Date().toISOString();
                 }
             }
 

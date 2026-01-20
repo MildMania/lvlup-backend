@@ -179,7 +179,7 @@ export class AnalyticsController {
 
                 // Prevent future dates
                 if (startDate > new Date()) {
-                    logger.warning(
+                    logger.warn(
                         'startTime is in the future, resetting to current time. Client Timestamp:' 
                         , sessionData.startTime, " Server Timestamp:", new Date().toISOString());
                     sessionData.startTime = new Date().toISOString();

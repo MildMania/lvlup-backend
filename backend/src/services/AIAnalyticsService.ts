@@ -127,40 +127,40 @@ export class AIAnalyticsService {
       switch (metric) {
         case 'engagement_rate':
           // Calculate engagement rate as sessions per user percentage
-          values[metric] = Math.round(analytics.avgSessionsPerUser * 10);
+          values[metric] = Math.round((analytics.avgSessionsPerUser || 0) * 10);
           break;
         case 'retention_rate':
           // Calculate basic retention as percentage of active vs new users
-          const retentionRate = analytics.newUsers > 0 ?
-            Math.round(((analytics.totalActiveUsers - analytics.newUsers) / analytics.totalActiveUsers) * 100) : 0;
+          const retentionRate = (analytics.newUsers || 0) > 0 ?
+            Math.round((((analytics.totalActiveUsers || 0) - (analytics.newUsers || 0)) / (analytics.totalActiveUsers || 1)) * 100) : 0;
           values[metric] = Math.max(retentionRate, 0);
           break;
         case 'active_users':
-          values[metric] = analytics.totalActiveUsers;
+          values[metric] = analytics.totalActiveUsers || 0;
           break;
         case 'new_users':
-          values[metric] = analytics.newUsers;
+          values[metric] = analytics.newUsers || 0;
           break;
         case 'session_duration':
-          values[metric] = Math.round(analytics.avgSessionDuration / 1000);
+          values[metric] = Math.round((analytics.avgSessionDuration || 0) / 1000);
           break;
         case 'session_count':
-          values[metric] = analytics.totalSessions;
+          values[metric] = analytics.totalSessions || 0;
           break;
         case 'total_events':
-          values[metric] = analytics.totalEvents;
+          values[metric] = analytics.totalEvents || 0;
           break;
         case 'revenue':
           // Estimate revenue based on engagement metrics (events per user * conversion factor)
-          const eventsPerUser = analytics.totalActiveUsers > 0 ? analytics.totalEvents / analytics.totalActiveUsers : 0;
+          const eventsPerUser = (analytics.totalActiveUsers || 0) > 0 ? (analytics.totalEvents || 0) / (analytics.totalActiveUsers || 1) : 0;
           values[metric] = Math.round(eventsPerUser * 0.1); // $0.10 per significant event
           break;
         case 'arpu':
           // Calculate ARPU from estimated revenue
-          const estimatedRevenue = analytics.totalActiveUsers > 0 ?
-            Math.round((analytics.totalEvents / analytics.totalActiveUsers) * 0.1) : 0;
-          values[metric] = analytics.totalActiveUsers > 0 ?
-            Math.round((estimatedRevenue / analytics.totalActiveUsers) * 100) / 100 : 0;
+          const estimatedRevenue = (analytics.totalActiveUsers || 0) > 0 ?
+            Math.round(((analytics.totalEvents || 0) / (analytics.totalActiveUsers || 1)) * 0.1) : 0;
+          values[metric] = (analytics.totalActiveUsers || 0) > 0 ?
+            Math.round((estimatedRevenue / (analytics.totalActiveUsers || 1)) * 100) / 100 : 0;
           break;
         default:
           values[metric] = 0;

@@ -136,3 +136,25 @@ export interface AuthPayload {
     gameId: string;
     apiKey: string;
 }
+
+// Analytics response types
+export interface TopEventData {
+    name: string;
+    count: number;
+}
+
+export interface AnalyticsData {
+    totalUsers: number;
+    totalActiveUsers: number;
+    newUsers: number;
+    totalSessions: number;
+    totalEvents: number;
+    avgSessionDuration: number;
+    avgSessionsPerUser: number;
+    avgPlaytimeDuration: number;
+    retentionDay1: number;
+    retentionDay7: number;
+    activeUsersToday: number;
+    topEvent: string;
+    topEvents: TopEventData[];
+}

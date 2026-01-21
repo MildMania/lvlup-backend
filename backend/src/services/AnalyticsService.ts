@@ -152,11 +152,13 @@ export class AnalyticsService {
     // Update session heartbeat
     // Updates lastHeartbeat, endTime, and duration on every heartbeat
     // This ensures sessions have accurate data even if endSession is never called
-    async updateSessionHeartbeat(sessionId: string) {
+    // Uses server timestamp only - no client timestamp needed for heartbeats
+    // Optionally updates countryCode if provided and session doesn't have it yet
+    async updateSessionHeartbeat(sessionId: string, countryCode?: string | null) {
         try {
             const session = await this.prisma.session.findUnique({
                 where: { id: sessionId },
-                select: { startTime: true }
+                select: { startTime: true, lastHeartbeat: true, countryCode: true }
             });
 
             if (!session) {
@@ -164,15 +166,48 @@ export class AnalyticsService {
             }
 
             const now = new Date();
+            
+            // Sanity check: heartbeat should not be before startTime
+            if (now < session.startTime) {
+                logger.warn(`Heartbeat timestamp (${now.toISOString()}) is before session startTime (${session.startTime.toISOString()}). Using startTime as heartbeat.`);
+                // Use startTime as fallback to prevent negative duration
+                await this.prisma.session.update({
+                    where: { id: sessionId },
+                    data: {
+                        lastHeartbeat: session.startTime,
+                        endTime: session.startTime,
+                        duration: 0
+                    }
+                });
+                return;
+            }
+
+            // Sanity check: heartbeat should not go backwards in time
+            if (session.lastHeartbeat && now < session.lastHeartbeat) {
+                logger.warn(`Heartbeat timestamp (${now.toISOString()}) is before previous heartbeat (${session.lastHeartbeat.toISOString()}). Ignoring out-of-order heartbeat.`);
+                return; // Don't update with backwards timestamp
+            }
+
             const duration = Math.floor((now.getTime() - session.startTime.getTime()) / 1000);
+
+            // Prepare update data
+            const updateData: any = {
+                lastHeartbeat: now,
+                endTime: now,
+                duration: Math.max(duration, 0)
+            };
+
+            // Update countryCode only if:
+            // 1. New countryCode is provided in heartbeat
+            // 2. Session doesn't have a countryCode yet (is NULL)
+            if (countryCode && !session.countryCode) {
+                updateData.countryCode = countryCode;
+                logger.info(`Updated session ${sessionId} with countryCode: ${countryCode} from heartbeat`);
+            }
 
             await this.prisma.session.update({
                 where: { id: sessionId },
-                data: {
-                    lastHeartbeat: now,
-                    endTime: now,
-                    duration: Math.max(duration, 0)
-                }
+                data: updateData
             });
 
             logger.debug(`Updated heartbeat, endTime, and duration (${duration}s) for session ${sessionId}`);

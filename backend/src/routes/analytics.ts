@@ -52,7 +52,8 @@ router.put('/sessions/:sessionId', (req, res) => analyticsController.endSession(
 /**
  * POST /analytics/sessions/:sessionId/heartbeat - Send session heartbeat
  * @param {string} sessionId - The ID of the session
- * @description Updates the lastHeartbeat timestamp to keep session alive
+ * @body {string} countryCode - Optional ISO country code to update if session doesn't have one yet
+ * @description Updates the lastHeartbeat timestamp to keep session alive and optionally updates countryCode
  */
 router.post('/sessions/:sessionId/heartbeat', (req, res) => analyticsController.sessionHeartbeat(req, res));
 

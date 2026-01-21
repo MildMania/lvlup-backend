@@ -108,7 +108,7 @@ export async function deployDraft(draftId: string, deployedBy: string) {
     const updatedConfig = await prisma.remoteConfig.update({
       where: { id: draft.configId },
       data: {
-        value: draft.value,
+        value: draft.value as any,
         enabled: draft.enabled,
         description: draft.description,
       },
@@ -129,8 +129,8 @@ export async function deployDraft(draftId: string, deployedBy: string) {
       data: {
         configId: draft.configId,
         changeType: 'updated',
-        previousValue: draft.config.value,
-        newValue: draft.value,
+        previousValue: draft.config.value as any,
+        newValue: draft.value as any,
         changedBy: deployedBy,
       },
     });

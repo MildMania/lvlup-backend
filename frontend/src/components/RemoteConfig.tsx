@@ -1,7 +1,10 @@
 import React, { useEffect, useState } from 'react';
 import { apiClient } from '../lib/apiClient';
 import { useGame } from '../contexts/GameContext';
-import { AlertCircle, Check, Edit2, Trash2, Plus } from 'lucide-react';
+import { AlertCircle, Check, Edit2, Trash2, Plus, Eye } from 'lucide-react';
+import RuleList from './RuleList';
+import DraggableRuleList from './DraggableRuleList';
+import ConfigHistory from './ConfigHistory';
 import './RemoteConfig.css';
 
 interface Config {
@@ -62,6 +65,7 @@ const RemoteConfig: React.FC<RemoteConfigProps> = ({ isCollapsed = false }) => {
   const [showEditModal, setShowEditModal] = useState(false);
   const [showDraftsPanel, setShowDraftsPanel] = useState(false);
   const [jsonError, setJsonError] = useState<JsonError | null>(null);
+  const [activeTab, setActiveTab] = useState<'overview' | 'rules' | 'history' | 'reorder'>('overview');
   const [formData, setFormData] = useState<CreateConfigForm>({
     gameId: currentGame.id,
     key: '',
@@ -78,7 +82,7 @@ const RemoteConfig: React.FC<RemoteConfigProps> = ({ isCollapsed = false }) => {
 
     try {
       const response = await apiClient.get(
-        `/config/admin/configs/${currentGame.id}?environment=${environment}`
+        `/config/configs/${currentGame.id}?environment=${environment}`
       );
       setConfigs(response.data.data.configs || []);
     } catch (error: any) {
@@ -134,7 +138,7 @@ const RemoteConfig: React.FC<RemoteConfigProps> = ({ isCollapsed = false }) => {
     }
 
     try {
-      const response = await apiClient.post(`/config/admin/drafts`, {
+      await apiClient.post(`/config/admin/drafts`, {
         configId: '', // Empty for new configs - will be handled by backend
         gameId: formData.gameId,
         key: formData.key,
@@ -178,7 +182,7 @@ const RemoteConfig: React.FC<RemoteConfigProps> = ({ isCollapsed = false }) => {
     }
 
     try {
-      const response = await apiClient.post(
+      await apiClient.post(
         `/config/admin/drafts`,
         {
           configId: selectedConfig.id,
@@ -211,7 +215,7 @@ const RemoteConfig: React.FC<RemoteConfigProps> = ({ isCollapsed = false }) => {
     if (!window.confirm('Are you sure you want to delete this config?')) return;
 
     try {
-      await apiClient.delete(`/config/admin/configs/${configId}`);
+      await apiClient.delete(`/config/configs/${configId}`);
       setConfigs(configs.filter((c) => c.id !== configId));
       alert('Config deleted successfully!');
     } catch (error: any) {
@@ -465,6 +469,17 @@ const RemoteConfig: React.FC<RemoteConfigProps> = ({ isCollapsed = false }) => {
                     <td className="col-actions">
                       <button
                         onClick={() => {
+                          setShowEditModal(false);
+                          setSelectedConfig(config);
+                          setActiveTab('overview');
+                        }}
+                        className="action-btn view-btn"
+                        title="View configuration details"
+                      >
+                        <Eye size={16} />
+                      </button>
+                      <button
+                        onClick={() => {
                           setSelectedConfig(config);
                           setFormData({
                             gameId: config.gameId,
@@ -498,6 +513,102 @@ const RemoteConfig: React.FC<RemoteConfigProps> = ({ isCollapsed = false }) => {
           </div>
         )}
       </div>
+
+      {/* Config Detail Panel */}
+      {selectedConfig && !showEditModal && (
+        <div className="modal-overlay" onClick={() => setSelectedConfig(null)}>
+          <div className="modal modal-large" onClick={(e) => e.stopPropagation()}>
+            {/* Header */}
+            <div className="modal-header">
+              <div>
+                <h2>{selectedConfig.key}</h2>
+              </div>
+              <button
+                onClick={() => setSelectedConfig(null)}
+                className="modal-close"
+              >
+                ×
+              </button>
+            </div>
+
+            {/* Tabs */}
+            <div className="config-detail-tabs">
+              {['overview', 'rules', 'history', 'reorder'].map((tab) => (
+                <button
+                  key={tab}
+                  onClick={() => setActiveTab(tab as any)}
+                  className={`config-detail-tab ${activeTab === tab ? 'active' : ''}`}
+                >
+                  {tab === 'overview' && 'Overview'}
+                  {tab === 'rules' && 'Rules'}
+                  {tab === 'history' && 'History'}
+                  {tab === 'reorder' && 'Priority'}
+                </button>
+              ))}
+            </div>
+
+            {/* Content */}
+            <div className="modal-body">
+            {activeTab === 'overview' && (
+              <div className="detail-overview">
+                <div className="detail-grid">
+                  <div className="detail-item">
+                    <label className="detail-label">Type</label>
+                    <p className="detail-value">{selectedConfig.dataType}</p>
+                  </div>
+                  <div className="detail-item">
+                    <label className="detail-label">Environment</label>
+                    <p className="detail-value">{selectedConfig.environment}</p>
+                  </div>
+                  <div className="detail-item">
+                    <label className="detail-label">Status</label>
+                    <p className={`detail-value ${selectedConfig.enabled ? 'status-enabled-text' : 'status-disabled-text'}`}>
+                      {selectedConfig.enabled ? 'Enabled' : 'Disabled'}
+                    </p>
+                  </div>
+                  <div className="detail-item">
+                    <label className="detail-label">Last Updated</label>
+                    <p className="detail-value">{new Date(selectedConfig.updatedAt).toLocaleDateString()}</p>
+                  </div>
+                </div>
+
+                <div className="detail-section">
+                  <label className="detail-label">Current Value</label>
+                  <pre className="detail-code">{JSON.stringify(selectedConfig.value, null, 2)}</pre>
+                </div>
+              </div>
+            )}
+
+            {activeTab === 'rules' && (
+              <RuleList
+                configId={selectedConfig.id}
+                configDataType={selectedConfig.dataType}
+                currentValue={selectedConfig.value}
+                onRulesChange={() => fetchConfigs()}
+              />
+            )}
+
+            {activeTab === 'history' && (
+              <ConfigHistory
+                configKey={selectedConfig.key}
+                gameId={selectedConfig.gameId}
+                onRollback={() => {
+                  setSelectedConfig(null);
+                  fetchConfigs();
+                }}
+              />
+            )}
+
+            {activeTab === 'reorder' && (
+              <DraggableRuleList
+                configId={selectedConfig.id}
+                onReorderComplete={() => fetchConfigs()}
+              />
+            )}
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Create Modal */}
       {showCreateModal && (

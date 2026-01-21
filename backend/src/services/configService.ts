@@ -21,7 +21,7 @@ import {
   invalidateGameCache,
   generateCachePattern,
   invalidateCachePattern,
-} from './cacheService';
+} from './CacheService';
 import {
   DuplicateConfigKeyError,
   DuplicateRulePriorityError,
@@ -75,7 +75,7 @@ export async function createConfig(
       data: {
         gameId: input.gameId,
         key: input.key,
-        value: input.value,
+        value: input.value as any,
         dataType: input.dataType,
         environment: input.environment,
         enabled: input.enabled ?? true,
@@ -103,7 +103,7 @@ export async function createConfig(
       data: {
         configId: config.id,
         changeType: 'created',
-        newValue: config.value,
+        newValue: config.value as any,
         changedBy,
       },
     });
@@ -166,7 +166,7 @@ export async function updateConfig(
     const updated = await prisma.remoteConfig.update({
       where: { id: configId },
       data: {
-        value: input.value,
+        value: input.value as any,
         enabled: input.enabled,
         description: input.description,
       },
@@ -200,8 +200,8 @@ export async function updateConfig(
       data: {
         configId,
         changeType: 'updated',
-        previousValue: existing.value,
-        newValue: updated.value,
+        previousValue: existing.value as any,
+        newValue: updated.value as any,
         changedBy,
       },
     });
@@ -249,8 +249,8 @@ export async function deleteConfig(
       data: {
         configId,
         changeType: 'deleted',
-        previousValue: config.value,
-        newValue: null,
+        previousValue: config.value as any,
+        newValue: {} as any,
         changedBy,
       },
     });
@@ -359,7 +359,7 @@ export async function createRule(
         configId: input.configId,
         priority: input.priority,
         enabled: input.enabled ?? true,
-        overrideValue: input.overrideValue,
+        overrideValue: input.overrideValue as any,
         platformCondition: input.platformCondition,
         versionOperator: input.versionOperator,
         versionValue: input.versionValue,
@@ -377,7 +377,7 @@ export async function createRule(
         ruleId: rule.id,
         configId: input.configId,
         action: 'created',
-        newState: rule,
+        newState: rule as any,
         changedBy,
       },
     });
@@ -446,7 +446,7 @@ export async function updateRule(
       data: {
         priority: input.priority,
         enabled: input.enabled,
-        overrideValue: input.overrideValue,
+        overrideValue: input.overrideValue as any,
         platformCondition: input.platformCondition,
         versionOperator: input.versionOperator,
         versionValue: input.versionValue,
@@ -464,8 +464,8 @@ export async function updateRule(
         ruleId,
         configId: existing.configId,
         action: 'updated',
-        previousState: existing,
-        newState: updated,
+        previousState: existing as any,
+        newState: updated as any,
         changedBy,
       },
     });

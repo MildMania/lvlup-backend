@@ -87,7 +87,7 @@ export function formatVersion(version: string): string {
     return version;
   }
   const prerelease = parsed.prerelease && parsed.prerelease.length ? `-${parsed.prerelease.join('.')}` : '';
-  const metadata = parsed.metadata && parsed.metadata.length ? `+${parsed.metadata.join('.')}` : '';
-  return `${parsed.major}.${parsed.minor}.${parsed.patch}${prerelease}${metadata}`;
+  // Note: semver library doesn't expose metadata property, so we omit it
+  return `${parsed.major}.${parsed.minor}.${parsed.patch}${prerelease}`;
 }
 

@@ -158,7 +158,7 @@ export async function invalidateCachePattern(pattern: string): Promise<number> {
     if (!redis) return -1;
 
     // Scan for keys matching pattern and delete them
-    let cursor = 0;
+    let cursor: any = '0';
     let deletedCount = 0;
 
     do {
@@ -173,7 +173,7 @@ export async function invalidateCachePattern(pattern: string): Promise<number> {
       if (keys.length > 0) {
         deletedCount += await redis.del(keys);
       }
-    } while (cursor !== 0);
+    } while (cursor !== '0');
 
     logger.debug(`Cache INVALIDATE pattern: ${pattern} (deleted: ${deletedCount} keys)`);
     return deletedCount;

@@ -307,6 +307,74 @@ Create `contracts/` directory with detailed request/response schemas:
 - Rule condition validation rules
 - Priority renumbering algorithm
 
+**contracts/admin-environment-sync.md** (NEW - for Environment Sync feature)
+- `POST /api/admin/configs/sync` - Bulk sync configs between environments
+  - Request body:
+    ```json
+    {
+      "sourceEnvironment": "staging",
+      "targetEnvironment": "production",
+      "gameId": "puzzle-quest",
+      "dryRun": true,
+      "approvalToken": "token-from-release-manager",
+      "filter": {
+        "keys": ["daily_reward_coins", "max_health"],  // optional: sync only specific keys
+        "modifiedAfter": "2026-01-20T00:00:00Z"        // optional: sync only recently modified
+      }
+    }
+    ```
+  - Response (dry-run):
+    ```json
+    {
+      "syncId": "sync-123",
+      "status": "preview",
+      "sourceEnvironment": "staging",
+      "targetEnvironment": "production",
+      "configsToSync": 5,
+      "rulesToSync": 12,
+      "changes": [
+        {
+          "key": "daily_reward_coins",
+          "action": "create",
+          "sourceValue": 150,
+          "targetValue": null
+        },
+        {
+          "key": "max_health",
+          "action": "update",
+          "sourceValue": 100,
+          "targetValue": 95,
+          "differences": ["value changed", "1 rule updated"]
+        }
+      ],
+      "warnings": ["Config 'pvp_enabled' exists in production but not in staging - will not be touched"],
+      "estimatedDuration": "2.5 seconds",
+      "backupCreated": false
+    }
+    ```
+  - Response (confirmed - dryRun=false):
+    ```json
+    {
+      "syncId": "sync-123",
+      "status": "completed",
+      "timestamp": "2026-01-21T15:30:00Z",
+      "sourceEnvironment": "staging",
+      "targetEnvironment": "production",
+      "configsCreated": 2,
+      "configsUpdated": 3,
+      "configsSkipped": 0,
+      "rulesCreated": 5,
+      "rulesUpdated": 7,
+      "backupId": "pre-sync-20260121-153000",
+      "duration": "2.3 seconds",
+      "syncedBy": "admin@lvlup.com"
+    }
+    ```
+  - Error responses:
+    - 403 (targetEnvironment === "production" without approvalToken)
+    - 409 (sync conflicts detected - configs changed in source/target after dry-run)
+    - 422 (validation errors in source environment)
+
 ### 1.3 Rule Evaluation Algorithm
 
 Document in `data-model.md` under "Rule Evaluation Logic":
@@ -498,12 +566,21 @@ High-level implementation phases:
 - Add rate limiting
 - Write integration tests
 
-### Phase 2.4: Audit Trail (P1)
+### Phase 2.4: Audit Trail & Environment Sync (P1)
 - Implement ConfigHistory recording on all config changes
 - Implement RuleHistory recording on all rule changes
 - Implement version history API endpoint
 - Implement rollback functionality
 - Test history preservation on delete
+- **CRITICAL: Implement Environment Sync feature** for deployment pipeline:
+  - `POST /api/admin/configs/sync` endpoint to bulk copy configs between environments
+  - Validation: Check all configs from source environment are valid before sync
+  - Dry-run mode: Preview what will be copied without committing changes
+  - Rollback support: Create backup before sync, allow instant rollback if issues detected
+  - Audit trail: Record which configs were synced, from which environment, by which admin
+  - Monitoring: Track sync operation duration, number of configs synced, error count
+  - Safety gates: Require explicit approval for production syncs, warn on breaking changes
+  - API contract: Request format includes source environment, target environment, optional gameId filter
 
 ### Phase 2.5: Unity SDK (P1)
 - Implement RemoteConfigManager singleton
@@ -775,7 +852,6 @@ If critical issues detected:
 - **Real-Time Updates**: WebSocket push for instant config updates without polling
 - **Config Templates**: Predefined config templates for common use cases (economy, difficulty settings)
 - **Approval Workflow**: Multi-stage approval for config changes (review, approve, publish)
-- **Environment Sync**: Bulk copy all configs from staging to production with one click
 - **Config Diff Viewer**: Visual diff between two config versions or environments
 - **CSV Import/Export**: Support CSV format for bulk operations
 - **Config Scheduler**: Schedule config changes for specific dates without rules

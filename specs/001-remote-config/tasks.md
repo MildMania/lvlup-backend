@@ -11,9 +11,10 @@
 
 This task list implements a comprehensive Remote Config System enabling game developers to modify game parameters remotely without app updates. The system includes server-side rule evaluation engine supporting platform, version, country, date, and segment-based targeting with priority-based rule evaluation.
 
-**Total Tasks**: 87  
+**Total Tasks**: 150+ (116 + expanded Phase 16 rule system frontend)  
 **Parallelizable Tasks**: 34  
 **User Stories**: 13 (6x P1, 3x P2, 4x P3)
+**Critical Features**: Environment Sync (Phase 12.5) + Full Rule System UI (Phase 16)
 
 ---
 
@@ -392,6 +393,62 @@ This task list implements a comprehensive Remote Config System enabling game dev
 
 ---
 
+## Phase 12.5: Environment Sync - Bulk Deployment Across Environments (P1 - CRITICAL)
+
+**Feature Goal**: Enable safe bulk promotion of Remote Configs from staging to production with approval gates, dry-run validation, automatic backup, and instant rollback capability.
+
+**Story Goal**: Release Manager prepares to deploy 8 updated configs from staging to production. He calls the environment sync endpoint with `dryRun=true` to preview what will be synced. The API returns detailed preview showing 5 configs to create, 3 to update, with specific value changes. He reviews for conflicts (e.g., pvp_enabled exists only in production). After confirming, he calls sync with `dryRun=false` and an approval token. The system creates automatic backup, syncs all configs atomically, records audit trail, and monitors sync success.
+
+**Independent Test Criteria**:
+- Can preview sync operation without committing changes (dry-run mode)
+- Dry-run shows all configs to create/update/skip with specific changes
+- Detects conflicts: configs in target-only vs source-only environments
+- Validates all source configs are valid before sync (atomic validation)
+- Creates automatic database backup before production sync
+- Requires approval token for production environment syncs
+- Syncs configs and rules atomically (all-or-nothing)
+- Invalidates cache after successful sync
+- Records audit trail with sync metadata (who, when, which configs, from/to environments)
+- Can rollback failed sync by restoring from backup
+- Monitors sync operation duration, success rate, error count
+- Supports filtering by specific config keys or modification date
+
+**Dependencies**: Phase 12 (US10) for history/rollback, Phase 3 (US1) for config CRUD
+
+### Tasks
+
+- [ ] T158.1 [P] Implement syncEnvironments method signature in backend/src/services/configService.ts
+- [ ] T158.2 [P] Implement dry-run mode in syncEnvironments (fetch all configs, preview changes without DB writes)
+- [ ] T158.3 [P] Implement conflict detection in syncEnvironments (configs in only one environment)
+- [ ] T158.4 [P] Implement validation before sync (check all source configs valid)
+- [ ] T158.5 [P] Implement atomic sync operation (transaction wrapping all creates/updates)
+- [ ] T158.6 [P] Implement approval token validation for production syncs in backend/src/middleware/auth.ts
+- [ ] T158.7 [P] Implement auto-backup before production sync in backend/src/services/backupService.ts
+- [ ] T158.8 [P] Implement cache invalidation after sync in backend/src/services/cacheService.ts
+- [ ] T158.9 [P] Implement audit trail recording for sync operations in backend/src/services/configService.ts
+- [ ] T158.10 [P] Implement filtering by config keys in syncEnvironments
+- [ ] T158.11 [P] Implement filtering by modification date in syncEnvironments
+- [ ] T158.12 [P] Implement sync progress tracking for monitoring in backend/src/services/configService.ts
+- [ ] T158.13 Implement POST /api/admin/configs/sync endpoint in backend/src/routes/configRoutes.ts
+- [ ] T158.14 Implement detailed response schema with sync report in backend/src/routes/configRoutes.ts
+- [ ] T158.15 [P] Implement error handling and partial failure recovery in syncEnvironments
+- [ ] T158.16 [P] Create database backup before sync in backend/scripts/backup-db.ts
+- [ ] T158.17 Implement restore from backup functionality in backend/scripts/restore-db.ts
+- [ ] T158.18 [P] Write unit tests for sync conflict detection in backend/tests/unit/environmentSync.test.ts
+- [ ] T158.19 [P] Write unit tests for validation before sync in backend/tests/unit/environmentSync.test.ts
+- [ ] T158.20 Write integration tests for dry-run mode in backend/tests/integration/environmentSync.test.ts
+- [ ] T158.21 Write integration tests for confirmed sync in backend/tests/integration/environmentSync.test.ts
+- [ ] T158.22 Write integration tests for approval token validation in backend/tests/integration/environmentSync.test.ts
+- [ ] T158.23 Write integration tests for atomic sync operation in backend/tests/integration/environmentSync.test.ts
+- [ ] T158.24 Write integration tests for backup creation and rollback in backend/tests/integration/environmentSync.test.ts
+- [ ] T158.25 Write integration tests for audit trail recording in backend/tests/integration/environmentSync.test.ts
+- [ ] T158.26 Test cache invalidation after sync in backend/tests/integration/environmentSync.test.ts
+- [ ] T158.27 [P] Create API contract documentation in specs/001-remote-config/contracts/admin-environment-sync.md
+- [ ] T158.28 Create monitoring dashboard configuration for sync operations
+- [ ] T158.29 Add monitoring alerts for sync failures, duration, and error rates
+
+---
+
 ## Phase 13: User Story 11 - Bulk Import/Export Configs (P3)
 
 **Story Goal**: Tom wants to migrate 50 configs from staging to production. He exports all staging configs to a JSON file, reviews and modifies values as needed, then imports the JSON file with target environment "production".
@@ -470,13 +527,28 @@ This task list implements a comprehensive Remote Config System enabling game dev
 
 ---
 
-## Phase 16: Admin Dashboard UI
+## Phase 16: Admin Dashboard UI - Complete Rule System Implementation
 
-**Goal**: Build React-based admin dashboard for managing configs and rules with drag-and-drop rule reordering, search/filter, and version history viewer.
+**Goal**: Build React-based admin dashboard with full rule system: drag-and-drop rule reordering, platform/version/country/date conditions, segment targeting, and config versioning.
 
-**Duration**: 8-12 hours  
-**Dependencies**: Phases 3-8 complete (all backend APIs available)  
-**Deliverables**: Config list, editor, rule editor, history viewer, drag-and-drop UI
+**Duration**: 12-16 hours  
+**Dependencies**: Phases 3-8 complete (all backend APIs + rule system implemented)  
+**Deliverables**: Config CRUD UI, complete rule editor with all conditions, drag-and-drop reordering, history viewer, search/filter
+
+### Overview
+
+This phase implements the complete rule system in the frontend dashboard. Since Phase 8 (backend rule reordering with priorities) is complete, this frontend phase mirrors that architecture:
+
+- **Platform Conditions**: iOS/Android/Web selection
+- **Version Conditions**: Operator selector (=, !=, >, >=, <, <=) + semver validation
+- **Country Conditions**: ISO 3166-1 alpha-2 code dropdown
+- **Date Conditions**: activeAfter timestamp + activeBetween date range
+- **Segment Conditions**: all_users/new_users/custom (pending badge for custom segments)
+- **Priority-Based Evaluation**: Drag-and-drop rule reordering with auto-renumbering
+- **Override Values**: Match config dataType (string/number/boolean/json)
+- **Full CRUD**: Create, edit, delete rules with backend sync
+- **Drag-and-Drop**: @dnd-kit or react-beautiful-dnd for smooth UX
+- **Version History**: Timeline view with side-by-side comparison and rollback
 
 ### Tasks
 
@@ -495,28 +567,74 @@ This task list implements a comprehensive Remote Config System enabling game dev
 - [ ] T196 Implement config form with validation in ConfigEditor in frontend/src/pages/RemoteConfig/ConfigEditor.tsx
 - [ ] T197 Implement data type selector (string/number/boolean/json) in ConfigEditor in frontend/src/pages/RemoteConfig/ConfigEditor.tsx
 - [ ] T198 Implement JSON editor with syntax highlighting in ConfigEditor in frontend/src/pages/RemoteConfig/ConfigEditor.tsx
-- [ ] T199 Implement rule conditions form in RuleEditor in frontend/src/pages/RemoteConfig/RuleEditor.tsx
-- [ ] T200 Implement platform dropdown in RuleEditor in frontend/src/pages/RemoteConfig/RuleEditor.tsx
-- [ ] T201 Implement version operator and value inputs in RuleEditor in frontend/src/pages/RemoteConfig/RuleEditor.tsx
-- [ ] T202 Implement country dropdown with ISO codes in RuleEditor in frontend/src/pages/RemoteConfig/RuleEditor.tsx
-- [ ] T203 Implement date picker for activeAfter/activeBetween in RuleEditor in frontend/src/pages/RemoteConfig/RuleEditor.tsx
-- [ ] T204 Implement segment dropdown with "pending" badge in RuleEditor in frontend/src/pages/RemoteConfig/RuleEditor.tsx
-- [ ] T205 Implement rule priority reordering via drag-and-drop in DraggableRuleList in frontend/src/components/DraggableRuleList.tsx
-- [ ] T206 Implement save changes button after reorder in DraggableRuleList in frontend/src/components/DraggableRuleList.tsx
-- [ ] T207 Implement version history timeline view in ConfigHistory in frontend/src/pages/RemoteConfig/ConfigHistory.tsx
-- [ ] T208 Implement side-by-side version comparison in ConfigHistory in frontend/src/pages/RemoteConfig/ConfigHistory.tsx
-- [ ] T209 Implement rollback button with confirmation in ConfigHistory in frontend/src/pages/RemoteConfig/ConfigHistory.tsx
-- [ ] T210 Add loading states for all API calls in frontend/src/pages/RemoteConfig/
-- [ ] T211 Add error handling and user-friendly error messages in frontend/src/pages/RemoteConfig/
-- [ ] T212 Add success notifications for create/update/delete operations in frontend/src/pages/RemoteConfig/
-- [ ] T213 Implement "Controlled by AB Test" badge display (Phase 9) in ConfigList in frontend/src/pages/RemoteConfig/ConfigList.tsx
-- [ ] T214 Implement "Segment evaluation pending" warning badge in RuleList in frontend/src/pages/RemoteConfig/RuleList.tsx
-- [ ] T215 Add navigation menu item for Remote Config in frontend/src/components/Navigation.tsx
-- [ ] T216 Connect all components to backend API endpoints in frontend/src/services/configApi.ts
-- [ ] T217 Test config CRUD operations through UI in browser
-- [ ] T218 Test rule creation and reordering through UI in browser
-- [ ] T219 Test search and filter functionality in browser
-- [ ] T220 Test version history and rollback in browser
+
+### Rule System Implementation (Frontend)
+
+#### Rule Editor Core - Condition Building
+- [ ] T199 [P] Implement rule conditions form in RuleEditor in frontend/src/pages/RemoteConfig/RuleEditor.tsx
+- [ ] T200 [P] Implement platform dropdown (iOS/Android/Web) in RuleEditor in frontend/src/pages/RemoteConfig/RuleEditor.tsx
+- [ ] T201 [P] Implement version operator selector (=, !=, >, >=, <, <=) in RuleEditor in frontend/src/pages/RemoteConfig/RuleEditor.tsx
+- [ ] T202 [P] Implement version value input with semver validation in RuleEditor in frontend/src/pages/RemoteConfig/RuleEditor.tsx
+- [ ] T203 [P] Implement country dropdown with ISO 3166-1 alpha-2 codes in RuleEditor in frontend/src/pages/RemoteConfig/RuleEditor.tsx
+
+#### Rule Editor - Date/Time Conditions
+- [ ] T204 [P] Implement activeAfter date picker in RuleEditor in frontend/src/pages/RemoteConfig/RuleEditor.tsx
+- [ ] T205 [P] Implement activeBetweenStart and activeBetweenEnd date range picker in RuleEditor in frontend/src/pages/RemoteConfig/RuleEditor.tsx
+- [ ] T206 [P] Implement UTC timezone handling and display in RuleEditor in frontend/src/pages/RemoteConfig/RuleEditor.tsx
+- [ ] T207 Implement current time indicator in date pickers (show if rule is active now) in frontend/src/pages/RemoteConfig/RuleEditor.tsx
+
+#### Rule Editor - Segments & Validation
+- [ ] T208 Implement segment condition dropdown (all_users/new_users/custom) in RuleEditor in frontend/src/pages/RemoteConfig/RuleEditor.tsx
+- [ ] T209 Add "pending" badge for segment conditions (not yet evaluated) in RuleEditor in frontend/src/pages/RemoteConfig/RuleEditor.tsx
+- [ ] T210 Implement override value input matching config dataType in RuleEditor in frontend/src/pages/RemoteConfig/RuleEditor.tsx
+- [ ] T211 Add client-side validation for all rule conditions in RuleEditor in frontend/src/pages/RemoteConfig/RuleEditor.tsx
+- [ ] T212 Implement rule summary preview (e.g., "iOS v3.5+ gets 200 coins") in RuleEditor in frontend/src/pages/RemoteConfig/RuleEditor.tsx
+
+#### Rule List & Management
+- [ ] T213 [P] Create RuleList component with all rules displayed in priority order in frontend/src/pages/RemoteConfig/RuleList.tsx
+- [ ] T214 [P] Display rule priority numbers in RuleList in frontend/src/pages/RemoteConfig/RuleList.tsx
+- [ ] T215 [P] Display rule conditions summary in each rule row in RuleList in frontend/src/pages/RemoteConfig/RuleList.tsx
+- [ ] T216 Display rule override value in each rule row in RuleList in frontend/src/pages/RemoteConfig/RuleList.tsx
+- [ ] T217 Add edit button for each rule that opens RuleEditor modal in RuleList in frontend/src/pages/RemoteConfig/RuleList.tsx
+- [ ] T218 Add delete button with confirmation for each rule in RuleList in frontend/src/pages/RemoteConfig/RuleList.tsx
+- [ ] T219 Add "add new rule" button in RuleList in frontend/src/pages/RemoteConfig/RuleList.tsx
+- [ ] T220 Display enabled/disabled toggle for each rule in RuleList in frontend/src/pages/RemoteConfig/RuleList.tsx
+
+#### Drag-and-Drop Rule Reordering
+- [ ] T221 [P] Install @dnd-kit or react-beautiful-dnd for drag-and-drop in frontend/package.json
+- [ ] T222 [P] Create DraggableRuleList component with drag handles in frontend/src/components/DraggableRuleList.tsx
+- [ ] T223 [P] Implement rule drag-and-drop with visual feedback in DraggableRuleList in frontend/src/components/DraggableRuleList.tsx
+- [ ] T224 [P] Auto-renumber priorities when reordering rules in DraggableRuleList in frontend/src/components/DraggableRuleList.tsx
+- [ ] T225 Implement "Save Changes" button after reorder in DraggableRuleList in frontend/src/components/DraggableRuleList.tsx
+- [ ] T226 Implement cancel reorder functionality to revert to previous order in DraggableRuleList in frontend/src/components/DraggableRuleList.tsx
+- [ ] T227 Add undo/redo for rule reordering in DraggableRuleList in frontend/src/components/DraggableRuleList.tsx
+
+#### Config & History UI
+- [ ] T228 Implement version history timeline view in ConfigHistory in frontend/src/pages/RemoteConfig/ConfigHistory.tsx
+- [ ] T229 Implement side-by-side version comparison in ConfigHistory in frontend/src/pages/RemoteConfig/ConfigHistory.tsx
+- [ ] T230 Implement rollback button with confirmation in ConfigHistory in frontend/src/pages/RemoteConfig/ConfigHistory.tsx
+- [ ] T231 Add loading states for all API calls in frontend/src/pages/RemoteConfig/
+- [ ] T232 Add error handling and user-friendly error messages in frontend/src/pages/RemoteConfig/
+- [ ] T233 Add success notifications for create/update/delete operations in frontend/src/pages/RemoteConfig/
+- [ ] T234 Implement "Controlled by AB Test" badge display (Phase 9) in ConfigList in frontend/src/pages/RemoteConfig/ConfigList.tsx
+- [ ] T235 Implement "Segment evaluation pending" warning badge in RuleList in frontend/src/pages/RemoteConfig/RuleList.tsx
+- [ ] T236 Add navigation menu item for Remote Config in frontend/src/components/Navigation.tsx
+- [ ] T237 Add routing for Remote Config pages in frontend/src/App.tsx
+- [ ] T238 [P] Connect ConfigList to backend API endpoints in frontend/src/services/configApi.ts
+- [ ] T239 [P] Connect ConfigEditor to backend API endpoints in frontend/src/services/configApi.ts
+- [ ] T240 [P] Connect RuleEditor/RuleList to backend API endpoints in frontend/src/services/configApi.ts
+- [ ] T241 Connect ConfigHistory to backend API endpoints in frontend/src/services/configApi.ts
+- [ ] T242 Implement authentication/authorization checks for admin access in frontend/src/pages/RemoteConfig/
+- [ ] T243 Test config CRUD operations through UI in browser
+- [ ] T244 Test rule creation, editing, deletion through UI in browser
+- [ ] T245 Test rule drag-and-drop reordering through UI in browser
+- [ ] T246 Test search and filter functionality in browser
+- [ ] T247 Test version history and rollback in browser
+- [ ] T248 Test all platform condition combinations (iOS/Android/Web + versions) in browser
+- [ ] T249 Test all country conditions in browser
+- [ ] T250 Test date conditions (activeAfter, activeBetween) in browser
+- [ ] T251 Test rule override values match config dataType in browser
+- [ ] T252 Test error handling for invalid inputs in browser
 
 ---
 

@@ -5,7 +5,7 @@
  */
 
 import { Request, Response } from 'express';
-import * as configService from '../services/configService';
+import * as configService from '../services/ConfigService';
 import { CreateRuleInput, UpdateRuleInput } from '../types/config.types';
 import logger from '../utils/logger';
 

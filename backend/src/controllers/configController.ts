@@ -5,7 +5,7 @@
  */
 
 import { Request, Response } from 'express';
-import * as configService from '../services/configService';
+import * as configService from '../services/ConfigService';
 import {
   CreateConfigRequest,
   CreateConfigResponse,

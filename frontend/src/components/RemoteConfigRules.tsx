@@ -35,7 +35,7 @@ interface RemoteConfigRulesProps {
   onClose?: () => void;
 }
 
-const RemoteConfigRules: React.FC<RemoteConfigRulesProps> = ({ configId, onClose }) => {
+const RemoteConfigRules: React.FC<RemoteConfigRulesProps> = ({ configId }) => {
   const [rules, setRules] = useState<Rule[]>([]);
   const [loading, setLoading] = useState(false);
   const [showCreateModal, setShowCreateModal] = useState(false);
@@ -53,7 +53,7 @@ const RemoteConfigRules: React.FC<RemoteConfigRulesProps> = ({ configId, onClose
     setLoading(true);
     try {
       const response = await apiClient.get(
-        `/config/admin/configs/${configId}/rules`
+        `/config/configs/${configId}/rules`
       );
       setRules(response.data.data.rules || []);
     } catch (error) {
@@ -71,7 +71,7 @@ const RemoteConfigRules: React.FC<RemoteConfigRulesProps> = ({ configId, onClose
 
     try {
       const response = await apiClient.post(
-        `/config/admin/configs/${configId}/rules`,
+        `/config/configs/${configId}/rules`,
         {
           ...formData,
           overrideValue: parseFloat(formData.overrideValue),
@@ -96,7 +96,7 @@ const RemoteConfigRules: React.FC<RemoteConfigRulesProps> = ({ configId, onClose
 
     try {
       await apiClient.delete(
-        `/config/admin/configs/${configId}/rules/${ruleId}`
+        `/config/configs/${configId}/rules/${ruleId}`
       );
       setRules(rules.filter((r) => r.id !== ruleId));
       alert('Rule deleted successfully!');
@@ -219,8 +219,8 @@ const RemoteConfigRules: React.FC<RemoteConfigRulesProps> = ({ configId, onClose
                   <option value="">-- None --</option>
                   <option value="equal">=</option>
                   <option value="not_equal">!=</option>
-                  <option value="greater_than">></option>
-                  <option value="greater_or_equal">>=</option>
+                  <option value="greater_than">{'>}'}</option>
+                  <option value="greater_or_equal">{'>='}</option>
                   <option value="less_than">&lt;</option>
                   <option value="less_or_equal">&lt;=</option>
                 </select>

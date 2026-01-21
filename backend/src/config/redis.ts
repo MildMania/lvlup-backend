@@ -3,16 +3,16 @@
  * Initializes and manages Redis client for config caching
  */
 
-import { createClient, RedisClientType } from 'redis';
+import { createClient } from 'redis';
 import logger from '../utils/logger';
 
-let redisClient: RedisClientType | null = null;
+let redisClient: any = null;
 
 /**
  * Initialize Redis connection
  * @returns Promise resolving when connected
  */
-export async function initRedis(): Promise<RedisClientType> {
+export async function initRedis(): Promise<any> {
   if (redisClient) {
     return redisClient;
   }
@@ -46,7 +46,7 @@ export async function initRedis(): Promise<RedisClientType> {
  * Get Redis client instance
  * @returns Redis client or null if not initialized
  */
-export function getRedisClient(): RedisClientType | null {
+export function getRedisClient(): any {
   return redisClient;
 }
 

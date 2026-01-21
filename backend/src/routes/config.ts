@@ -6,10 +6,10 @@
  */
 
 import { Router, Request, Response } from 'express';
-import * as configController from '../controllers/configController';
-import * as publicConfigController from '../controllers/publicConfigController';
-import * as ruleController from '../controllers/ruleController';
-import * as draftController from '../controllers/draftController';
+import * as configController from '../controllers/ConfigController';
+import * as publicConfigController from '../controllers/PublicConfigController';
+import * as ruleController from '../controllers/RuleController';
+import * as draftController from '../controllers/DraftController';
 import { validateConfigMiddleware } from '../middleware/validateConfig';
 import { validateRuleMiddleware } from '../middleware/validateRule';
 import { authenticateEither } from '../middleware/authenticateEither';
@@ -19,103 +19,22 @@ const router = Router();
 
 /**
  * Admin Routes - Require authentication
- * /api/admin/configs/*
+ * /api/config/configs/*
  */
 
 /**
- * POST /api/admin/configs
+ * POST /api/config/configs
  * Create a new config (T033, T035)
  */
 router.post(
-  '/admin/configs',
+  '/configs',
   authenticateEither,
   validateConfigMiddleware,
   async (req: Request, res: Response) => {
     try {
       await configController.createConfig(req, res);
     } catch (error) {
-      logger.error('Error in POST /api/admin/configs:', error);
-      res.status(500).json({
-        success: false,
-        error: 'Internal server error',
-      });
-    }
-  }
-);
-
-/**
- * GET /api/admin/configs/:gameId
- * List all configs for a game (T038)
- */
-router.get(
-  '/admin/configs/:gameId',
-  authenticateEither,
-  async (req: Request, res: Response) => {
-    try {
-      await configController.listConfigs(req, res);
-    } catch (error) {
-      logger.error('Error in GET /api/admin/configs/:gameId:', error);
-      res.status(500).json({
-        success: false,
-        error: 'Internal server error',
-      });
-    }
-  }
-);
-
-/**
- * GET /api/admin/configs/:gameId/:configId
- * Get a single config
- */
-router.get(
-  '/admin/configs/:gameId/:configId',
-  authenticateEither,
-  async (req: Request, res: Response) => {
-    try {
-      await configController.getConfig(req, res);
-    } catch (error) {
-      logger.error('Error in GET /api/admin/configs/:gameId/:configId:', error);
-      res.status(500).json({
-        success: false,
-        error: 'Internal server error',
-      });
-    }
-  }
-);
-
-/**
- * PUT /api/admin/configs/:configId
- * Update a config (T036)
- */
-router.put(
-  '/admin/configs/:configId',
-  authenticateEither,
-  validateConfigMiddleware,
-  async (req: Request, res: Response) => {
-    try {
-      await configController.updateConfig(req, res);
-    } catch (error) {
-      logger.error('Error in PUT /api/admin/configs/:configId:', error);
-      res.status(500).json({
-        success: false,
-        error: 'Internal server error',
-      });
-    }
-  }
-);
-
-/**
- * DELETE /api/admin/configs/:configId
- * Delete a config (T037)
- */
-router.delete(
-  '/admin/configs/:configId',
-  authenticateEither,
-  async (req: Request, res: Response) => {
-    try {
-      await configController.deleteConfig(req, res);
-    } catch (error) {
-      logger.error('Error in DELETE /api/admin/configs/:configId:', error);
+      logger.error('Error in POST /api/config/configs:', error);
       res.status(500).json({
         success: false,
         error: 'Internal server error',
@@ -126,22 +45,44 @@ router.delete(
 
 /**
  * Rule Endpoints - Require authentication
- * /api/admin/configs/:configId/rules/*
+ * /api/config/configs/:configId/rules/*
+ * IMPORTANT: These routes must come BEFORE the /configs/:gameId route
+ * to prevent Express from matching the more general pattern first
  */
 
 /**
- * POST /api/admin/configs/:configId/rules
+ * POST /api/config/configs/:configId/rules/reorder
+ * Reorder rules for a config
+ */
+router.post(
+  '/configs/:configId/rules/reorder',
+  authenticateEither,
+  async (req: Request, res: Response) => {
+    try {
+      await ruleController.reorderRules(req, res);
+    } catch (error) {
+      logger.error('Error in POST /api/config/configs/:configId/rules/reorder:', error);
+      res.status(500).json({
+        success: false,
+        error: 'Internal server error',
+      });
+    }
+  }
+);
+
+/**
+ * POST /api/config/configs/:configId/rules
  * Create a new rule for a config (T092)
  */
 router.post(
-  '/admin/configs/:configId/rules',
+  '/configs/:configId/rules',
   authenticateEither,
   validateRuleMiddleware,
   async (req: Request, res: Response) => {
     try {
       await ruleController.createRule(req, res);
     } catch (error) {
-      logger.error('Error in POST /api/admin/configs/:configId/rules:', error);
+      logger.error('Error in POST /api/config/configs/:configId/rules:', error);
       res.status(500).json({
         success: false,
         error: 'Internal server error',
@@ -151,17 +92,17 @@ router.post(
 );
 
 /**
- * GET /api/admin/configs/:configId/rules
+ * GET /api/config/configs/:configId/rules
  * List all rules for a config
  */
 router.get(
-  '/admin/configs/:configId/rules',
+  '/configs/:configId/rules',
   authenticateEither,
   async (req: Request, res: Response) => {
     try {
       await ruleController.listRules(req, res);
     } catch (error) {
-      logger.error('Error in GET /api/admin/configs/:configId/rules:', error);
+      logger.error('Error in GET /api/config/configs/:configId/rules:', error);
       res.status(500).json({
         success: false,
         error: 'Internal server error',
@@ -171,18 +112,18 @@ router.get(
 );
 
 /**
- * PUT /api/admin/configs/:configId/rules/:ruleId
+ * PUT /api/config/configs/:configId/rules/:ruleId
  * Update a rule (T093)
  */
 router.put(
-  '/admin/configs/:configId/rules/:ruleId',
+  '/configs/:configId/rules/:ruleId',
   authenticateEither,
   validateRuleMiddleware,
   async (req: Request, res: Response) => {
     try {
       await ruleController.updateRule(req, res);
     } catch (error) {
-      logger.error('Error in PUT /api/admin/configs/:configId/rules/:ruleId:', error);
+      logger.error('Error in PUT /api/config/configs/:configId/rules/:ruleId:', error);
       res.status(500).json({
         success: false,
         error: 'Internal server error',
@@ -192,17 +133,17 @@ router.put(
 );
 
 /**
- * DELETE /api/admin/configs/:configId/rules/:ruleId
+ * DELETE /api/config/configs/:configId/rules/:ruleId
  * Delete a rule (T094)
  */
 router.delete(
-  '/admin/configs/:configId/rules/:ruleId',
+  '/configs/:configId/rules/:ruleId',
   authenticateEither,
   async (req: Request, res: Response) => {
     try {
       await ruleController.deleteRule(req, res);
     } catch (error) {
-      logger.error('Error in DELETE /api/admin/configs/:configId/rules/:ruleId:', error);
+      logger.error('Error in DELETE /api/config/configs/:configId/rules/:ruleId:', error);
       res.status(500).json({
         success: false,
         error: 'Internal server error',
@@ -212,17 +153,115 @@ router.delete(
 );
 
 /**
- * POST /api/admin/configs/:configId/rules/reorder
- * Reorder rules for a config
+ * History & Rollback Endpoints - Require authentication
+ * /api/config/configs/:configId/rollback - POST
+ * /api/config/configs/:gameId/history/:configKey - GET
+ * IMPORTANT: These routes must come BEFORE /configs/:gameId to prevent route conflicts
+ */
+
+/**
+ * POST /api/config/configs/:configId/rollback
+ * Rollback a config to a previous version
  */
 router.post(
-  '/admin/configs/:configId/rules/reorder',
+  '/configs/:configId/rollback',
   authenticateEither,
   async (req: Request, res: Response) => {
     try {
-      await ruleController.reorderRules(req, res);
+      // TODO: Implement rollback functionality
+      // This should revert to a previous version from history
+      res.status(501).json({
+        success: false,
+        error: 'Rollback functionality not yet implemented',
+      });
     } catch (error) {
-      logger.error('Error in POST /api/admin/configs/:configId/rules/reorder:', error);
+      logger.error('Error in POST /api/config/configs/:configId/rollback:', error);
+      res.status(500).json({
+        success: false,
+        error: 'Internal server error',
+      });
+    }
+  }
+);
+
+/**
+ * GET /api/config/configs/:gameId/history/:configKey
+ * Get config history (version timeline)
+ */
+router.get(
+  '/configs/:gameId/history/:configKey',
+  authenticateEither,
+  async (req: Request, res: Response) => {
+    try {
+      // TODO: Implement history retrieval
+      // This should return the version history for a specific config
+      res.status(501).json({
+        success: false,
+        error: 'History functionality not yet implemented',
+      });
+    } catch (error) {
+      logger.error('Error in GET /api/config/configs/:gameId/history/:configKey:', error);
+      res.status(500).json({
+        success: false,
+        error: 'Internal server error',
+      });
+    }
+  }
+);
+
+/**
+ * GET /api/config/configs/:gameId
+ * List all configs for a game (T038)
+ */
+router.get(
+  '/configs/:gameId',
+  authenticateEither,
+  async (req: Request, res: Response) => {
+    try {
+      await configController.listConfigs(req, res);
+    } catch (error) {
+      logger.error('Error in GET /api/config/configs/:gameId:', error);
+      res.status(500).json({
+        success: false,
+        error: 'Internal server error',
+      });
+    }
+  }
+);
+
+/**
+ * PUT /api/config/configs/:configId
+ * Update a config (T036)
+ */
+router.put(
+  '/configs/:configId',
+  authenticateEither,
+  validateConfigMiddleware,
+  async (req: Request, res: Response) => {
+    try {
+      await configController.updateConfig(req, res);
+    } catch (error) {
+      logger.error('Error in PUT /api/config/configs/:configId:', error);
+      res.status(500).json({
+        success: false,
+        error: 'Internal server error',
+      });
+    }
+  }
+);
+
+/**
+ * DELETE /api/config/configs/:configId
+ * Delete a config (T037)
+ */
+router.delete(
+  '/configs/:configId',
+  authenticateEither,
+  async (req: Request, res: Response) => {
+    try {
+      await configController.deleteConfig(req, res);
+    } catch (error) {
+      logger.error('Error in DELETE /api/config/configs/:configId:', error);
       res.status(500).json({
         success: false,
         error: 'Internal server error',

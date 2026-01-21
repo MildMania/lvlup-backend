@@ -1,5 +1,5 @@
 import { Request, Response } from 'express';
-import * as draftService from '../services/draftService';
+import * as draftService from '../services/DraftService';
 import logger from '../utils/logger';
 
 /**

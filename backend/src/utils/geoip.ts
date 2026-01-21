@@ -33,7 +33,7 @@ export function lookupCountry(ipAddress: string): GeoIPResult {
   return {
     country: geo.country || null,
     timezone: geo.timezone || null,
-    eu: geo.eu || null,
+    eu: geo.eu === '1' ? true : (geo.eu === '0' ? false : null),
   };
 }
 

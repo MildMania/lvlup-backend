@@ -5,8 +5,8 @@
  */
 
 import { Request, Response } from 'express';
-import * as configService from '../services/configService';
-import * as cacheService from '../services/cacheService';
+import * as configService from '../services/ConfigService';
+import * as cacheService from '../services/CacheService';
 import { evaluateRules } from '../services/ruleEvaluator';
 import { getCountryFromIP } from '../utils/geoip';
 import {

@@ -1,4 +1,4 @@
-import { ContextManager } from './ContextManager';
+import { ContextManager } from './contextManager';
 import { AnalyticsService } from './AnalyticsService';
 import { OpenAIService, AIAnalysisRequest, ConversationMessage } from './OpenAIService';
 import { PrismaClient } from '@prisma/client';

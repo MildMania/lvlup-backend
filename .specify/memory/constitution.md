@@ -214,6 +214,33 @@ RATIFICATION DATE: 2026-01-20 (date of initial constitution creation)
 - **Logging:** Winston
 - **SDK:** Unity C# (lvlup-unity-sdk)
 
+**File Naming Conventions (STANDARDIZED):**
+
+All TypeScript files MUST follow these naming conventions strictly:
+
+| Directory | File Type | Naming Convention | Examples |
+|-----------|-----------|-------------------|----------|
+| `src/controllers/` | Controllers | **PascalCase** + `Controller` suffix | `AnalyticsController.ts`, `ConfigController.ts` |
+| `src/services/` | Services | **PascalCase** + `Service` suffix | `AnalyticsService.ts`, `ConfigService.ts` |
+| `src/services/` | Utilities | **camelCase** (no suffix) | `ruleEvaluator.ts`, `versionComparator.ts` |
+| `src/middleware/` | Middleware | **camelCase** | `auth.ts`, `validateConfig.ts` |
+| `src/utils/` | Utilities | **camelCase** | `logger.ts`, `geoip.ts`, `semver.ts` |
+| `src/types/` | Types | **camelCase** + `.types.ts` | `config.types.ts`, `api.types.ts` |
+| `src/config/` | Config | **camelCase** | `redis.ts`, `database.ts` |
+| `src/routes/` | Routes | **camelCase** | `configRoutes.ts`, `authRoutes.ts` |
+| `src/models/` | Models | **PascalCase** | `User.ts`, `Config.ts` |
+
+**Rationale:** 
+- **PascalCase for classes** (Controllers, Services, Models): Follows TypeScript conventions where class names are PascalCase. Developers immediately recognize these as exportable classes.
+- **camelCase for utilities/functions**: Utility functions are exported as named functions/constants, which by convention use camelCase.
+- **Consistent suffixes** (`Controller`, `Service`): Eliminates ambiguity about file purpose. A file named `AnalyticsController.ts` is immediately recognizable as an Express route handler class.
+- **Uniform application** across all directories: Developers know exactly what to expect from each directory without needing to check folder-specific rules.
+
+**Enforcement:**
+- ESLint rule: `@typescript-eslint/naming-convention` configured to enforce per-directory rules
+- Pre-commit hook: Reject commits with misnamed files
+- Code review checklist: Verify all new files follow conventions
+
 **Deployment Standards:**
 
 - Production: Railway (PostgreSQL database)

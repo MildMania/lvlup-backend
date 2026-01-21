@@ -563,6 +563,7 @@ async function main() {
             {
                 key: 'daily_reward_amount',
                 value: { coins: 100, gems: 5 },
+                dataType: 'json',
                 description: 'Daily reward configuration',
             },
             {
@@ -572,16 +573,19 @@ async function main() {
                     medium: { multiplier: 1.0, lives: 3 },
                     hard: { multiplier: 1.5, lives: 1 }
                 },
+                dataType: 'json',
                 description: 'Game difficulty settings',
             },
             {
                 key: 'shop_featured_items',
                 value: ['power_up_1', 'power_up_2', 'cosmetic_skin_1'],
+                dataType: 'json',
                 description: 'Featured items in shop',
             },
             {
                 key: 'tutorial_enabled',
                 value: true,
+                dataType: 'boolean',
                 description: 'Enable/disable tutorial for new users',
             },
         ];
@@ -592,6 +596,7 @@ async function main() {
                     gameId: game.id,
                     key: config.key,
                     value: config.value,
+                    dataType: config.dataType,
                     environment: 'production',
                     enabled: true,
                     description: config.description,

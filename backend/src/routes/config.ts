@@ -9,6 +9,7 @@ import { Router, Request, Response } from 'express';
 import * as configController from '../controllers/configController';
 import * as publicConfigController from '../controllers/publicConfigController';
 import * as ruleController from '../controllers/ruleController';
+import * as draftController from '../controllers/draftController';
 import { validateConfigMiddleware } from '../middleware/validateConfig';
 import { validateRuleMiddleware } from '../middleware/validateRule';
 import { authenticateEither } from '../middleware/authenticateEither';
@@ -285,6 +286,151 @@ router.post(
       await publicConfigController.validateConfigs(req, res);
     } catch (error) {
       logger.error('Error in POST /api/configs/:gameId/validate:', error);
+      res.status(500).json({
+        success: false,
+        error: 'Internal server error',
+      });
+    }
+  }
+);
+
+/**
+ * Draft Management Routes
+ * /api/admin/drafts/*
+ */
+
+/**
+ * POST /api/admin/drafts
+ * Save config changes as a draft
+ */
+router.post(
+  '/admin/drafts',
+  authenticateEither,
+  async (req: Request, res: Response) => {
+    try {
+      await draftController.saveAsDraft(req, res);
+    } catch (error) {
+      logger.error('Error in POST /api/admin/drafts:', error);
+      res.status(500).json({
+        success: false,
+        error: 'Internal server error',
+      });
+    }
+  }
+);
+
+/**
+ * GET /api/admin/drafts
+ * List pending drafts for a game
+ */
+router.get(
+  '/admin/drafts',
+  authenticateEither,
+  async (req: Request, res: Response) => {
+    try {
+      await draftController.listPendingDrafts(req, res);
+    } catch (error) {
+      logger.error('Error in GET /api/admin/drafts:', error);
+      res.status(500).json({
+        success: false,
+        error: 'Internal server error',
+      });
+    }
+  }
+);
+
+/**
+ * GET /api/admin/drafts/:draftId
+ * Get draft details
+ */
+router.get(
+  '/admin/drafts/:draftId',
+  authenticateEither,
+  async (req: Request, res: Response) => {
+    try {
+      await draftController.getDraftDetails(req, res);
+    } catch (error) {
+      logger.error('Error in GET /api/admin/drafts/:draftId:', error);
+      res.status(500).json({
+        success: false,
+        error: 'Internal server error',
+      });
+    }
+  }
+);
+
+/**
+ * POST /api/admin/drafts/:draftId/deploy
+ * Deploy/publish a draft
+ */
+router.post(
+  '/admin/drafts/:draftId/deploy',
+  authenticateEither,
+  async (req: Request, res: Response) => {
+    try {
+      await draftController.deployDraft(req, res);
+    } catch (error) {
+      logger.error('Error in POST /api/admin/drafts/:draftId/deploy:', error);
+      res.status(500).json({
+        success: false,
+        error: 'Internal server error',
+      });
+    }
+  }
+);
+
+/**
+ * POST /api/admin/drafts/:draftId/reject
+ * Reject a draft
+ */
+router.post(
+  '/admin/drafts/:draftId/reject',
+  authenticateEither,
+  async (req: Request, res: Response) => {
+    try {
+      await draftController.rejectDraft(req, res);
+    } catch (error) {
+      logger.error('Error in POST /api/admin/drafts/:draftId/reject:', error);
+      res.status(500).json({
+        success: false,
+        error: 'Internal server error',
+      });
+    }
+  }
+);
+
+/**
+ * POST /api/admin/drafts/deploy-all
+ * Deploy multiple drafts at once
+ */
+router.post(
+  '/admin/drafts/deploy-all',
+  authenticateEither,
+  async (req: Request, res: Response) => {
+    try {
+      await draftController.deployMultipleDrafts(req, res);
+    } catch (error) {
+      logger.error('Error in POST /api/admin/drafts/deploy-all:', error);
+      res.status(500).json({
+        success: false,
+        error: 'Internal server error',
+      });
+    }
+  }
+);
+
+/**
+ * DELETE /api/admin/drafts/:draftId
+ * Delete a draft
+ */
+router.delete(
+  '/admin/drafts/:draftId',
+  authenticateEither,
+  async (req: Request, res: Response) => {
+    try {
+      await draftController.deleteDraft(req, res);
+    } catch (error) {
+      logger.error('Error in DELETE /api/admin/drafts/:draftId:', error);
       res.status(500).json({
         success: false,
         error: 'Internal server error',

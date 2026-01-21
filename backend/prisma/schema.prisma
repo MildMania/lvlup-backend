@@ -28,6 +28,7 @@ model Game {
   playerCheckpoints PlayerCheckpoint[]
   releases          Release[]
   configs           RemoteConfig[]
+  configDrafts      ConfigDraft[]
   sessions          Session[]
   users             User[]
   gameAccesses      GameAccess[]
@@ -155,6 +156,7 @@ model RemoteConfig {
   game            Game             @relation(fields: [gameId], references: [id], onDelete: Cascade)
   rules           RuleOverwrite[]
   history         ConfigHistory[]
+  drafts          ConfigDraft[]
   validationRules ValidationRule[]
 
   @@unique([gameId, key, environment])
@@ -198,6 +200,33 @@ model ConfigHistory {
 
   @@index([configId, changedAt])
   @@map("config_history")
+}
+
+model ConfigDraft {
+  id            String       @id @default(cuid())
+  configId      String
+  gameId        String
+  key           String
+  value         Json
+  dataType      String
+  environment   String
+  enabled       Boolean      @default(true)
+  description   String?
+  changes       Json         // Track what changed: {"value": {...}, "description": "..."}
+  status        String       @default("draft") // "draft", "pending", "deployed", "rejected"
+  createdBy     String       // User ID
+  createdAt     DateTime     @default(now())
+  updatedAt     DateTime     @updatedAt
+  deployedAt    DateTime?
+  deployedBy    String?      // User ID who deployed
+  rejectionReason String?    // If rejected
+  config        RemoteConfig @relation(fields: [configId], references: [id], onDelete: Cascade)
+  game          Game         @relation(fields: [gameId], references: [id], onDelete: Cascade)
+
+  @@index([configId, status])
+  @@index([gameId, status])
+  @@index([createdAt])
+  @@map("config_drafts")
 }
 
 model RuleHistory {

@@ -168,16 +168,15 @@ export function validateStringPattern(
 export function validateConfigMiddleware(req: Request, res: Response, next: NextFunction) {
   const { gameId, key, value, dataType, environment } = req.body;
 
-  // Validate gameId
-  if (!gameId || typeof gameId !== 'string') {
-    return res.status(400).json({
-      success: false,
-      error: 'gameId is required',
-    });
-  }
-
-  // Skip key validation for updates (PUT)
+  // Validate gameId only for POST (creation), not for PUT (updates)
   if (req.method === 'POST') {
+    if (!gameId || typeof gameId !== 'string') {
+      return res.status(400).json({
+        success: false,
+        error: 'gameId is required',
+      });
+    }
+
     // Validate key
     if (!key) {
       return res.status(400).json({

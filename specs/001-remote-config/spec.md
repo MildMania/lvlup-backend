@@ -1,9 +1,10 @@
-# Feature Specification: Remote Config System
+# Feature Specification: Remote Config System with Rule Overwrites
 
 **Feature Branch**: `001-remote-config`  
 **Created**: January 20, 2026  
+**Updated**: January 21, 2026  
 **Status**: Draft  
-**Input**: User description: "Create a comprehensive specification for a Remote Config System feature for the lvlup-backend analytics platform."
+**Input**: User description: "Create a comprehensive specification for a Remote Config System feature with Rule Overwrite functionality for the lvlup-backend analytics platform."
 
 ## User Scenarios & Testing *(mandatory)*
 
@@ -61,7 +62,99 @@ When Elena's mobile game starts, the Unity SDK automatically calls `LvlUpSDK.Rem
 
 ---
 
-### User Story 4 - Environment-Based Config Management (Priority: P2)
+### User Story 4 - Create Platform-Specific Rule Overwrite (Priority: P1)
+
+David, the game product manager, wants iOS users on version 3.5.0+ to see a higher daily reward than Android users. He opens the `daily_reward_coins` config (default value: 100) and creates a new rule overwrite with priority 1. He sets conditions: Platform = iOS, Version >= 3.5.0, and value = 150. When iOS users on version 3.5.0 or higher fetch configs, the server evaluates the rules and returns 150 instead of the default 100. Android users and older iOS versions receive the default 100.
+
+**Why this priority**: Core rule overwrite functionality that enables targeted configuration changes without creating separate config keys - essential for platform-specific tuning.
+
+**Independent Test**: Can be fully tested by creating a rule with platform and version conditions, then making fetch requests with different platform/version combinations and verifying correct values are returned.
+
+**Acceptance Scenarios**:
+
+1. **Given** a config has default value 100 and a rule with Platform=iOS, Version>=3.5.0, Value=150, **When** iOS v3.5.0 client fetches configs, **Then** client receives value 150
+2. **Given** same rule exists, **When** iOS v3.4.0 client fetches configs, **Then** client receives default value 100 (rule doesn't match)
+3. **Given** same rule exists, **When** Android v3.5.0 client fetches configs, **Then** client receives default value 100 (platform doesn't match)
+4. **Given** admin creates rule with invalid version format, **When** attempting to save, **Then** system shows validation error for version format
+5. **Given** a rule exists with multiple conditions (Platform AND Version AND Country), **When** client matches all conditions, **Then** client receives rule value; if any condition fails, falls back to default or next rule
+
+---
+
+### User Story 5 - Country and Date-Based Rule Overwrites (Priority: P1)
+
+Maria wants to run a special promotion in Germany that automatically starts on February 1, 2026, and ends on February 14, 2026. She creates a rule overwrite for `bonus_multiplier` config with priority 2, sets conditions: Country = DE, Active Between "2026-02-01T00:00:00Z" and "2026-02-14T23:59:59Z", and value = 2.0. The system uses server time (UTC) to evaluate the date conditions. On February 1st, German users automatically receive the 2.0 multiplier. On February 15th, the rule stops matching and users revert to the default value without any manual intervention.
+
+**Why this priority**: Time-based activation is critical for scheduled events and promotions - eliminates need for manual config updates at specific times.
+
+**Independent Test**: Can be tested by creating date-based rules with past/current/future dates and verifying server correctly evaluates time conditions using UTC timestamps.
+
+**Acceptance Scenarios**:
+
+1. **Given** a rule with "Active After 2026-02-01T00:00:00Z", **When** server time is 2026-02-01T00:00:01Z, **Then** rule matches and returns rule value
+2. **Given** a rule with "Active Between" dates, **When** server time is before start date, **Then** rule doesn't match and falls back to next rule or default
+3. **Given** a rule with "Active Between" dates, **When** server time is after end date, **Then** rule doesn't match and falls back to next rule or default
+4. **Given** a rule with "Active Between" dates, **When** server time is within the range, **Then** rule matches and returns rule value
+5. **Given** multiple date-based rules exist, **When** evaluating, **Then** server uses consistent UTC time for all evaluations to prevent timezone issues
+6. **Given** admin creates rule with end date before start date, **When** attempting to save, **Then** system shows validation error
+
+---
+
+### User Story 6 - Priority-Based Rule Evaluation with Drag-and-Drop (Priority: P1)
+
+Sarah manages multiple promotional rules for `daily_reward_coins`. She has 5 rules: Priority 1 (iOS + US + Version>=3.0), Priority 2 (Android + US), Priority 3 (Country=CA), Priority 4 (Version>=4.0), Priority 5 (ActiveAfter 2026-03-01). She realizes that Canadian users should have higher priority than general Android users. In the admin dashboard, she drags the Canada rule from position 3 to position 2, and the system automatically renumbers priorities: Canada becomes priority 2, Android+US becomes priority 3. When a Canadian Android user fetches configs, the server evaluates rules from priority 1 to 5, finds the Canada rule matches at priority 3 (new position), and returns that value without checking lower priority rules.
+
+**Why this priority**: Priority-based evaluation is fundamental to rule overwrite system - determines which value is returned when multiple rules could match.
+
+**Independent Test**: Can be tested by creating multiple rules with different priorities, reordering them, and verifying server evaluates in correct priority order and returns first matching rule value.
+
+**Acceptance Scenarios**:
+
+1. **Given** multiple rules exist with priorities 1-5, **When** admin drags priority 3 to position 1, **Then** system renumbers: old priority 3 becomes 1, old priorities 1-2 become 2-3
+2. **Given** a client matches multiple rules, **When** server evaluates rules, **Then** server processes rules in ascending priority order (1, 2, 3...) and returns first match
+3. **Given** a client matches rule at priority 2 and priority 4, **When** evaluating, **Then** server returns value from priority 2 rule (stops evaluation after first match)
+4. **Given** a client matches no rules, **When** all rules fail, **Then** server returns default config value
+5. **Given** admin attempts to save two rules with same priority, **When** saving, **Then** system prevents duplicate priorities and shows validation error
+6. **Given** rules are reordered, **When** viewing rule list, **Then** rules are displayed in priority order (1, 2, 3...) in the UI
+
+---
+
+### User Story 7 - Rule Overwrite Integration with AB Tests (Priority: P2)
+
+Tom is running an AB test that affects the `max_health` config. The admin dashboard shows a clear hierarchy: "AB Tests (Priority) → Rule Overwrites → Default Value". While the AB test is active, all rule overwrites for `max_health` are bypassed, and users receive values determined by the AB test assignment. When Tom ends the AB test, the system automatically falls back to evaluating rule overwrites. The dashboard displays a warning badge on `max_health` showing "Controlled by AB Test" so Sarah doesn't accidentally create conflicting rule overwrites.
+
+**Why this priority**: Important for future AB test integration - establishes clear precedence and prevents conflicts, but AB test feature doesn't exist yet.
+
+**Independent Test**: Can be tested (in future) by activating an AB test for a config, creating rule overwrites, and verifying AB test values take precedence. For now, design API contract and UI placeholders.
+
+**Acceptance Scenarios**:
+
+1. **Given** AB test feature exists in future, **When** AB test is active for a config, **Then** server returns AB test value and skips rule evaluation
+2. **Given** config has active AB test, **When** admin views config in dashboard, **Then** UI shows "Controlled by AB Test" badge with AB test name
+3. **Given** admin tries to create rule overwrite for AB-tested config, **When** saving, **Then** system allows creation but warns "Rule will not apply until AB test ends"
+4. **Given** AB test ends, **When** clients fetch configs, **Then** server immediately begins evaluating rule overwrites instead of AB test values
+5. **Given** API design for future integration, **When** defining config fetch response, **Then** include metadata field for AB test status to support future client-side logic
+
+---
+
+### User Story 8 - Segment-Based Rule Overwrites (Future Integration) (Priority: P3)
+
+Jessica wants to create a rule overwrite for new users only. She selects Segment = "New Users" (defined as users registered within last 7 days) as a condition. The system accepts the segment condition and stores it, but shows a warning: "Segment evaluation coming soon - rule will not match until segmentation system is integrated". In the future when the segmentation service is available, the server will evaluate segment membership during config fetch and apply the rule only to users in the "New Users" segment.
+
+**Why this priority**: Prepares architecture for future segmentation feature without blocking current implementation - nice to have but not critical for initial release.
+
+**Independent Test**: Can be tested by allowing segment conditions to be created and stored in the database. Verification that UI shows appropriate warnings and rules with segment conditions gracefully skip evaluation (don't crash).
+
+**Acceptance Scenarios**:
+
+1. **Given** segmentation feature doesn't exist yet, **When** admin creates rule with segment condition, **Then** system saves rule but marks it as "pending integration"
+2. **Given** rule has segment condition, **When** server evaluates rules, **Then** server skips segment-based rules (treats as non-matching) until segmentation service is available
+3. **Given** admin views rules with segment conditions, **When** viewing dashboard, **Then** UI displays warning badge "Segment evaluation not active"
+4. **Given** API design includes segment evaluation hook, **When** future segmentation service is integrated, **Then** server can call segmentation API to check user membership without changing rule schema
+5. **Given** rule has multiple conditions including segment, **When** segmentation becomes available, **Then** segment condition is AND'ed with other conditions (all must match)
+
+---
+
+### User Story 9 - Environment-Based Config Management (Priority: P2)
 
 James runs tests in a staging environment before deploying to production. He creates a config `api_rate_limit` with value 10 for "development", 50 for "staging", and 1000 for "production". When Unity SDK connects with environment parameter "staging", it only receives the staging configs. This allows different configurations per environment without affecting production users.
 
@@ -78,7 +171,7 @@ James runs tests in a staging environment before deploying to production. He cre
 
 ---
 
-### User Story 5 - Version History and Rollback (Priority: P2)
+### User Story 10 - Version History and Rollback (Priority: P2)
 
 After updating `daily_reward_coins` to 500, the analytics team notices players are earning currency too quickly. Lisa, the product manager, opens the config history for `daily_reward_coins`, sees a timeline of all changes (250 → 300 → 500) with timestamps and who made each change. She clicks "Rollback to version 2" (value: 300) and the system immediately restores that value, creating a new history entry documenting the rollback.
 
@@ -96,7 +189,7 @@ After updating `daily_reward_coins` to 500, the analytics team notices players a
 
 ---
 
-### User Story 6 - Bulk Import/Export Configs (Priority: P3)
+### User Story 11 - Bulk Import/Export Configs (Priority: P3)
 
 Tom wants to migrate 50 configs from staging to production. He exports all staging configs to a JSON file, reviews and modifies values as needed, then imports the JSON file with target environment "production". The system validates all entries, reports any conflicts or validation errors, and creates all valid configs in a single transaction.
 
@@ -114,7 +207,7 @@ Tom wants to migrate 50 configs from staging to production. He exports all stagi
 
 ---
 
-### User Story 7 - Search and Filter Configs (Priority: P3)
+### User Story 12 - Search and Filter Configs (Priority: P3)
 
 Natalie manages over 200 config keys for her game. She uses the dashboard search to find all configs containing "reward" in the key name, then filters by environment "production" and enabled status "true". The filtered list shows only the 8 configs that match all criteria, making it easy to review and update related configurations.
 
@@ -131,7 +224,7 @@ Natalie manages over 200 config keys for her game. She uses the dashboard search
 
 ---
 
-### User Story 8 - Enable/Disable Configs Without Deletion (Priority: P3)
+### User Story 13 - Enable/Disable Configs Without Deletion (Priority: P3)
 
 During a special event, Kevin wants to temporarily enable bonus multipliers. He disables the `bonus_multiplier` config (sets enabled=false) instead of deleting it. The SDK no longer returns this config to clients. After the event, Kevin re-enables it and the config becomes available again, preserving all history and metadata.
 
@@ -170,6 +263,26 @@ During a special event, Kevin wants to temporarily enable bonus multipliers. He 
 
 - **How are partial network failures handled during SDK fetch?** SDK implements retry logic with exponential backoff (3 attempts). If all fail, falls back to cache or defaults. Never blocks game startup.
 
+- **What happens if multiple rules have overlapping conditions?** Server evaluates rules strictly in priority order (1, 2, 3...) and returns the first matching rule's value. Lower priority rules are never evaluated if higher priority rule matches.
+
+- **How does system handle rule evaluation when client data is missing (e.g., no country detected)?** Rules with missing condition data (e.g., countryCondition is not null but client country is unknown) automatically fail to match. System gracefully skips such rules and continues to next priority.
+
+- **What if admin creates circular date conditions (e.g., active_between with end before start)?** System validates date conditions on save and rejects rules with invalid date ranges, showing descriptive error message.
+
+- **How does system handle timezone differences for date-based rules?** All date conditions use server time (UTC) exclusively. Client timezones are not considered. Dashboard displays times in UTC with clear labeling to prevent confusion.
+
+- **What happens if admin deletes a config that has rule overwrites?** All rule overwrites are cascade-deleted along with the config. Rule history is preserved for audit purposes.
+
+- **How are rule priorities maintained when admin deletes a mid-priority rule?** When priority 3 is deleted from rules [1, 2, 3, 4, 5], remaining rules keep their priorities [1, 2, 4, 5] - no automatic renumbering. Admin can manually reorder if continuous numbering is desired.
+
+- **What if rule evaluation takes too long and impacts performance?** Maximum 30 rules per config limits evaluation time. Rules are indexed by configId and priority for fast retrieval. If evaluation exceeds 50ms, system logs warning and returns default value as fallback.
+
+- **How does system handle rule overwrites during AB test transition?** When AB test ends, next config fetch immediately evaluates rule overwrites. There is no synchronization delay - first request after AB test deactivation uses rules.
+
+- **What happens if segment condition is specified but segmentation service is not available?** Rules with segment conditions are skipped (treated as non-matching) and logged as "pending integration". System continues evaluating remaining rules normally.
+
+- **How are version comparisons handled for non-semantic versions (e.g., "latest" or "1.0")?** System validates version strings on rule creation and rejects non-semantic version formats. Only valid semantic versions (e.g., 1.0.0, 2.1.3-beta) are accepted.
+
 ## Requirements *(mandatory)*
 
 ### Functional Requirements
@@ -187,102 +300,148 @@ During a special event, Kevin wants to temporarily enable bonus multipliers. He 
 - **FR-009**: System MUST support validation rules for number types (min/max range)
 - **FR-010**: System MUST support validation rules for string types (regex patterns, max length)
 
+#### Rule Overwrite Management
+
+- **FR-011**: System MUST allow admins to create rule overwrites for any config with priority, conditions, and override value
+- **FR-012**: System MUST support platform condition with values: iOS, Android, Web, or null (any platform)
+- **FR-013**: System MUST support version condition with operators: equal, not_equal, greater_than, greater_or_equal, less_than, less_or_equal
+- **FR-014**: System MUST validate version strings follow semantic versioning format (e.g., 3.5.0, 1.0.0-beta)
+- **FR-015**: System MUST support country condition using ISO 3166-1 alpha-2 country codes (e.g., US, DE, CA)
+- **FR-016**: System MUST support segment condition with values: new_users, all_users, custom segments, or null (any segment)
+- **FR-017**: System MUST mark segment-based rules as "pending integration" and skip evaluation until segmentation service available
+- **FR-018**: System MUST support date-based conditions: active_after (timestamp), active_between (start and end timestamps)
+- **FR-019**: System MUST use server time (UTC) for all date condition evaluations
+- **FR-020**: System MUST validate that active_between end date is after start date
+- **FR-021**: System MUST enforce unique priority values per config - no two rules for same config can have identical priority
+- **FR-022**: System MUST allow admins to reorder rule priorities via drag-and-drop, automatically renumbering affected rules
+- **FR-023**: System MUST limit maximum of 30 rule overwrites per config key
+- **FR-024**: System MUST support ALL conditions matching (AND logic) - if any condition fails, rule doesn't match
+- **FR-025**: System MUST allow conditions to be null/undefined, meaning "any value matches" for that condition
+- **FR-026**: System MUST validate override value matches the config's data type (string, number, boolean, JSON)
+- **FR-027**: System MUST allow admins to enable/disable individual rules without deletion
+- **FR-028**: System MUST display rules in priority order (ascending: 1, 2, 3...) in admin dashboard
+- **FR-029**: System MUST evaluate rules during config fetch on server-side, not client-side
+- **FR-030**: System MUST stop rule evaluation and return value immediately when first matching rule is found
+
+#### Rule Evaluation Logic
+
+- **FR-031**: System MUST check for active AB tests first before evaluating rule overwrites (future integration)
+- **FR-032**: System MUST evaluate rules in ascending priority order (priority 1 first, then 2, then 3, etc.)
+- **FR-033**: System MUST return default config value if no rules match
+- **FR-034**: System MUST extract platform from client request context (provided by Unity SDK in session data)
+- **FR-035**: System MUST extract version from client request context (Unity Application.version sent by SDK)
+- **FR-036**: System MUST extract country from GeoIP lookup or client-provided data in request
+- **FR-037**: System MUST handle missing condition data gracefully (e.g., if country unknown, rules with country condition don't match)
+- **FR-038**: System MUST evaluate date conditions using current server timestamp (UTC) at time of request
+- **FR-039**: System MUST skip disabled rules during evaluation
+- **FR-040**: System MUST cache evaluated config results per unique combination of [gameId, environment, platform, version, country]
+
 #### Environment Management
 
-- **FR-011**: System MUST support three environment types: development, staging, production
-- **FR-012**: System MUST allow admins to filter configs by environment in dashboard
-- **FR-013**: System MUST allow admins to copy configs from one environment to another
-- **FR-014**: System MUST isolate configs by gameId, ensuring no cross-game data access
+- **FR-041**: System MUST support three environment types: development, staging, production
+- **FR-042**: System MUST allow admins to filter configs by environment in dashboard
+- **FR-043**: System MUST allow admins to copy configs from one environment to another
+- **FR-044**: System MUST isolate configs by gameId, ensuring no cross-game data access
 
 #### Version History & Audit
 
-- **FR-015**: System MUST record all config changes in ConfigHistory table with previous value, new value, timestamp, and user identifier
-- **FR-016**: System MUST allow admins to view complete change history for any config key
-- **FR-017**: System MUST allow admins to rollback to any previous version with one click
-- **FR-018**: System MUST create new history entry when rollback is executed
-- **FR-019**: System MUST preserve history even after config deletion for audit compliance
-- **FR-020**: System MUST display side-by-side comparison of any two config versions
+- **FR-045**: System MUST record all config changes in ConfigHistory table with previous value, new value, timestamp, and user identifier
+- **FR-046**: System MUST record all rule overwrite changes (create, update, delete, reorder) in audit trail
+- **FR-047**: System MUST allow admins to view complete change history for any config key including rule changes
+- **FR-048**: System MUST allow admins to rollback to any previous version with one click
+- **FR-049**: System MUST create new history entry when rollback is executed
+- **FR-050**: System MUST preserve history even after config deletion for audit compliance
+- **FR-051**: System MUST display side-by-side comparison of any two config versions
 
 #### API Endpoints
 
-- **FR-021**: System MUST provide GET /api/configs/{gameId} endpoint returning all enabled configs for specified game and environment
-- **FR-022**: System MUST accept optional query parameters: environment (default: production), sdk_version
-- **FR-023**: System MUST return configs as JSON object with key-value pairs and metadata (updatedAt timestamp)
-- **FR-024**: System MUST implement ETag support for efficient client-side caching
-- **FR-025**: System MUST provide POST /api/admin/configs endpoint for creating configs (auth required)
-- **FR-026**: System MUST provide PUT /api/admin/configs/{id} endpoint for updating configs (auth required)
-- **FR-027**: System MUST provide DELETE /api/admin/configs/{id} endpoint for deleting configs (auth required)
-- **FR-028**: System MUST provide GET /api/admin/configs/{gameId}/history/{key} endpoint for retrieving version history (auth required)
-- **FR-029**: System MUST validate gameId access permissions on all admin endpoints using existing JWT + gameAccess middleware
-- **FR-030**: System MUST return 404 for non-existent gameId or config, 403 for unauthorized access
+- **FR-052**: System MUST provide GET /api/configs/{gameId} endpoint returning all enabled configs for specified game and environment
+- **FR-053**: System MUST accept query parameters: environment (default: production), platform, version, country, userId (for future segment evaluation)
+- **FR-054**: System MUST evaluate all rule overwrites server-side and return final computed values in response
+- **FR-055**: System MUST return configs as JSON object with key-value pairs and metadata (updatedAt timestamp)
+- **FR-056**: System MUST implement ETag support for efficient client-side caching
+- **FR-057**: System MUST provide POST /api/admin/configs endpoint for creating configs (auth required)
+- **FR-058**: System MUST provide PUT /api/admin/configs/{id} endpoint for updating configs (auth required)
+- **FR-059**: System MUST provide DELETE /api/admin/configs/{id} endpoint for deleting configs (auth required)
+- **FR-060**: System MUST provide POST /api/admin/configs/{configId}/rules endpoint for creating rule overwrites (auth required)
+- **FR-061**: System MUST provide PUT /api/admin/configs/{configId}/rules/{ruleId} endpoint for updating rule overwrites (auth required)
+- **FR-062**: System MUST provide DELETE /api/admin/configs/{configId}/rules/{ruleId} endpoint for deleting rule overwrites (auth required)
+- **FR-063**: System MUST provide PUT /api/admin/configs/{configId}/rules/reorder endpoint for batch priority updates (auth required)
+- **FR-064**: System MUST provide GET /api/admin/configs/{gameId}/history/{key} endpoint for retrieving version history (auth required)
+- **FR-065**: System MUST validate gameId access permissions on all admin endpoints using existing JWT + gameAccess middleware
+- **FR-066**: System MUST return 404 for non-existent gameId or config, 403 for unauthorized access
 
 #### Bulk Operations
 
-- **FR-031**: System MUST allow admins to export selected configs to JSON file format
-- **FR-032**: System MUST allow admins to import configs from JSON file with validation
-- **FR-033**: System MUST validate all entries in bulk import before creating any configs (atomic operation)
-- **FR-034**: System MUST provide detailed error report for invalid entries during import
-- **FR-035**: System MUST support merge strategies during import: skip existing, update existing, or fail on conflict
+- **FR-067**: System MUST allow admins to export selected configs to JSON file format
+- **FR-068**: System MUST allow admins to import configs from JSON file with validation
+- **FR-069**: System MUST validate all entries in bulk import before creating any configs (atomic operation)
+- **FR-070**: System MUST provide detailed error report for invalid entries during import
+- **FR-071**: System MUST support merge strategies during import: skip existing, update existing, or fail on conflict
 
 #### Search & Filtering
 
-- **FR-036**: System MUST allow admins to search configs by key name (partial match, case-insensitive)
-- **FR-037**: System MUST allow admins to filter configs by environment
-- **FR-038**: System MUST allow admins to filter configs by enabled status
-- **FR-039**: System MUST allow admins to combine multiple filters simultaneously
-- **FR-040**: System MUST display result count when filters are active
+- **FR-072**: System MUST allow admins to search configs by key name (partial match, case-insensitive)
+- **FR-073**: System MUST allow admins to filter configs by environment
+- **FR-074**: System MUST allow admins to filter configs by enabled status
+- **FR-075**: System MUST allow admins to combine multiple filters simultaneously
+- **FR-076**: System MUST display result count when filters are active
 
 #### Unity SDK Integration
 
-- **FR-041**: Unity SDK MUST provide RemoteConfigManager accessible via LvlUpSDK.RemoteConfig
-- **FR-042**: Unity SDK MUST provide async FetchAsync() method to retrieve all configs for current game
-- **FR-043**: Unity SDK MUST cache fetched configs locally using PlayerPrefs with timestamp
-- **FR-044**: Unity SDK MUST provide type-safe getter methods: GetString(), GetInt(), GetFloat(), GetBool(), GetJson<T>()
-- **FR-045**: Unity SDK MUST require default values for all getter methods to handle missing keys gracefully
-- **FR-046**: Unity SDK MUST use cached configs if network request fails
-- **FR-047**: Unity SDK MUST respect cache expiration (5 minutes) and automatically refetch when expired
-- **FR-048**: Unity SDK MUST provide OnConfigsUpdated event callback for listening to config updates
-- **FR-049**: Unity SDK MUST log warnings (not errors) when config keys are missing or type coercion fails
-- **FR-050**: Unity SDK MUST never block game initialization if config fetch fails
+- **FR-077**: Unity SDK MUST provide RemoteConfigManager accessible via LvlUpSDK.RemoteConfig
+- **FR-078**: Unity SDK MUST provide async FetchAsync() method to retrieve all configs for current game
+- **FR-079**: Unity SDK MUST cache fetched configs locally using PlayerPrefs with timestamp
+- **FR-080**: Unity SDK MUST provide type-safe getter methods: GetString(), GetInt(), GetFloat(), GetBool(), GetJson<T>()
+- **FR-081**: Unity SDK MUST require default values for all getter methods to handle missing keys gracefully
+- **FR-082**: Unity SDK MUST use cached configs if network request fails
+- **FR-083**: Unity SDK MUST respect cache expiration (5 minutes) and automatically refetch when expired
+- **FR-084**: Unity SDK MUST provide OnConfigsUpdated event callback for listening to config updates
+- **FR-085**: Unity SDK MUST log warnings (not errors) when config keys are missing or type coercion fails
+- **FR-086**: Unity SDK MUST never block game initialization if config fetch fails
 
 #### Caching Strategy
 
-- **FR-051**: System MUST cache config responses for 5 minutes to align with platform performance targets
-- **FR-052**: System MUST invalidate cache immediately when any config is created, updated, or deleted
-- **FR-053**: System MUST use Redis for distributed caching with fallback to database if Redis unavailable
-- **FR-054**: System MUST generate cache keys in format: `remoteconfig:{gameId}:{environment}`
-- **FR-055**: System MUST implement ETag calculation based on last updatedAt timestamp for conditional requests
+- **FR-087**: System MUST cache config responses for 5 minutes to align with platform performance targets
+- **FR-088**: System MUST invalidate cache immediately when any config is created, updated, or deleted
+- **FR-089**: System MUST use Redis for distributed caching with fallback to database if Redis unavailable
+- **FR-090**: System MUST generate cache keys in format: `remoteconfig:{gameId}:{environment}:{platform}:{version}:{country}`
+- **FR-091**: System MUST implement ETag calculation based on last updatedAt timestamp for conditional requests
 
 #### Security & Rate Limiting
 
-- **FR-056**: System MUST enforce JWT authentication on all /api/admin/* endpoints
-- **FR-057**: System MUST validate gameId access using existing gameAccess middleware patterns
-- **FR-058**: System MUST implement rate limiting of 100 requests per minute per gameId on public config endpoints
-- **FR-059**: System MUST implement rate limiting of 1000 requests per minute per admin user on admin endpoints
-- **FR-060**: System MUST log all admin operations (create/update/delete) to audit log with user identifier and timestamp
-- **FR-061**: System MUST return 429 Too Many Requests with Retry-After header when rate limit exceeded
-- **FR-062**: Public config fetch endpoint MUST NOT require authentication but MUST validate gameId exists
+- **FR-092**: System MUST enforce JWT authentication on all /api/admin/* endpoints
+- **FR-093**: System MUST validate gameId access using existing gameAccess middleware patterns
+- **FR-094**: System MUST implement rate limiting of 100 requests per minute per gameId on public config endpoints
+- **FR-095**: System MUST implement rate limiting of 1000 requests per minute per admin user on admin endpoints
+- **FR-096**: System MUST log all admin operations (create/update/delete) to audit log with user identifier and timestamp
+- **FR-097**: System MUST return 429 Too Many Requests with Retry-After header when rate limit exceeded
+- **FR-098**: Public config fetch endpoint MUST NOT require authentication but MUST validate gameId exists
 
 #### Data Validation & Error Handling
 
-- **FR-063**: System MUST validate maximum config value size of 100KB per entry
-- **FR-064**: System MUST validate JSON syntax for JSON-type configs before saving
-- **FR-065**: System MUST validate number values against defined min/max rules if specified
-- **FR-066**: System MUST validate string values against regex patterns if specified
-- **FR-067**: System MUST return descriptive validation errors with field-specific messages
-- **FR-068**: System MUST handle database connection failures gracefully with retry logic
-- **FR-069**: System MUST handle cache service failures gracefully by falling back to database queries
-- **FR-070**: Unity SDK MUST attempt type coercion (e.g., string "true" → boolean true) before falling back to defaults
+- **FR-099**: System MUST validate maximum config value size of 100KB per entry
+- **FR-100**: System MUST validate JSON syntax for JSON-type configs before saving
+- **FR-101**: System MUST validate number values against defined min/max rules if specified
+- **FR-102**: System MUST validate string values against regex patterns if specified
+- **FR-103**: System MUST return descriptive validation errors with field-specific messages
+- **FR-104**: System MUST handle database connection failures gracefully with retry logic
+- **FR-105**: System MUST handle cache service failures gracefully by falling back to database queries
+- **FR-106**: Unity SDK MUST attempt type coercion (e.g., string "true" → boolean true) before falling back to defaults
 
 ### Key Entities *(include if feature involves data)*
 
 - **RemoteConfig**: Represents a single configuration entry with key-value pair for specific game and environment. Attributes include id, gameId, key (unique per game/environment), value (JSON type supporting multiple data types), environment (dev/staging/production), enabled (boolean flag), description (optional), createdAt, updatedAt. Related to Game entity via gameId foreign key.
 
+- **RuleOverwrite**: Represents conditional overrides for config values based on targeting rules. Attributes include id, configId (foreign key to RemoteConfig), priority (unique integer per config, ascending evaluation order), enabled (boolean flag), overrideValue (JSON, must match config data type), platformCondition (iOS/Android/Web/null), versionOperator (equal/not_equal/greater_than/greater_or_equal/less_than/less_or_equal/null), versionValue (semantic version string/null), countryCondition (ISO 3166-1 alpha-2 code/null), segmentCondition (new_users/all_users/custom/null), activeAfter (UTC timestamp/null), activeBetweenStart (UTC timestamp/null), activeBetweenEnd (UTC timestamp/null), createdAt, updatedAt. Maximum 30 rules per config.
+
 - **ConfigHistory**: Audit trail of all config changes. Attributes include id, configId (foreign key to RemoteConfig), previousValue (JSON), newValue (JSON), changedBy (user identifier), changedAt (timestamp), changeType (created/updated/deleted/rollback). Preserves full change history even after config deletion.
+
+- **RuleHistory**: Audit trail of all rule overwrite changes. Attributes include id, ruleId (foreign key to RuleOverwrite), configId (for preservation after rule deletion), action (created/updated/deleted/reordered), previousState (JSON snapshot of rule), newState (JSON snapshot of rule), changedBy (user identifier), changedAt (timestamp). Preserves full rule change history.
 
 - **ValidationRule**: Optional rules attached to configs for value validation. Attributes include id, configId (foreign key), ruleType (min/max/regex/maxLength), ruleValue (the constraint value). Allows number ranges, string patterns, etc.
 
-- **CacheEntry**: Ephemeral cache storage for config responses. Key format: `remoteconfig:{gameId}:{environment}`, value contains serialized config array, TTL set to 5 minutes. Stored in Redis with automatic expiration.
+- **CacheEntry**: Ephemeral cache storage for config responses. Key format: `remoteconfig:{gameId}:{environment}:{platform}:{version}:{country}`, value contains serialized config array with evaluated rules, TTL set to 5 minutes. Stored in Redis with automatic expiration.
 
 - **RateLimit**: Tracks API request counts per identifier. Key format: `ratelimit:{identifier}:{window}`, value is request count, TTL matches rate limit window (1 minute). Stored in Redis.
 

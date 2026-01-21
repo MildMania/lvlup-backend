@@ -21,7 +21,8 @@ import {
   Trash2,
   UsersRound,
   User,
-  LogOut
+  LogOut,
+  Sliders
 } from 'lucide-react';
 import { useTheme } from '../contexts/ThemeContext';
 import { useAuth } from '../contexts/AuthContext';
@@ -103,6 +104,7 @@ const Sidebar: React.FC<SidebarProps> = ({
     { id: 'analytics', label: 'Analytics', icon: TrendingUp },
     { id: 'events', label: 'Events', icon: Activity },
     { id: 'funnels', label: 'Funnels', icon: Target },
+    { id: 'remote-config', label: 'Remote Config', icon: Sliders },
     { id: 'releases', label: 'Releases', icon: GitBranch },
   ];
 

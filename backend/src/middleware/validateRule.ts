@@ -73,17 +73,23 @@ export function validateVersionCondition(
 }
 
 /**
- * Validates country condition
+ * Validates country condition (T107)
+ * Validates ISO 3166-1 alpha-2 country codes
  */
 export function validateCountryCondition(
-  country: string | undefined
+  country: string | null | undefined
 ): { valid: boolean; error?: string } {
-  if (!country) return { valid: true }; // Optional
+  if (!country) {
+    return { valid: true }; // Country is optional
+  }
 
-  if (!isValidCountryCode(country)) {
+  // ISO 3166-1 alpha-2 format: exactly 2 uppercase letters
+  const countryCodeRegex = /^[A-Z]{2}$/;
+
+  if (!countryCodeRegex.test(country)) {
     return {
       valid: false,
-      error: `countryCondition must be a valid ISO 3166-1 alpha-2 code (e.g., US, DE, GB)`,
+      error: `country must be ISO 3166-1 alpha-2 code (e.g., US, DE, JP), got: ${country}`,
     };
   }
 
@@ -91,41 +97,46 @@ export function validateCountryCondition(
 }
 
 /**
- * Validates date conditions
+ * Validates date conditions (T108)
+ * Validates activeAfter and activeBetween dates
  */
 export function validateDateConditions(
-  activeAfter: string | undefined,
-  activeBetweenStart: string | undefined,
-  activeBetweenEnd: string | undefined
+  activeAfter: string | Date | null | undefined,
+  activeBetweenStart: string | Date | null | undefined,
+  activeBetweenEnd: string | Date | null | undefined
 ): { valid: boolean; error?: string } {
-  // Validate dates are ISO strings
-  if (activeAfter) {
-    const date = new Date(activeAfter);
-    if (isNaN(date.getTime())) {
-      return { valid: false, error: 'activeAfter must be a valid ISO timestamp' };
-    }
+  // Convert to Date objects if they're strings
+  const after = activeAfter ? new Date(activeAfter) : null;
+  const betweenStart = activeBetweenStart ? new Date(activeBetweenStart) : null;
+  const betweenEnd = activeBetweenEnd ? new Date(activeBetweenEnd) : null;
+
+  // Validate activeAfter is valid date
+  if (after && isNaN(after.getTime())) {
+    return {
+      valid: false,
+      error: 'activeAfter must be a valid ISO 8601 date',
+    };
   }
 
-  if (activeBetweenStart) {
-    const date = new Date(activeBetweenStart);
-    if (isNaN(date.getTime())) {
-      return { valid: false, error: 'activeBetweenStart must be a valid ISO timestamp' };
-    }
+  // Validate activeBetweenStart is valid date
+  if (betweenStart && isNaN(betweenStart.getTime())) {
+    return {
+      valid: false,
+      error: 'activeBetweenStart must be a valid ISO 8601 date',
+    };
   }
 
-  if (activeBetweenEnd) {
-    const date = new Date(activeBetweenEnd);
-    if (isNaN(date.getTime())) {
-      return { valid: false, error: 'activeBetweenEnd must be a valid ISO timestamp' };
-    }
+  // Validate activeBetweenEnd is valid date
+  if (betweenEnd && isNaN(betweenEnd.getTime())) {
+    return {
+      valid: false,
+      error: 'activeBetweenEnd must be a valid ISO 8601 date',
+    };
   }
 
-  // Validate activeBetween is a proper range
-  if (activeBetweenStart && activeBetweenEnd) {
-    const start = new Date(activeBetweenStart);
-    const end = new Date(activeBetweenEnd);
-
-    if (end <= start) {
+  // Validate activeBetween end is after start (T109)
+  if (betweenStart && betweenEnd) {
+    if (betweenEnd <= betweenStart) {
       return {
         valid: false,
         error: 'activeBetweenEnd must be after activeBetweenStart',

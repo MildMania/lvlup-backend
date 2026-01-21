@@ -159,3 +159,313 @@ export interface AnalyticsData {
     topEvent: string;
     topEvents: TopEventData[];
 }
+
+// ============================================================================
+// Remote Config API Types
+// ============================================================================
+
+import type {
+    ConfigDataType,
+    ConfigEnvironment,
+    Platform,
+    VersionOperator,
+    SegmentType,
+    ValidationRuleType,
+} from './config.types';
+
+/**
+ * POST /api/admin/configs - Create config request
+ */
+export interface CreateConfigRequest {
+    gameId: string;
+    key: string;
+    value: unknown;
+    dataType: ConfigDataType;
+    environment: ConfigEnvironment;
+    enabled?: boolean;
+    description?: string;
+    validationRules?: Array<{
+        ruleType: ValidationRuleType;
+        ruleValue: string;
+    }>;
+}
+
+/**
+ * POST /api/admin/configs - Create config response
+ */
+export interface CreateConfigResponse {
+    success: boolean;
+    data: {
+        id: string;
+        gameId: string;
+        key: string;
+        value: unknown;
+        dataType: ConfigDataType;
+        environment: ConfigEnvironment;
+        enabled: boolean;
+        description: string | null;
+        createdAt: string;
+        updatedAt: string;
+    };
+}
+
+/**
+ * PUT /api/admin/configs/:id - Update config request
+ */
+export interface UpdateConfigRequest {
+    value?: unknown;
+    enabled?: boolean;
+    description?: string;
+    validationRules?: Array<{
+        ruleType: ValidationRuleType;
+        ruleValue: string;
+    }>;
+}
+
+/**
+ * PUT /api/admin/configs/:id - Update config response
+ */
+export interface UpdateConfigResponse {
+    success: boolean;
+    data: {
+        id: string;
+        gameId: string;
+        key: string;
+        value: unknown;
+        dataType: ConfigDataType;
+        environment: ConfigEnvironment;
+        enabled: boolean;
+        description: string | null;
+        createdAt: string;
+        updatedAt: string;
+    };
+}
+
+/**
+ * GET /api/admin/configs/:gameId - List configs response
+ */
+export interface ListConfigsResponse {
+    success: boolean;
+    data: {
+        configs: Array<{
+            id: string;
+            gameId: string;
+            key: string;
+            value: unknown;
+            dataType: ConfigDataType;
+            environment: ConfigEnvironment;
+            enabled: boolean;
+            description: string | null;
+            createdAt: string;
+            updatedAt: string;
+            rulesCount?: number;
+        }>;
+        total: number;
+    };
+}
+
+/**
+ * DELETE /api/admin/configs/:id - Delete config response
+ */
+export interface DeleteConfigResponse {
+    success: boolean;
+    message: string;
+}
+
+/**
+ * POST /api/admin/configs/:configId/rules - Create rule request
+ */
+export interface CreateRuleRequest {
+    priority: number;
+    enabled?: boolean;
+    overrideValue: unknown;
+    platformCondition?: Platform;
+    versionOperator?: VersionOperator;
+    versionValue?: string;
+    countryCondition?: string;
+    segmentCondition?: SegmentType;
+    activeAfter?: string; // ISO timestamp
+    activeBetweenStart?: string; // ISO timestamp
+    activeBetweenEnd?: string; // ISO timestamp
+}
+
+/**
+ * POST /api/admin/configs/:configId/rules - Create rule response
+ */
+export interface CreateRuleResponse {
+    success: boolean;
+    data: {
+        id: string;
+        configId: string;
+        priority: number;
+        enabled: boolean;
+        overrideValue: unknown;
+        platformCondition: Platform | null;
+        versionOperator: VersionOperator | null;
+        versionValue: string | null;
+        countryCondition: string | null;
+        segmentCondition: SegmentType | null;
+        activeAfter: string | null;
+        activeBetweenStart: string | null;
+        activeBetweenEnd: string | null;
+        createdAt: string;
+        updatedAt: string;
+    };
+}
+
+/**
+ * PUT /api/admin/configs/:configId/rules/:ruleId - Update rule request
+ */
+export interface UpdateRuleRequest {
+    priority?: number;
+    enabled?: boolean;
+    overrideValue?: unknown;
+    platformCondition?: Platform | null;
+    versionOperator?: VersionOperator | null;
+    versionValue?: string | null;
+    countryCondition?: string | null;
+    segmentCondition?: SegmentType | null;
+    activeAfter?: string | null; // ISO timestamp
+    activeBetweenStart?: string | null; // ISO timestamp
+    activeBetweenEnd?: string | null; // ISO timestamp
+}
+
+/**
+ * PUT /api/admin/configs/:configId/rules/:ruleId - Update rule response
+ */
+export interface UpdateRuleResponse {
+    success: boolean;
+    data: {
+        id: string;
+        configId: string;
+        priority: number;
+        enabled: boolean;
+        overrideValue: unknown;
+        platformCondition: Platform | null;
+        versionOperator: VersionOperator | null;
+        versionValue: string | null;
+        countryCondition: string | null;
+        segmentCondition: SegmentType | null;
+        activeAfter: string | null;
+        activeBetweenStart: string | null;
+        activeBetweenEnd: string | null;
+        createdAt: string;
+        updatedAt: string;
+    };
+}
+
+/**
+ * DELETE /api/admin/configs/:configId/rules/:ruleId - Delete rule response
+ */
+export interface DeleteRuleResponse {
+    success: boolean;
+    message: string;
+}
+
+/**
+ * PUT /api/admin/configs/:configId/rules/reorder - Reorder rules request
+ */
+export interface ReorderRulesRequest {
+    ruleOrder: Array<{
+        ruleId: string;
+        newPriority: number;
+    }>;
+}
+
+/**
+ * PUT /api/admin/configs/:configId/rules/reorder - Reorder rules response
+ */
+export interface ReorderRulesResponse {
+    success: boolean;
+    data: {
+        updatedRules: Array<{
+            id: string;
+            priority: number;
+        }>;
+    };
+}
+
+/**
+ * GET /api/configs/:gameId - Public config fetch request query params
+ */
+export interface FetchConfigsQueryParams {
+    environment?: ConfigEnvironment;
+    platform?: Platform;
+    version?: string;
+    country?: string;
+    segment?: SegmentType;
+    debug?: 'true' | 'false';
+}
+
+/**
+ * GET /api/configs/:gameId - Public config fetch response
+ */
+export interface FetchConfigsResponse {
+    success: boolean;
+    data: {
+        configs: Record<string, unknown>; // key -> evaluated value
+        metadata: {
+            gameId: string;
+            environment: ConfigEnvironment;
+            fetchedAt: string; // ISO timestamp
+            cacheUntil: string; // ISO timestamp (5 min from fetch)
+            totalConfigs: number;
+        };
+        debug?: {
+            evaluations: Array<{
+                key: string;
+                value: unknown;
+                dataType: ConfigDataType;
+                source: 'default' | 'rule' | 'ab_test';
+                matchedRuleId?: string;
+                matchedRulePriority?: number;
+            }>;
+            context: {
+                platform?: Platform;
+                version?: string;
+                country?: string;
+                segment?: SegmentType;
+                serverTime: string;
+            };
+        };
+    };
+}
+
+/**
+ * GET /api/admin/configs/:configId/history - Config history response
+ */
+export interface ConfigHistoryResponse {
+    success: boolean;
+    data: {
+        history: Array<{
+            id: string;
+            configId: string;
+            changeType: string;
+            previousValue: unknown | null;
+            newValue: unknown;
+            changedBy: string;
+            changedAt: string;
+        }>;
+        total: number;
+    };
+}
+
+/**
+ * GET /api/admin/configs/:configId/rules/:ruleId/history - Rule history response
+ */
+export interface RuleHistoryResponse {
+    success: boolean;
+    data: {
+        history: Array<{
+            id: string;
+            ruleId: string | null;
+            configId: string;
+            action: string;
+            previousState: unknown | null;
+            newState: unknown | null;
+            changedBy: string;
+            changedAt: string;
+        }>;
+        total: number;
+    };
+}

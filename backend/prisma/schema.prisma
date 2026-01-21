@@ -142,19 +142,87 @@ model Event {
 }
 
 model RemoteConfig {
-  id          String   @id @default(cuid())
-  gameId      String
-  key         String
-  value       Json
-  environment String   @default("production")
-  enabled     Boolean  @default(true)
-  description String?
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
-  game        Game     @relation(fields: [gameId], references: [id], onDelete: Cascade)
+  id              String           @id @default(cuid())
+  gameId          String
+  key             String
+  value           Json
+  dataType        String           // "string", "number", "boolean", "json"
+  environment     String           @default("production")
+  enabled         Boolean          @default(true)
+  description     String?
+  createdAt       DateTime         @default(now())
+  updatedAt       DateTime         @updatedAt
+  game            Game             @relation(fields: [gameId], references: [id], onDelete: Cascade)
+  rules           RuleOverwrite[]
+  history         ConfigHistory[]
+  validationRules ValidationRule[]
 
   @@unique([gameId, key, environment])
+  @@index([gameId, environment, enabled])
   @@map("remote_configs")
+}
+
+model RuleOverwrite {
+  id                 String        @id @default(cuid())
+  configId           String
+  priority           Int           // Unique per config, ascending order
+  enabled            Boolean       @default(true)
+  overrideValue      Json          // Must match config dataType
+  platformCondition  String?       // "iOS", "Android", "Web"
+  versionOperator    String?       // "equal", "not_equal", "greater_than", "greater_or_equal", "less_than", "less_or_equal"
+  versionValue       String?       // Semantic version string
+  countryCondition   String?       // ISO 3166-1 alpha-2 code
+  segmentCondition   String?       // "new_users", "all_users", custom segment ID
+  activeAfter        DateTime?
+  activeBetweenStart DateTime?
+  activeBetweenEnd   DateTime?
+  createdAt          DateTime      @default(now())
+  updatedAt          DateTime      @updatedAt
+  config             RemoteConfig  @relation(fields: [configId], references: [id], onDelete: Cascade)
+  history            RuleHistory[]
+
+  @@unique([configId, priority])
+  @@index([configId, priority, enabled])
+  @@map("rule_overwrites")
+}
+
+model ConfigHistory {
+  id            String       @id @default(cuid())
+  configId      String
+  changeType    String       // "created", "updated", "deleted", "rollback"
+  previousValue Json?
+  newValue      Json
+  changedBy     String       // User ID or "system"
+  changedAt     DateTime     @default(now())
+  config        RemoteConfig @relation(fields: [configId], references: [id], onDelete: Cascade)
+
+  @@index([configId, changedAt])
+  @@map("config_history")
+}
+
+model RuleHistory {
+  id            String         @id @default(cuid())
+  ruleId        String?        // Nullable (preserved after rule deletion)
+  configId      String
+  action        String         // "created", "updated", "deleted", "reordered"
+  previousState Json?
+  newState      Json?
+  changedBy     String
+  changedAt     DateTime       @default(now())
+  rule          RuleOverwrite? @relation(fields: [ruleId], references: [id], onDelete: SetNull)
+
+  @@index([configId, changedAt])
+  @@map("rule_history")
+}
+
+model ValidationRule {
+  id        String       @id @default(cuid())
+  configId  String
+  ruleType  String       // "min", "max", "regex", "maxLength"
+  ruleValue String
+  config    RemoteConfig @relation(fields: [configId], references: [id], onDelete: Cascade)
+
+  @@map("validation_rules")
 }
 
 model ABTest {

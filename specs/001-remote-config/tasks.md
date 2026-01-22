@@ -168,24 +168,24 @@ This task list implements a comprehensive Remote Config System enabling game dev
 
 ### Tasks
 
-- [ ] T060 [P] [US3] Create RemoteConfigModels.cs data classes in Assets/lvlup-unity-sdk/Runtime/Scripts/RemoteConfigModels.cs
-- [ ] T061 [P] [US3] Create RemoteConfigCache.cs with PlayerPrefs wrapper in Assets/lvlup-unity-sdk/Runtime/Scripts/RemoteConfigCache.cs
-- [ ] T062 [P] [US3] Create RemoteConfigService.cs HTTP client in Assets/lvlup-unity-sdk/Runtime/Scripts/RemoteConfigService.cs
-- [ ] T063 [US3] Implement RemoteConfigManager.cs singleton in Assets/lvlup-unity-sdk/Runtime/Scripts/RemoteConfigManager.cs
-- [ ] T064 [US3] Implement FetchAsync() method with retry logic in Assets/lvlup-unity-sdk/Runtime/Scripts/RemoteConfigManager.cs
-- [ ] T065 [US3] Implement cache storage with timestamp in Assets/lvlup-unity-sdk/Runtime/Scripts/RemoteConfigCache.cs
-- [ ] T066 [US3] Implement cache expiration check (5-minute TTL) in Assets/lvlup-unity-sdk/Runtime/Scripts/RemoteConfigCache.cs
-- [ ] T067 [US3] Implement GetInt(key, defaultValue) getter in Assets/lvlup-unity-sdk/Runtime/Scripts/RemoteConfigManager.cs
-- [ ] T068 [US3] Implement GetString(key, defaultValue) getter in Assets/lvlup-unity-sdk/Runtime/Scripts/RemoteConfigManager.cs
-- [ ] T069 [US3] Implement GetBool(key, defaultValue) getter in Assets/lvlup-unity-sdk/Runtime/Scripts/RemoteConfigManager.cs
-- [ ] T070 [US3] Implement GetFloat(key, defaultValue) getter in Assets/lvlup-unity-sdk/Runtime/Scripts/RemoteConfigManager.cs
-- [ ] T071 [US3] Implement GetJson<T>(key, defaultValue) getter in Assets/lvlup-unity-sdk/Runtime/Scripts/RemoteConfigManager.cs
-- [ ] T072 [US3] Implement offline fallback to cache in Assets/lvlup-unity-sdk/Runtime/Scripts/RemoteConfigManager.cs
-- [ ] T073 [US3] Implement type coercion with fallback to defaults in Assets/lvlup-unity-sdk/Runtime/Scripts/RemoteConfigManager.cs
-- [ ] T074 [US3] Add OnConfigsUpdated event callback in Assets/lvlup-unity-sdk/Runtime/Scripts/RemoteConfigManager.cs
-- [ ] T075 [US3] Add platform context detection (iOS/Android/WebGL) in Assets/lvlup-unity-sdk/Runtime/Scripts/RemoteConfigService.cs
-- [ ] T076 [US3] Add version context from Application.version in Assets/lvlup-unity-sdk/Runtime/Scripts/RemoteConfigService.cs
-- [ ] T077 [US3] Create Unity SDK integration example in Assets/lvlup-unity-sdk/Examples/RemoteConfigExample.cs
+- [x] T060 [P] [US3] Create RemoteConfigModels.cs data classes in Assets/lvlup-unity-sdk/Runtime/Scripts/RemoteConfigModels.cs
+- [x] T061 [P] [US3] Create RemoteConfigCache.cs with PlayerPrefs wrapper in Assets/lvlup-unity-sdk/Runtime/Scripts/RemoteConfigCache.cs
+- [x] T062 [P] [US3] Create RemoteConfigService.cs HTTP client in Assets/lvlup-unity-sdk/Runtime/Scripts/RemoteConfigService.cs
+- [x] T063 [US3] Implement RemoteConfigManager.cs singleton in Assets/lvlup-unity-sdk/Runtime/Scripts/RemoteConfigManager.cs
+- [x] T064 [US3] Implement FetchAsync() method with retry logic in Assets/lvlup-unity-sdk/Runtime/Scripts/RemoteConfigManager.cs
+- [x] T065 [US3] Implement cache storage with timestamp in Assets/lvlup-unity-sdk/Runtime/Scripts/RemoteConfigCache.cs
+- [x] T066 [US3] Implement cache expiration check (5-minute TTL) in Assets/lvlup-unity-sdk/Runtime/Scripts/RemoteConfigCache.cs
+- [x] T067 [US3] Implement GetInt(key, defaultValue) getter in Assets/lvlup-unity-sdk/Runtime/Scripts/RemoteConfigManager.cs
+- [x] T068 [US3] Implement GetString(key, defaultValue) getter in Assets/lvlup-unity-sdk/Runtime/Scripts/RemoteConfigManager.cs
+- [x] T069 [US3] Implement GetBool(key, defaultValue) getter in Assets/lvlup-unity-sdk/Runtime/Scripts/RemoteConfigManager.cs
+- [x] T070 [US3] Implement GetFloat(key, defaultValue) getter in Assets/lvlup-unity-sdk/Runtime/Scripts/RemoteConfigManager.cs
+- [x] T071 [US3] Implement GetJson<T>(key, defaultValue) getter in Assets/lvlup-unity-sdk/Runtime/Scripts/RemoteConfigManager.cs
+- [x] T072 [US3] Implement offline fallback to cache in Assets/lvlup-unity-sdk/Runtime/Scripts/RemoteConfigManager.cs
+- [x] T073 [US3] Implement type coercion with fallback to defaults in Assets/lvlup-unity-sdk/Runtime/Scripts/RemoteConfigManager.cs
+- [x] T074 [US3] Add OnConfigsUpdated event callback in Assets/lvlup-unity-sdk/Runtime/Scripts/RemoteConfigManager.cs
+- [x] T075 [US3] Add platform context detection (iOS/Android/WebGL) in Assets/lvlup-unity-sdk/Runtime/Scripts/RemoteConfigService.cs
+- [x] T076 [US3] Add version context from Application.version in Assets/lvlup-unity-sdk/Runtime/Scripts/RemoteConfigService.cs
+- [x] T077 [US3] Create Unity SDK integration example in Assets/lvlup-unity-sdk/Examples/RemoteConfigExample.cs
 - [ ] T078 [P] [US3] Write Unity tests for cache persistence in Assets/lvlup-unity-sdk/Tests/RemoteConfigCache.test.cs
 - [ ] T079 [P] [US3] Write Unity tests for type-safe getters in Assets/lvlup-unity-sdk/Tests/RemoteConfigManager.test.cs
 - [ ] T080 [US3] Test offline behavior in Unity test project

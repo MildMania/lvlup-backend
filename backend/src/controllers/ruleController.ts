@@ -400,6 +400,14 @@ export async function reorderRules(
     const { configId } = req.params;
     const { ruleOrder } = req.body;
 
+    logger.info('Reorder request received:', {
+      configId,
+      requestBody: req.body,
+      ruleOrder,
+      ruleOrderType: typeof ruleOrder,
+      isArray: Array.isArray(ruleOrder),
+    });
+
     if (!configId) {
       res.status(400).json({
         success: false,
@@ -409,6 +417,7 @@ export async function reorderRules(
     }
 
     if (!ruleOrder || !Array.isArray(ruleOrder)) {
+      logger.error('Invalid ruleOrder:', { ruleOrder, isArray: Array.isArray(ruleOrder) });
       res.status(400).json({
         success: false,
         error: 'ruleOrder array is required',
@@ -418,6 +427,12 @@ export async function reorderRules(
 
     // Get user ID from auth context
     const userId = (req as any).user?.id || (req as any).gameId || 'system';
+
+    logger.info('Calling configService.reorderRules with:', {
+      configId,
+      ruleOrderLength: ruleOrder.length,
+      ruleOrderSample: ruleOrder.slice(0, 2),
+    });
 
     // Reorder rules
     await configService.reorderRules(

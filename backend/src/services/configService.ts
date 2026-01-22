@@ -553,6 +553,12 @@ export async function reorderRules(
   input: ReorderRulesInput,
   changedBy: string = 'system'
 ): Promise<void> {
+  logger.info('reorderRules called with:', {
+    configId: input.configId,
+    ruleOrderLength: input.ruleOrder.length,
+    ruleOrderSample: input.ruleOrder.slice(0, 2),
+  });
+
   // Check config exists
   const config = await prisma.remoteConfig.findUnique({
     where: { id: input.configId },
@@ -563,15 +569,37 @@ export async function reorderRules(
   }
 
   try {
-    // Update all rules with new priorities
+    logger.info('Updating rules with new priorities:', {
+      updates: input.ruleOrder,
+    });
+
+    // Use temporary negative priorities to avoid unique constraint violations
+    // Step 1: Assign temporary negative priorities
     await Promise.all(
-      input.ruleOrder.map((order) =>
-        prisma.ruleOverwrite.update({
+      input.ruleOrder.map((order, index) => {
+        const tempPriority = -(index + 1); // Use negative: -1, -2, -3, etc.
+        logger.debug('Assigning temp priority:', { ruleId: order.ruleId, tempPriority });
+        return prisma.ruleOverwrite.update({
+          where: { id: order.ruleId },
+          data: { priority: tempPriority },
+        });
+      })
+    );
+
+    logger.info('Temp priorities assigned');
+
+    // Step 2: Assign final priorities
+    await Promise.all(
+      input.ruleOrder.map((order) => {
+        logger.debug('Assigning final priority:', { ruleId: order.ruleId, finalPriority: order.newPriority });
+        return prisma.ruleOverwrite.update({
           where: { id: order.ruleId },
           data: { priority: order.newPriority },
-        })
-      )
+        });
+      })
     );
+
+    logger.info('Final priorities assigned');
 
     // Record history for each rule
     await Promise.all(

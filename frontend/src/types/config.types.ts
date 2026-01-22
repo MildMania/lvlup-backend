@@ -93,9 +93,9 @@ export interface UpdateRuleInput {
 }
 
 export interface ReorderRulesInput {
-  rules: Array<{
-    id: string;
-    priority: number;
+  ruleOrder: Array<{
+    ruleId: string;
+    newPriority: number;
   }>;
 }
 

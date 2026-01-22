@@ -14,6 +14,7 @@ interface RuleEditorProps {
   onSave: (rule: CreateRuleInput) => Promise<void>;
   onClose: () => void;
   isLoading?: boolean;
+  allRulesPriorities?: number[]; // Used to auto-assign next priority for new rules
 }
 
 const COUNTRIES = [
@@ -49,6 +50,7 @@ const RuleEditor: React.FC<RuleEditorProps> = ({
   onSave,
   onClose,
   isLoading = false,
+  allRulesPriorities,
 }) => {
   // Debug logging
   useEffect(() => {
@@ -95,7 +97,7 @@ const RuleEditor: React.FC<RuleEditorProps> = ({
   
   const [formData, setFormData] = useState<RuleFormState>(
     initialRule || {
-      priority: 1,
+      priority: allRulesPriorities ? Math.max(...allRulesPriorities, 0) + 1 : 1,
       enabled: true,
       overrideValue: currentValue !== undefined 
         ? (typeof currentValue === 'object' ? JSON.stringify(currentValue, null, 2) : currentValue)
@@ -129,9 +131,6 @@ const RuleEditor: React.FC<RuleEditorProps> = ({
   const validateForm = (): boolean => {
     const newErrors: ValidationError[] = [];
 
-    if (!formData.priority || formData.priority < 1) {
-      newErrors.push({ field: 'priority', message: 'Priority must be at least 1' });
-    }
 
     if (formData.overrideValue === undefined || formData.overrideValue === '') {
       newErrors.push({ field: 'overrideValue', message: 'Override value is required' });
@@ -293,33 +292,19 @@ const RuleEditor: React.FC<RuleEditorProps> = ({
             </div>
           )}
 
-          {/* Priority & Enable Toggle */}
-          <div style={{ display: 'grid', gridTemplateColumns: '150px 1fr', gap: '16px', alignItems: 'flex-end' }}>
-            <div className="form-group">
-              <label>Priority</label>
+          {/* Enable Toggle */}
+          <div className="form-group" style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+            <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', margin: 0 }}>
               <input
-                type="number"
-                min="1"
-                value={formData.priority}
-                onChange={(e) => setFormData({ ...formData, priority: parseInt(e.target.value) || 1 })}
-                className="form-input"
+                type="checkbox"
+                checked={formData.enabled}
+                onChange={(e) => setFormData({ ...formData, enabled: e.target.checked })}
                 disabled={isLoading}
+                style={{ width: '16px', height: '16px', cursor: 'pointer' }}
               />
-              <p style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', marginTop: '4px' }}>Lower = higher priority</p>
-            </div>
-
-            <div className="form-group" style={{ display: 'flex', alignItems: 'center' }}>
-              <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer' }}>
-                <input
-                  type="checkbox"
-                  checked={formData.enabled}
-                  onChange={(e) => setFormData({ ...formData, enabled: e.target.checked })}
-                  disabled={isLoading}
-                  style={{ width: '16px', height: '16px', cursor: 'pointer' }}
-                />
-                <span>Enabled</span>
-              </label>
-            </div>
+              <span>Enabled</span>
+            </label>
+            <span style={{ fontSize: '0.75rem', color: 'var(--text-secondary)' }}>Priority will be assigned based on order</span>
           </div>
 
           {/* Override Value with Current Value */}

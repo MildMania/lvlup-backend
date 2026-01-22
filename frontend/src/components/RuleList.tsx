@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { Edit2, Trash2, Plus, Power } from 'lucide-react';
+import { Edit2, Trash2, Plus, Power, GripVertical } from 'lucide-react';
 import type { RuleOverwrite, CreateRuleInput, UpdateRuleInput } from '../types/config.types';
 import configApi from '../services/configApi';
 import RuleEditor from './RuleEditor';
@@ -16,6 +16,8 @@ const RuleList: React.FC<RuleListProps> = ({ configId, configDataType, currentVa
   const [loading, setLoading] = useState(false);
   const [showEditor, setShowEditor] = useState(false);
   const [editingRule, setEditingRule] = useState<RuleOverwrite | null>(null);
+  const [draggedRuleId, setDraggedRuleId] = useState<string | null>(null);
+  const [dragOverIndex, setDragOverIndex] = useState<number | null>(null);
 
   useEffect(() => {
     fetchRules();
@@ -81,6 +83,62 @@ const RuleList: React.FC<RuleListProps> = ({ configId, configDataType, currentVa
     } catch (error) {
       console.error('Failed to delete rule:', error);
     }
+  };
+
+  const handleDragStart = (ruleId: string) => {
+    setDraggedRuleId(ruleId);
+  };
+
+  const handleDragOver = (e: React.DragEvent, index: number) => {
+    e.preventDefault();
+    setDragOverIndex(index);
+  };
+
+  const handleDragLeave = () => {
+    setDragOverIndex(null);
+  };
+
+  const handleDrop = async (e: React.DragEvent, targetIndex: number) => {
+    e.preventDefault();
+    setDragOverIndex(null);
+
+    if (!draggedRuleId) return;
+
+    const draggedIndex = rules.findIndex((r) => r.id === draggedRuleId);
+    if (draggedIndex === -1 || draggedIndex === targetIndex) {
+      setDraggedRuleId(null);
+      return;
+    }
+
+    // Reorder rules locally
+    const newRules = [...rules];
+    const [draggedRule] = newRules.splice(draggedIndex, 1);
+    newRules.splice(targetIndex, 0, draggedRule);
+
+    // Assign new priorities based on new order
+    const updatedRules = newRules.map((rule, index) => ({
+      ...rule,
+      priority: index + 1,
+    }));
+
+    setRules(updatedRules);
+
+    // Send reorder request to backend
+    try {
+      const ruleOrder = updatedRules.map((rule) => ({
+        ruleId: rule.id,
+        newPriority: rule.priority,
+      }));
+
+      await configApi.reorderRules(configId, { ruleOrder });
+      onRulesChange?.();
+    } catch (error) {
+      console.error('Failed to reorder rules:', error);
+      // Revert to original order
+      await fetchRules();
+    }
+
+    setDraggedRuleId(null);
   };
 
   const handleToggleRule = async (ruleId: string) => {
@@ -302,23 +360,46 @@ const RuleList: React.FC<RuleListProps> = ({ configId, configDataType, currentVa
         </div>
       ) : (
         <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-          {rules.map((rule) => (
+          {rules.map((rule, index) => (
             <div
               key={rule.id}
+              draggable
+              onDragStart={() => handleDragStart(rule.id)}
+              onDragOver={(e) => handleDragOver(e, index)}
+              onDragLeave={handleDragLeave}
+              onDrop={(e) => handleDrop(e, index)}
               style={{
-                background: 'var(--bg-secondary)',
-                border: '1px solid var(--border-primary)',
+                background: draggedRuleId === rule.id ? 'var(--bg-tertiary)' : 'var(--bg-secondary)',
+                border: dragOverIndex === index ? '2px solid var(--accent-primary)' : '1px solid var(--border-primary)',
                 borderRadius: '12px',
                 padding: '16px',
-                transition: 'all 0.2s ease'
+                transition: 'all 0.2s ease',
+                cursor: draggedRuleId === rule.id ? 'grabbing' : 'grab',
+                opacity: draggedRuleId === rule.id ? 0.7 : 1,
               }}
-              onMouseOver={(e) => (e.currentTarget.style.borderColor = 'var(--accent-primary)')}
-              onMouseOut={(e) => (e.currentTarget.style.borderColor = 'var(--border-primary)')}
+              onMouseOver={(e) => !draggedRuleId && (e.currentTarget.style.borderColor = 'var(--accent-primary)')}
+              onMouseOut={(e) => dragOverIndex !== index && (e.currentTarget.style.borderColor = 'var(--border-primary)')}
             >
               <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between' }}>
                 <div style={{ flex: 1 }}>
                   {/* Priority & Conditions */}
                   <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '12px', flexWrap: 'wrap' }}>
+                    <span
+                      style={{
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        width: '20px',
+                        height: '20px',
+                        color: 'var(--text-secondary)',
+                        cursor: 'grab',
+                        flexShrink: 0,
+                        opacity: 0.6
+                      }}
+                      title="Drag to reorder"
+                    >
+                      <GripVertical size={16} />
+                    </span>
                     <span
                       style={{
                         display: 'inline-flex',
@@ -443,6 +524,7 @@ const RuleList: React.FC<RuleListProps> = ({ configId, configDataType, currentVa
         <RuleEditor
           configDataType={configDataType}
           currentValue={currentValue}
+          allRulesPriorities={rules.map(r => r.priority)}
           initialRule={
             editingRule
               ? {

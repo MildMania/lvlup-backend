@@ -51,17 +51,17 @@ router.post(
  */
 
 /**
- * POST /api/config/configs/:configId/rules/reorder
+ * PUT /api/config/configs/:configId/rules/reorder
  * Reorder rules for a config
  */
-router.post(
+router.put(
   '/configs/:configId/rules/reorder',
   authenticateEither,
   async (req: Request, res: Response) => {
     try {
       await ruleController.reorderRules(req, res);
     } catch (error) {
-      logger.error('Error in POST /api/config/configs/:configId/rules/reorder:', error);
+      logger.error('Error in PUT /api/config/configs/:configId/rules/reorder:', error);
       res.status(500).json({
         success: false,
         error: 'Internal server error',

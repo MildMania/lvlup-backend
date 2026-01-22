@@ -65,7 +65,7 @@ const RemoteConfig: React.FC<RemoteConfigProps> = ({ isCollapsed = false }) => {
   const [showEditModal, setShowEditModal] = useState(false);
   const [showDraftsPanel, setShowDraftsPanel] = useState(false);
   const [jsonError, setJsonError] = useState<JsonError | null>(null);
-  const [activeTab, setActiveTab] = useState<'overview' | 'rules' | 'history' | 'reorder'>('overview');
+  const [activeTab, setActiveTab] = useState<'overview' | 'rules' | 'history'>('overview');
   const [formData, setFormData] = useState<CreateConfigForm>({
     gameId: currentGame.id,
     key: '',
@@ -533,7 +533,7 @@ const RemoteConfig: React.FC<RemoteConfigProps> = ({ isCollapsed = false }) => {
 
             {/* Tabs */}
             <div className="config-detail-tabs">
-              {['overview', 'rules', 'history', 'reorder'].map((tab) => (
+              {['overview', 'rules', 'history'].map((tab) => (
                 <button
                   key={tab}
                   onClick={() => setActiveTab(tab as any)}
@@ -542,7 +542,6 @@ const RemoteConfig: React.FC<RemoteConfigProps> = ({ isCollapsed = false }) => {
                   {tab === 'overview' && 'Overview'}
                   {tab === 'rules' && 'Rules'}
                   {tab === 'history' && 'History'}
-                  {tab === 'reorder' && 'Priority'}
                 </button>
               ))}
             </div>

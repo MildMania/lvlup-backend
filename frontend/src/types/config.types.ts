@@ -46,34 +46,37 @@ export interface UpdateConfigInput {
 export type VersionOperator = '=' | '!=' | '>' | '>=' | '<' | '<=';
 export type SegmentCondition = 'all_users' | 'new_users' | string; // string for custom segments
 
+/**
+ * Platform condition with version range
+ */
+export interface PlatformCondition {
+  platform: string; // "iOS", "Android", "Web"
+  minVersion?: string; // Minimum version (inclusive)
+  maxVersion?: string; // Maximum version (inclusive)
+}
+
 export interface RuleOverwrite {
   id: string;
   configId: string;
   priority: number;
   enabled: boolean;
   overrideValue: any;
-  platformCondition?: string; // 'iOS' | 'Android' | 'Web'
-  versionOperator?: VersionOperator;
-  versionValue?: string; // semver
-  countryCondition?: string; // ISO 3166-1 alpha-2
-  segmentCondition?: SegmentCondition;
-  activeAfter?: string; // ISO datetime
+  platformConditions?: PlatformCondition[]; // Array of platforms with version ranges
+  countryConditions?: string[];
+  segmentConditions?: SegmentCondition[];
   activeBetweenStart?: string; // ISO datetime
   activeBetweenEnd?: string; // ISO datetime
-  createdAt: string;
-  updatedAt: string;
+  createdAt?: string;
+  updatedAt?: string;
 }
 
 export interface CreateRuleInput {
   priority: number;
   enabled?: boolean;
   overrideValue: any;
-  platformCondition?: string;
-  versionOperator?: VersionOperator;
-  versionValue?: string;
-  countryCondition?: string;
-  segmentCondition?: SegmentCondition;
-  activeAfter?: string;
+  platformConditions?: PlatformCondition[]; // Array of platforms with version ranges
+  countryConditions?: string[]; // Array of ISO country codes
+  segmentConditions?: SegmentCondition[]; // Array of segment IDs
   activeBetweenStart?: string;
   activeBetweenEnd?: string;
 }
@@ -82,12 +85,9 @@ export interface UpdateRuleInput {
   priority?: number;
   enabled?: boolean;
   overrideValue?: any;
-  platformCondition?: string | null;
-  versionOperator?: VersionOperator | null;
-  versionValue?: string | null;
-  countryCondition?: string | null;
-  segmentCondition?: SegmentCondition | null;
-  activeAfter?: string | null;
+  platformConditions?: PlatformCondition[] | null; // Array of platforms with version ranges
+  countryConditions?: string[] | null; // Array of ISO country codes
+  segmentConditions?: SegmentCondition[] | null; // Array of segment IDs
   activeBetweenStart?: string | null;
   activeBetweenEnd?: string | null;
 }
@@ -197,11 +197,8 @@ export interface RuleFormState {
   enabled: boolean;
   overrideValue: any;
   platformCondition?: string | null;
-  versionOperator?: VersionOperator | null;
-  versionValue?: string | null;
-  countryCondition?: string | null;
-  segmentCondition?: SegmentCondition | null;
-  activeAfter?: string | null;
+  minVersion?: string | null;
+  maxVersion?: string | null;
   activeBetweenStart?: string | null;
   activeBetweenEnd?: string | null;
 }

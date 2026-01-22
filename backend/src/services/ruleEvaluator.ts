@@ -20,57 +20,74 @@ import logger from '../utils/logger';
  * @returns true if all conditions match, false otherwise
  */
 function evaluateRuleCondition(rule: RuleOverwrite, context: RuleEvaluationContext): boolean {
-  // Platform condition
-  if (rule.platformCondition && context.platform) {
-    if (rule.platformCondition !== context.platform) {
+  // Platform condition with version range - check if context platform matches and version is in range
+  if (rule.platformConditions && Array.isArray(rule.platformConditions) && rule.platformConditions.length > 0) {
+    if (!context.platform) {
+      // If context has no platform but rule requires platforms, rule doesn't match
       return false;
     }
-  }
-
-  // Version condition
-  if (rule.versionOperator && rule.versionValue && context.version) {
-    try {
-      if (!compareVersions(context.version, rule.versionOperator, rule.versionValue)) {
+    
+    // Find matching platform condition
+    const platformMatch = (rule.platformConditions as any[]).find(
+      (pc: any) => pc.platform === context.platform
+    );
+    
+    if (!platformMatch) {
+      // Platform not in the rule's platform list
+      return false;
+    }
+    
+    // Check version range if specified
+    if (context.version) {
+      try {
+        if (platformMatch.minVersion && compareVersions(context.version, 'less_than', platformMatch.minVersion)) {
+          return false; // Context version is below minimum
+        }
+        if (platformMatch.maxVersion && compareVersions(context.version, 'greater_than', platformMatch.maxVersion)) {
+          return false; // Context version is above maximum
+        }
+      } catch (error) {
+        logger.error('Version range comparison error:', {
+          contextVersion: context.version,
+          platform: platformMatch.platform,
+          minVersion: platformMatch.minVersion,
+          maxVersion: platformMatch.maxVersion,
+          error,
+        });
         return false;
       }
-    } catch (error) {
-      logger.error('Version comparison error:', {
-        contextVersion: context.version,
-        operator: rule.versionOperator,
-        constraintVersion: rule.versionValue,
-        error,
-      });
+    }
+  }
+
+  // Country condition - check if context country is in the allowed countries array
+  if (rule.countryConditions && Array.isArray(rule.countryConditions) && rule.countryConditions.length > 0 && context.country) {
+    if (!rule.countryConditions.includes(context.country)) {
       return false;
     }
   }
 
-  // Country condition
-  if (rule.countryCondition && context.country) {
-    if (rule.countryCondition !== context.country) {
+  // Segment condition - check if context segment is in the allowed segments array
+  if (rule.segmentConditions && Array.isArray(rule.segmentConditions) && rule.segmentConditions.length > 0 && context.segment) {
+    if (!rule.segmentConditions.includes(context.segment)) {
       return false;
     }
   }
 
-  // Segment condition
-  if (rule.segmentCondition && context.segment) {
-    if (rule.segmentCondition !== context.segment) {
-      return false;
-    }
-  }
-
-  // Date conditions
+  // Date range condition - check if current time is within activation period
   const now = context.serverTime || new Date();
 
-  // activeAfter condition
-  if (rule.activeAfter) {
-    if (now < rule.activeAfter) {
-      return false;
-    }
-  }
-
-  // activeBetween condition
   if (rule.activeBetweenStart && rule.activeBetweenEnd) {
     if (now < rule.activeBetweenStart || now > rule.activeBetweenEnd) {
+      return false; // Current time is outside the activation window
+    }
+  } else if (rule.activeBetweenStart) {
+    // Only start date specified - active from start onwards
+    if (now < rule.activeBetweenStart) {
+      return false;
+    }
+  } else if (rule.activeBetweenEnd) {
+    // Only end date specified - active until end
+    if (now > rule.activeBetweenEnd) {
       return false;
     }
   }
@@ -198,15 +215,24 @@ export function filterMatchingRules(
  * @returns Object describing all conditions
  */
 export function getRuleConditionsSummary(rule: RuleOverwrite): Record<string, unknown> {
+  const platformSummary = rule.platformConditions && Array.isArray(rule.platformConditions)
+    ? (rule.platformConditions as any[])
+        .map((pc: any) => {
+          const versionRange = pc.minVersion || pc.maxVersion
+            ? `(${pc.minVersion || '*'}-${pc.maxVersion || '*'})`
+            : '';
+          return `${pc.platform}${versionRange}`;
+        })
+        .join(', ')
+    : 'any';
+
   return {
-    platform: rule.platformCondition || 'any',
-    version: rule.versionValue ? `${rule.versionOperator} ${rule.versionValue}` : 'any',
-    country: rule.countryCondition || 'any',
-    segment: rule.segmentCondition || 'any',
-    activeAfter: rule.activeAfter?.toISOString() || 'never',
-    activeBetween: rule.activeBetweenStart
-      ? `${rule.activeBetweenStart.toISOString()} - ${rule.activeBetweenEnd?.toISOString()}`
-      : 'never',
+    platforms: platformSummary,
+    countries: rule.countryConditions && rule.countryConditions.length > 0 ? rule.countryConditions.join(', ') : 'any',
+    segments: rule.segmentConditions && rule.segmentConditions.length > 0 ? rule.segmentConditions.join(', ') : 'any',
+    activeBetween: rule.activeBetweenStart || rule.activeBetweenEnd
+      ? `${rule.activeBetweenStart?.toISOString() || 'start'} - ${rule.activeBetweenEnd?.toISOString() || 'end'}`
+      : 'always',
   };
 }
 

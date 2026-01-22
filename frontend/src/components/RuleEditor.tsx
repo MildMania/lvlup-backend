@@ -1,8 +1,7 @@
 import React, { useState, useEffect } from 'react';
-import { X, AlertCircle, Check } from 'lucide-react';
+import { AlertCircle, Check } from 'lucide-react';
 import type {
   CreateRuleInput,
-  VersionOperator,
   RuleFormState,
   RuleSummary,
   ValidationError,
@@ -16,10 +15,6 @@ interface RuleEditorProps {
   onClose: () => void;
   isLoading?: boolean;
 }
-
-const VERSION_OPERATORS: VersionOperator[] = ['=', '!=', '>', '>=', '<', '<='];
-
-const PLATFORMS = ['iOS', 'Android'];
 
 const COUNTRIES = [
   { code: 'US', name: 'United States' },
@@ -60,13 +55,43 @@ const RuleEditor: React.FC<RuleEditorProps> = ({
     console.log('RuleEditor received currentValue:', currentValue);
   }, [currentValue]);
 
-  const [platformStates, setPlatformStates] = useState<Record<string, PlatformState>>({
-    iOS: { enabled: true, versionFrom: '', versionTo: '' },
-    Android: { enabled: true, versionFrom: '', versionTo: '' },
-  });
+  // Extract platform conditions from initialRule
+  const extractPlatformStates = (): Record<string, PlatformState> => {
+    // RuleList passes platformConditions as relatedPlatforms (pseudo-field for compatibility)
+    const platformConditions = (initialRule as any)?.relatedPlatforms || (initialRule as any)?.platformConditions || [];
+    
+    // Initialize with iOS and Android disabled
+    const states: Record<string, PlatformState> = {
+      iOS: { enabled: false, versionFrom: '', versionTo: '' },
+      Android: { enabled: false, versionFrom: '', versionTo: '' },
+    };
+
+    // If editing an existing rule, populate from platformConditions
+    if (Array.isArray(platformConditions) && platformConditions.length > 0) {
+      platformConditions.forEach((pc: any) => {
+        if (states[pc.platform]) {
+          states[pc.platform].enabled = true;
+          states[pc.platform].versionFrom = pc.minVersion || '';
+          states[pc.platform].versionTo = pc.maxVersion || '';
+        }
+      });
+    } else if (!initialRule) {
+      // For new rules: enable both platforms by default
+      states.iOS.enabled = true;
+      states.Android.enabled = true;
+    }
+
+    return states;
+  };
+
+  const [platformStates, setPlatformStates] = useState<Record<string, PlatformState>>(extractPlatformStates());
   
-  const [selectedCountries, setSelectedCountries] = useState<string[]>([]);
-  const [selectedSegments, setSelectedSegments] = useState<string[]>([]);
+  // Initialize countries and segments from initialRule if provided
+  const extractedCountries = (initialRule as any)?.relatedCountries || [];
+  const extractedSegments = (initialRule as any)?.relatedSegments || [];
+  
+  const [selectedCountries, setSelectedCountries] = useState<string[]>(extractedCountries);
+  const [selectedSegments, setSelectedSegments] = useState<string[]>(extractedSegments);
   
   const [formData, setFormData] = useState<RuleFormState>(
     initialRule || {
@@ -76,11 +101,8 @@ const RuleEditor: React.FC<RuleEditorProps> = ({
         ? (typeof currentValue === 'object' ? JSON.stringify(currentValue, null, 2) : currentValue)
         : getDefaultOverrideValue(configDataType),
       platformCondition: null,
-      versionOperator: null,
-      versionValue: null,
-      countryCondition: null,
-      segmentCondition: null,
-      activeAfter: null,
+      minVersion: null,
+      maxVersion: null,
       activeBetweenStart: null,
       activeBetweenEnd: null,
     }
@@ -88,18 +110,6 @@ const RuleEditor: React.FC<RuleEditorProps> = ({
 
   const [errors, setErrors] = useState<ValidationError[]>([]);
   const [success, setSuccess] = useState(false);
-
-  const toggleCountry = (code: string) => {
-    setSelectedCountries(prev =>
-      prev.includes(code) ? prev.filter(c => c !== code) : [...prev, code]
-    );
-  };
-
-  const toggleSegment = (value: string) => {
-    setSelectedSegments(prev =>
-      prev.includes(value) ? prev.filter(s => s !== value) : [...prev, value]
-    );
-  };
 
   const togglePlatform = (platform: string) => {
     setPlatformStates(prev => ({
@@ -156,24 +166,37 @@ const RuleEditor: React.FC<RuleEditorProps> = ({
     if (!validateForm()) return;
 
     try {
-      // Build platform condition from enabled platforms
-      const enabledPlatforms = Object.entries(platformStates)
+      // Get enabled platforms with their version ranges
+      const platformConditions = Object.entries(platformStates)
         .filter(([_, state]) => state.enabled)
-        .map(([platform]) => platform);
+        .map(([platform, state]) => ({
+          platform,
+          minVersion: state.versionFrom || undefined,
+          maxVersion: state.versionTo || undefined,
+        }));
 
+      if (platformConditions.length === 0) {
+        setErrors([{ field: 'platform', message: 'Please select at least one platform' }]);
+        return;
+      }
+
+      const promises: Promise<void>[] = [];
+
+      // Create ONE rule with all enabled platforms (with their individual version ranges), countries, and segments
       const ruleInput: CreateRuleInput = {
         priority: formData.priority,
         enabled: formData.enabled,
         overrideValue: convertOverrideValue(formData.overrideValue, configDataType),
-        platformCondition: enabledPlatforms.length > 0 ? enabledPlatforms.join(',') : undefined,
-        countryCondition: selectedCountries.length > 0 ? selectedCountries.join(',') : undefined,
-        segmentCondition: selectedSegments.length > 0 ? selectedSegments.join(',') : undefined,
-        activeAfter: formData.activeAfter || undefined,
+        platformConditions: platformConditions,
+        countryConditions: selectedCountries.length > 0 ? selectedCountries : undefined,
+        segmentConditions: selectedSegments.length > 0 ? selectedSegments : undefined,
         activeBetweenStart: formData.activeBetweenStart || undefined,
         activeBetweenEnd: formData.activeBetweenEnd || undefined,
       };
 
-      await onSave(ruleInput);
+      promises.push(onSave(ruleInput));
+
+      await Promise.all(promises);
       setSuccess(true);
       setTimeout(() => {
         onClose();
@@ -210,9 +233,6 @@ const RuleEditor: React.FC<RuleEditorProps> = ({
       conditions.push(`Segments: ${selectedSegments.join(', ')}`);
     }
 
-    if (formData.activeAfter) {
-      conditions.push(`Active after: ${new Date(formData.activeAfter).toLocaleDateString()}`);
-    }
 
     if (formData.activeBetweenStart && formData.activeBetweenEnd) {
       conditions.push(
@@ -274,7 +294,7 @@ const RuleEditor: React.FC<RuleEditorProps> = ({
           )}
 
           {/* Priority & Enable Toggle */}
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
+          <div style={{ display: 'grid', gridTemplateColumns: '150px 1fr', gap: '16px', alignItems: 'flex-end' }}>
             <div className="form-group">
               <label>Priority</label>
               <input
@@ -285,10 +305,10 @@ const RuleEditor: React.FC<RuleEditorProps> = ({
                 className="form-input"
                 disabled={isLoading}
               />
-              <p style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', marginTop: '4px' }}>Lower numbers evaluated first</p>
+              <p style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', marginTop: '4px' }}>Lower = higher priority</p>
             </div>
 
-            <div className="form-group" style={{ display: 'flex', alignItems: 'flex-end' }}>
+            <div className="form-group" style={{ display: 'flex', alignItems: 'center' }}>
               <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer' }}>
                 <input
                   type="checkbox"
@@ -433,26 +453,8 @@ const RuleEditor: React.FC<RuleEditorProps> = ({
           {/* Country Filters */}
           <div className="form-group">
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '8px' }}>
-              <label>Country Filters</label>
+              <label>Country Filter (Optional)</label>
               <div style={{ display: 'flex', gap: '8px' }}>
-                <button
-                  type="button"
-                  onClick={() => setSelectedCountries(COUNTRIES.map(c => c.code))}
-                  style={{
-                    fontSize: '0.75rem',
-                    padding: '4px 8px',
-                    background: 'rgba(59, 130, 246, 0.1)',
-                    color: 'var(--accent-primary)',
-                    border: '1px solid rgba(59, 130, 246, 0.2)',
-                    borderRadius: '6px',
-                    cursor: 'pointer',
-                    transition: 'all 0.2s ease'
-                  }}
-                  onMouseOver={(e) => (e.currentTarget.style.background = 'rgba(59, 130, 246, 0.15)')}
-                  onMouseOut={(e) => (e.currentTarget.style.background = 'rgba(59, 130, 246, 0.1)')}
-                >
-                  All
-                </button>
                 <button
                   type="button"
                   onClick={() => setSelectedCountries([])}
@@ -473,6 +475,7 @@ const RuleEditor: React.FC<RuleEditorProps> = ({
                 </button>
               </div>
             </div>
+            <p style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', marginBottom: '12px' }}>Select countries. A separate rule will be created for each combination (platform × country × segment).</p>
             <div style={{
               border: '1px solid var(--border-primary)',
               borderRadius: '8px',
@@ -486,17 +489,24 @@ const RuleEditor: React.FC<RuleEditorProps> = ({
                 <button
                   key={country.code}
                   type="button"
-                  onClick={() => toggleCountry(country.code)}
+                  onClick={() => {
+                    setSelectedCountries(prev =>
+                      prev.includes(country.code) 
+                        ? prev.filter(c => c !== country.code)
+                        : [...prev, country.code]
+                    );
+                  }}
                   style={{
                     textAlign: 'left',
                     padding: '12px',
                     borderRadius: '6px',
-                    border: selectedCountries.includes(country.code) ? '1px solid var(--accent-primary)' : '1px solid var(--border-primary)',
+                    border: selectedCountries.includes(country.code) ? '2px solid var(--accent-primary)' : '1px solid var(--border-primary)',
                     background: selectedCountries.includes(country.code) ? 'rgba(59, 130, 246, 0.1)' : 'var(--bg-primary)',
                     color: selectedCountries.includes(country.code) ? 'var(--accent-primary)' : 'var(--text-secondary)',
                     fontSize: '0.875rem',
                     cursor: 'pointer',
-                    transition: 'all 0.2s ease'
+                    transition: 'all 0.2s ease',
+                    fontWeight: selectedCountries.includes(country.code) ? '600' : '400'
                   }}
                 >
                   {country.name} ({country.code})
@@ -504,33 +514,15 @@ const RuleEditor: React.FC<RuleEditorProps> = ({
               ))}
             </div>
             {selectedCountries.length > 0 && (
-              <p style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', marginTop: '8px', margin: '0' }}>Selected: {selectedCountries.join(', ')}</p>
+              <p style={{ fontSize: '0.75rem', color: 'var(--accent-primary)', marginTop: '8px', margin: '0', fontWeight: '500' }}>Selected: {selectedCountries.join(', ')}</p>
             )}
           </div>
 
           {/* Segment Filters */}
           <div className="form-group">
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '8px' }}>
-              <label>Segment Filters</label>
+              <label>Segment Filter (Optional)</label>
               <div style={{ display: 'flex', gap: '8px' }}>
-                <button
-                  type="button"
-                  onClick={() => setSelectedSegments(SEGMENTS.map(s => s.value))}
-                  style={{
-                    fontSize: '0.75rem',
-                    padding: '4px 8px',
-                    background: 'rgba(59, 130, 246, 0.1)',
-                    color: 'var(--accent-primary)',
-                    border: '1px solid rgba(59, 130, 246, 0.2)',
-                    borderRadius: '6px',
-                    cursor: 'pointer',
-                    transition: 'all 0.2s ease'
-                  }}
-                  onMouseOver={(e) => (e.currentTarget.style.background = 'rgba(59, 130, 246, 0.15)')}
-                  onMouseOut={(e) => (e.currentTarget.style.background = 'rgba(59, 130, 246, 0.1)')}
-                >
-                  All
-                </button>
                 <button
                   type="button"
                   onClick={() => setSelectedSegments([])}
@@ -551,6 +543,7 @@ const RuleEditor: React.FC<RuleEditorProps> = ({
                 </button>
               </div>
             </div>
+            <p style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', marginBottom: '12px' }}>Select segments. A separate rule will be created for each combination (platform × country × segment).</p>
             <div style={{
               border: '1px solid var(--border-primary)',
               borderRadius: '8px',
@@ -564,18 +557,25 @@ const RuleEditor: React.FC<RuleEditorProps> = ({
                 <button
                   key={segment.value}
                   type="button"
-                  onClick={() => toggleSegment(segment.value)}
+                  onClick={() => {
+                    setSelectedSegments(prev =>
+                      prev.includes(segment.value)
+                        ? prev.filter(s => s !== segment.value)
+                        : [...prev, segment.value]
+                    );
+                  }}
                   style={{
                     textAlign: 'left',
                     padding: '12px',
                     borderRadius: '6px',
-                    border: selectedSegments.includes(segment.value) ? '1px solid var(--accent-primary)' : '1px solid var(--border-primary)',
+                    border: selectedSegments.includes(segment.value) ? '2px solid var(--accent-primary)' : '1px solid var(--border-primary)',
                     background: selectedSegments.includes(segment.value) ? 'rgba(59, 130, 246, 0.1)' : 'var(--bg-primary)',
                     color: selectedSegments.includes(segment.value) ? 'var(--accent-primary)' : 'var(--text-secondary)',
                     fontSize: '0.875rem',
                     cursor: 'pointer',
                     transition: 'all 0.2s ease',
-                    width: '100%'
+                    width: '100%',
+                    fontWeight: selectedSegments.includes(segment.value) ? '600' : '400'
                   }}
                 >
                   {segment.label}
@@ -583,30 +583,15 @@ const RuleEditor: React.FC<RuleEditorProps> = ({
               ))}
             </div>
             {selectedSegments.length > 0 && (
-              <p style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', marginTop: '8px', margin: '0' }}>Selected: {selectedSegments.map(s => SEGMENTS.find(seg => seg.value === s)?.label).join(', ')}</p>
+              <p style={{ fontSize: '0.75rem', color: 'var(--accent-primary)', marginTop: '8px', margin: '0', fontWeight: '500' }}>Selected: {selectedSegments.map(s => SEGMENTS.find(seg => seg.value === s)?.label).join(', ')}</p>
             )}
           </div>
 
-          {/* Date Conditions */}
-          <div className="form-group">
-            <label>Active After (Optional)</label>
-            <input
-              type="datetime-local"
-              value={formData.activeAfter ? formData.activeAfter.slice(0, 16) : ''}
-              onChange={(e) =>
-                setFormData({
-                  ...formData,
-                  activeAfter: e.target.value ? new Date(e.target.value).toISOString() : null,
-                })
-              }
-              className="form-input"
-              disabled={isLoading}
-            />
-          </div>
-
+          {/* Date Range */}
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
             <div className="form-group">
-              <label>Active Between Start (Optional)</label>
+              <label>Start Date (Optional)</label>
+              <p style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', marginBottom: '8px' }}>Leave empty to start immediately</p>
               <input
                 type="datetime-local"
                 value={formData.activeBetweenStart ? formData.activeBetweenStart.slice(0, 16) : ''}
@@ -622,7 +607,8 @@ const RuleEditor: React.FC<RuleEditorProps> = ({
             </div>
 
             <div className="form-group">
-              <label>Active Between End (Optional)</label>
+              <label>End Date (Optional)</label>
+              <p style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', marginBottom: '8px' }}>Leave empty for indefinite</p>
               <input
                 type="datetime-local"
                 value={formData.activeBetweenEnd ? formData.activeBetweenEnd.slice(0, 16) : ''}

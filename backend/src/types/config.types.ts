@@ -75,6 +75,15 @@ export interface RemoteConfig {
 /**
  * RuleOverwrite model
  */
+/**
+ * Platform condition with version range
+ */
+export interface PlatformCondition {
+  platform: string; // "iOS", "Android", "Web"
+  minVersion?: string | null; // Minimum version (inclusive), e.g., "1.0.0"
+  maxVersion?: string | null; // Maximum version (inclusive), e.g., "2.0.0"
+}
+
 export interface RuleOverwrite {
   id: string;
   configId: string;
@@ -83,14 +92,11 @@ export interface RuleOverwrite {
   overrideValue: unknown; // Must match parent config dataType
   
   // Conditions (all nullable, null = "any")
-  platformCondition: Platform | null;
-  versionOperator: VersionOperator | null;
-  versionValue: string | null; // Semantic version string
-  countryCondition: string | null; // ISO 3166-1 alpha-2 code
-  segmentCondition: SegmentType | null;
-  activeAfter: Date | null;
-  activeBetweenStart: Date | null;
-  activeBetweenEnd: Date | null;
+  platformConditions: PlatformCondition[] | null; // Array of platforms with version ranges
+  countryConditions: string[] | null; // Array of ISO 3166-1 alpha-2 codes
+  segmentConditions: SegmentType[] | null; // Array of segment types
+  activeBetweenStart: Date | null; // Start date for activation (inclusive)
+  activeBetweenEnd: Date | null; // End date for activation (inclusive)
   
   createdAt: Date;
   updatedAt: Date;
@@ -239,12 +245,9 @@ export interface CreateRuleInput {
   priority: number;
   enabled?: boolean;
   overrideValue: unknown;
-  platformCondition?: Platform;
-  versionOperator?: VersionOperator;
-  versionValue?: string;
-  countryCondition?: string;
-  segmentCondition?: SegmentType;
-  activeAfter?: Date;
+  platformConditions?: PlatformCondition[]; // Array of platforms with version ranges
+  countryConditions?: string[]; // Array of ISO country codes
+  segmentConditions?: SegmentType[]; // Array of segment IDs
   activeBetweenStart?: Date;
   activeBetweenEnd?: Date;
 }
@@ -256,12 +259,9 @@ export interface UpdateRuleInput {
   priority?: number;
   enabled?: boolean;
   overrideValue?: unknown;
-  platformCondition?: Platform | null;
-  versionOperator?: VersionOperator | null;
-  versionValue?: string | null;
-  countryCondition?: string | null;
-  segmentCondition?: SegmentType | null;
-  activeAfter?: Date | null;
+  platformConditions?: PlatformCondition[] | null; // Array of platforms with version ranges
+  countryConditions?: string[] | null; // Array of ISO country codes
+  segmentConditions?: SegmentType[] | null; // Array of segment IDs
   activeBetweenStart?: Date | null;
   activeBetweenEnd?: Date | null;
 }

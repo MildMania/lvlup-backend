@@ -174,6 +174,15 @@ import type {
 } from './config.types';
 
 /**
+ * Platform condition with version range
+ */
+export interface PlatformCondition {
+    platform: string; // "iOS", "Android", "Web"
+    minVersion?: string; // Minimum version (inclusive), e.g., "1.0.0"
+    maxVersion?: string; // Maximum version (inclusive), e.g., "2.0.0"
+}
+
+/**
  * POST /api/admin/configs - Create config request
  */
 export interface CreateConfigRequest {
@@ -279,12 +288,9 @@ export interface CreateRuleRequest {
     priority: number;
     enabled?: boolean;
     overrideValue: unknown;
-    platformCondition?: Platform;
-    versionOperator?: VersionOperator;
-    versionValue?: string;
-    countryCondition?: string;
-    segmentCondition?: SegmentType;
-    activeAfter?: string; // ISO timestamp
+    platformConditions?: PlatformCondition[]; // Array of platforms with version ranges
+    countryConditions?: string[]; // Array of country codes
+    segmentConditions?: SegmentType[]; // Array of segment types
     activeBetweenStart?: string; // ISO timestamp
     activeBetweenEnd?: string; // ISO timestamp
 }
@@ -300,12 +306,9 @@ export interface CreateRuleResponse {
         priority: number;
         enabled: boolean;
         overrideValue: unknown;
-        platformCondition: Platform | null;
-        versionOperator: VersionOperator | null;
-        versionValue: string | null;
-        countryCondition: string | null;
-        segmentCondition: SegmentType | null;
-        activeAfter: string | null;
+        platformConditions: PlatformCondition[] | null; // Array of platforms with version ranges
+        countryConditions: string[] | null; // Array of country codes
+        segmentConditions: SegmentType[] | null; // Array of segment types
         activeBetweenStart: string | null;
         activeBetweenEnd: string | null;
         createdAt: string;
@@ -320,12 +323,9 @@ export interface UpdateRuleRequest {
     priority?: number;
     enabled?: boolean;
     overrideValue?: unknown;
-    platformCondition?: Platform | null;
-    versionOperator?: VersionOperator | null;
-    versionValue?: string | null;
-    countryCondition?: string | null;
-    segmentCondition?: SegmentType | null;
-    activeAfter?: string | null; // ISO timestamp
+    platformConditions?: PlatformCondition[] | null; // Array of platforms with version ranges
+    countryConditions?: string[] | null; // Array of country codes
+    segmentConditions?: SegmentType[] | null; // Array of segment types
     activeBetweenStart?: string | null; // ISO timestamp
     activeBetweenEnd?: string | null; // ISO timestamp
 }
@@ -341,12 +341,9 @@ export interface UpdateRuleResponse {
         priority: number;
         enabled: boolean;
         overrideValue: unknown;
-        platformCondition: Platform | null;
-        versionOperator: VersionOperator | null;
-        versionValue: string | null;
-        countryCondition: string | null;
-        segmentCondition: SegmentType | null;
-        activeAfter: string | null;
+        platformConditions: PlatformCondition[] | null; // Array of platforms with version ranges
+        countryConditions: string[] | null; // Array of country codes
+        segmentConditions: SegmentType[] | null; // Array of segment types
         activeBetweenStart: string | null;
         activeBetweenEnd: string | null;
         createdAt: string;

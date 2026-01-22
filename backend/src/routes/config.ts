@@ -153,6 +153,26 @@ router.delete(
 );
 
 /**
+ * PATCH /api/config/configs/:configId/rules/:ruleId/toggle
+ * Toggle rule enabled/disabled status
+ */
+router.patch(
+  '/configs/:configId/rules/:ruleId/toggle',
+  authenticateEither,
+  async (req: Request, res: Response) => {
+    try {
+      await ruleController.toggleRule(req, res);
+    } catch (error) {
+      logger.error('Error in PATCH /api/config/configs/:configId/rules/:ruleId/toggle:', error);
+      res.status(500).json({
+        success: false,
+        error: 'Internal server error',
+      });
+    }
+  }
+);
+
+/**
  * History & Rollback Endpoints - Require authentication
  * /api/config/configs/:configId/rollback - POST
  * /api/config/configs/:gameId/history/:configKey - GET

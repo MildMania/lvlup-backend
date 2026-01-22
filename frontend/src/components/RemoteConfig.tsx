@@ -727,11 +727,19 @@ const RemoteConfig: React.FC<RemoteConfigProps> = ({ isCollapsed = false }) => {
 
       {/* Edit Modal */}
       {showEditModal && selectedConfig && (
-        <div className="modal-overlay" onClick={() => setShowEditModal(false)}>
+        <div className="modal-overlay" onClick={() => {
+          setShowEditModal(false);
+          setSelectedConfig(null);
+          setActiveTab('overview');
+        }}>
           <div className="modal" onClick={(e) => e.stopPropagation()}>
             <div className="modal-header">
               <h2>Edit Configuration: {selectedConfig.key}</h2>
-              <button className="modal-close" onClick={() => setShowEditModal(false)}>×</button>
+              <button className="modal-close" onClick={() => {
+                setShowEditModal(false);
+                setSelectedConfig(null);
+                setActiveTab('overview');
+              }}>×</button>
             </div>
             <div className="modal-body">
               <div className="form-group">
@@ -839,7 +847,11 @@ const RemoteConfig: React.FC<RemoteConfigProps> = ({ isCollapsed = false }) => {
               >
                 {selectedConfig.enabled ? '🔒 Disable' : '🔓 Enable'}
               </button>
-              <button onClick={() => setShowEditModal(false)} className="btn btn-secondary">
+              <button onClick={() => {
+                setShowEditModal(false);
+                setSelectedConfig(null);
+                setActiveTab('overview');
+              }} className="btn btn-secondary">
                 Cancel
               </button>
               <button onClick={handleSaveAsDraft} className="btn btn-primary">

@@ -170,14 +170,11 @@ model RuleOverwrite {
   priority           Int           // Unique per config, ascending order
   enabled            Boolean       @default(true)
   overrideValue      Json          // Must match config dataType
-  platformCondition  String?       // "iOS", "Android", "Web"
-  versionOperator    String?       // "equal", "not_equal", "greater_than", "greater_or_equal", "less_than", "less_or_equal"
-  versionValue       String?       // Semantic version string
-  countryCondition   String?       // ISO 3166-1 alpha-2 code
-  segmentCondition   String?       // "new_users", "all_users", custom segment ID
-  activeAfter        DateTime?
-  activeBetweenStart DateTime?
-  activeBetweenEnd   DateTime?
+  platformConditions Json?         // Array of platforms with version ranges: [{ platform: "iOS", minVersion: "1.0.0", maxVersion: "2.0.0" }]
+  countryConditions  Json?         // Array of ISO 3166-1 alpha-2 codes: ["US", "GB", "CA"]
+  segmentConditions  Json?         // Array of segment IDs: ["new_users", "all_users"]
+  activeBetweenStart DateTime?     // Start date for activation (inclusive)
+  activeBetweenEnd   DateTime?     // End date for activation (inclusive)
   createdAt          DateTime      @default(now())
   updatedAt          DateTime      @updatedAt
   config             RemoteConfig  @relation(fields: [configId], references: [id], onDelete: Cascade)

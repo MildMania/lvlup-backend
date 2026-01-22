@@ -23,12 +23,9 @@ export async function createRule(
       priority,
       overrideValue,
       enabled,
-      platformCondition,
-      versionOperator,
-      versionValue,
-      countryCondition,
-      segmentCondition,
-      activeAfter,
+      platformConditions,
+      countryConditions,
+      segmentConditions,
       activeBetweenStart,
       activeBetweenEnd,
     } = req.body;
@@ -60,6 +57,16 @@ export async function createRule(
     // Get user ID from auth context
     const userId = (req as any).user?.id || (req as any).gameId || 'system';
 
+    logger.info('Creating rule with request body:', {
+      configId,
+      priority,
+      platformConditions,
+      platformConditionsType: typeof platformConditions,
+      platformConditionsIsArray: Array.isArray(platformConditions),
+      countryConditions,
+      segmentConditions,
+    });
+
     // Create rule
     const rule = await configService.createRule(
       {
@@ -67,22 +74,22 @@ export async function createRule(
         priority,
         overrideValue,
         enabled: enabled !== false,
-        platformCondition,
-        versionOperator,
-        versionValue,
-        countryCondition,
-        segmentCondition,
-        activeAfter,
+        platformConditions,
+        countryConditions,
+        segmentConditions,
         activeBetweenStart,
         activeBetweenEnd,
       },
       userId
     );
 
-    logger.info('Rule created', {
+    logger.info('Rule created successfully', {
       ruleId: rule.id,
       configId,
       priority,
+      savedPlatformConditions: rule.platformConditions,
+      savedPlatformConditionsType: typeof rule.platformConditions,
+      savedPlatformConditionsIsArray: Array.isArray(rule.platformConditions),
       userId,
     });
 
@@ -94,12 +101,9 @@ export async function createRule(
         priority: rule.priority,
         overrideValue: rule.overrideValue,
         enabled: rule.enabled,
-        platformCondition: rule.platformCondition,
-        versionOperator: rule.versionOperator,
-        versionValue: rule.versionValue,
-        countryCondition: rule.countryCondition,
-        segmentCondition: rule.segmentCondition,
-        activeAfter: rule.activeAfter?.toISOString() || null,
+        platformConditions: Array.isArray(rule.platformConditions) ? rule.platformConditions : (rule.platformConditions ? [rule.platformConditions] : null),
+        countryConditions: Array.isArray(rule.countryConditions) ? rule.countryConditions : (rule.countryConditions ? [rule.countryConditions] : null),
+        segmentConditions: Array.isArray(rule.segmentConditions) ? rule.segmentConditions : (rule.segmentConditions ? [rule.segmentConditions] : null),
         activeBetweenStart: rule.activeBetweenStart?.toISOString() || null,
         activeBetweenEnd: rule.activeBetweenEnd?.toISOString() || null,
         createdAt: rule.createdAt.toISOString(),
@@ -173,28 +177,39 @@ export async function listRules(
     logger.info('Rules listed', {
       configId,
       count: config.rules?.length || 0,
+      firstRulePlatformConditions: config.rules?.[0]?.platformConditions,
+      firstRulePlatformConditionsType: typeof config.rules?.[0]?.platformConditions,
+      firstRulePlatformConditionsIsArray: Array.isArray(config.rules?.[0]?.platformConditions),
+      allRules: config.rules?.map((r) => ({
+        id: r.id,
+        platformConditions: r.platformConditions,
+        platformConditionsRaw: JSON.stringify(r.platformConditions),
+      })),
+    });
+
+    const mappedRules = (config.rules || []).map((rule) => {
+      const mapped = {
+        id: rule.id,
+        priority: rule.priority,
+        overrideValue: rule.overrideValue,
+        enabled: rule.enabled,
+        platformConditions: Array.isArray(rule.platformConditions) ? rule.platformConditions : (rule.platformConditions ? [rule.platformConditions] : null),
+        countryConditions: Array.isArray(rule.countryConditions) ? rule.countryConditions : (rule.countryConditions ? [rule.countryConditions] : null),
+        segmentConditions: Array.isArray(rule.segmentConditions) ? rule.segmentConditions : (rule.segmentConditions ? [rule.segmentConditions] : null),
+        activeBetweenStart: rule.activeBetweenStart?.toISOString() || null,
+        activeBetweenEnd: rule.activeBetweenEnd?.toISOString() || null,
+        createdAt: rule.createdAt.toISOString(),
+        updatedAt: rule.updatedAt.toISOString(),
+      };
+      logger.info('Mapped rule:', { originalPlatformConditions: rule.platformConditions, mappedPlatformConditions: mapped.platformConditions });
+      return mapped;
     });
 
     res.status(200).json({
       success: true,
       data: {
         configId,
-        rules: (config.rules || []).map((rule) => ({
-          id: rule.id,
-          priority: rule.priority,
-          overrideValue: rule.overrideValue,
-          enabled: rule.enabled,
-          platformCondition: rule.platformCondition,
-          versionOperator: rule.versionOperator,
-          versionValue: rule.versionValue,
-          countryCondition: rule.countryCondition,
-          segmentCondition: rule.segmentCondition,
-          activeAfter: rule.activeAfter?.toISOString() || null,
-          activeBetweenStart: rule.activeBetweenStart?.toISOString() || null,
-          activeBetweenEnd: rule.activeBetweenEnd?.toISOString() || null,
-          createdAt: rule.createdAt.toISOString(),
-          updatedAt: rule.updatedAt.toISOString(),
-        })),
+        rules: mappedRules,
         total: config.rules?.length || 0,
       },
     });
@@ -221,12 +236,9 @@ export async function updateRule(
       priority,
       overrideValue,
       enabled,
-      platformCondition,
-      versionOperator,
-      versionValue,
-      countryCondition,
-      segmentCondition,
-      activeAfter,
+      platformConditions,
+      countryConditions,
+      segmentConditions,
       activeBetweenStart,
       activeBetweenEnd,
     } = req.body;
@@ -242,6 +254,16 @@ export async function updateRule(
     // Get user ID from auth context
     const userId = (req as any).user?.id || (req as any).gameId || 'system';
 
+    logger.info('Updating rule with request body:', {
+      ruleId,
+      configId,
+      platformConditions,
+      platformConditionsType: typeof platformConditions,
+      platformConditionsIsArray: Array.isArray(platformConditions),
+      countryConditions,
+      segmentConditions,
+    });
+
     // Update rule
     const updated = await configService.updateRule(
       ruleId,
@@ -249,21 +271,21 @@ export async function updateRule(
         priority,
         overrideValue,
         enabled,
-        platformCondition,
-        versionOperator,
-        versionValue,
-        countryCondition,
-        segmentCondition,
-        activeAfter,
+        platformConditions,
+        countryConditions,
+        segmentConditions,
         activeBetweenStart,
         activeBetweenEnd,
       },
       userId
     );
 
-    logger.info('Rule updated', {
+    logger.info('Rule updated successfully', {
       ruleId,
       configId,
+      updatedPlatformConditions: updated.platformConditions,
+      updatedPlatformConditionsType: typeof updated.platformConditions,
+      updatedPlatformConditionsIsArray: Array.isArray(updated.platformConditions),
       userId,
     });
 
@@ -275,12 +297,9 @@ export async function updateRule(
         priority: updated.priority,
         overrideValue: updated.overrideValue,
         enabled: updated.enabled,
-        platformCondition: updated.platformCondition,
-        versionOperator: updated.versionOperator,
-        versionValue: updated.versionValue,
-        countryCondition: updated.countryCondition,
-        segmentCondition: updated.segmentCondition,
-        activeAfter: updated.activeAfter?.toISOString() || null,
+        platformConditions: Array.isArray(updated.platformConditions) ? updated.platformConditions : (updated.platformConditions ? [updated.platformConditions] : null),
+        countryConditions: Array.isArray(updated.countryConditions) ? updated.countryConditions : (updated.countryConditions ? [updated.countryConditions] : null),
+        segmentConditions: Array.isArray(updated.segmentConditions) ? updated.segmentConditions : (updated.segmentConditions ? [updated.segmentConditions] : null),
         activeBetweenStart: updated.activeBetweenStart?.toISOString() || null,
         activeBetweenEnd: updated.activeBetweenEnd?.toISOString() || null,
         createdAt: updated.createdAt.toISOString(),
@@ -435,6 +454,89 @@ export async function reorderRules(
     res.status(500).json({
       success: false,
       error: 'Failed to reorder rules',
+    });
+  }
+}
+
+/**
+ * PATCH /api/config/configs/:configId/rules/:ruleId/toggle
+ * Toggle rule enabled/disabled status
+ */
+export async function toggleRule(
+  req: Request,
+  res: Response
+): Promise<void> {
+  try {
+    const { configId, ruleId } = req.params;
+
+    if (!ruleId) {
+      res.status(400).json({
+        success: false,
+        error: 'ruleId is required',
+      });
+      return;
+    }
+
+    // Get user ID from auth context
+    const userId = (req as any).user?.id || (req as any).gameId || 'system';
+
+    // Get current rule to toggle enabled status
+    const config = await configService.getConfig(configId);
+    if (!config) {
+      res.status(404).json({
+        success: false,
+        error: 'Config not found',
+      });
+      return;
+    }
+
+    const rule = config.rules?.find((r) => r.id === ruleId);
+    if (!rule) {
+      res.status(404).json({
+        success: false,
+        error: 'Rule not found',
+      });
+      return;
+    }
+
+    // Toggle enabled status
+    const updated = await configService.updateRule(
+      ruleId,
+      {
+        enabled: !rule.enabled,
+      },
+      userId
+    );
+
+    logger.info('Rule toggled', {
+      ruleId,
+      configId,
+      newEnabledStatus: !rule.enabled,
+      userId,
+    });
+
+    res.status(200).json({
+      success: true,
+      data: {
+        id: updated.id,
+        configId: updated.configId,
+        priority: updated.priority,
+        overrideValue: updated.overrideValue,
+        enabled: updated.enabled,
+        platformConditions: Array.isArray(updated.platformConditions) ? updated.platformConditions : (updated.platformConditions ? [updated.platformConditions] : null),
+        countryConditions: Array.isArray(updated.countryConditions) ? updated.countryConditions : (updated.countryConditions ? [updated.countryConditions] : null),
+        segmentConditions: Array.isArray(updated.segmentConditions) ? updated.segmentConditions : (updated.segmentConditions ? [updated.segmentConditions] : null),
+        activeBetweenStart: updated.activeBetweenStart?.toISOString() || null,
+        activeBetweenEnd: updated.activeBetweenEnd?.toISOString() || null,
+        createdAt: updated.createdAt.toISOString(),
+        updatedAt: updated.updatedAt.toISOString(),
+      },
+    });
+  } catch (error) {
+    logger.error('Failed to toggle rule:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Failed to toggle rule',
     });
   }
 }

@@ -41,6 +41,25 @@ export function validatePlatformCondition(
 /**
  * Validates version operator and value
  */
+/**
+ * Validates version format (semantic version)
+ */
+export function validateVersionFormat(version: string | undefined): { valid: boolean; error?: string } {
+  if (!version) return { valid: true }; // Optional
+
+  if (!isValidVersion(version)) {
+    return {
+      valid: false,
+      error: `Version must be a valid semantic version (e.g., 1.0.0)`,
+    };
+  }
+
+  return { valid: true };
+}
+
+/**
+ * Validates version condition (operator + value)
+ */
 export function validateVersionCondition(
   operator: string | undefined,
   version: string | undefined
@@ -216,15 +235,20 @@ export function validateRuleMiddleware(req: Request, res: Response, next: NextFu
   const {
     priority,
     overrideValue,
-    platformCondition,
-    versionOperator,
-    versionValue,
-    countryCondition,
-    segmentCondition,
-    activeAfter,
+    platformConditions,
+    countryConditions,
+    segmentConditions,
     activeBetweenStart,
     activeBetweenEnd,
   } = req.body;
+
+  // Validate overrideValue is present (required for both POST and PUT)
+  if (overrideValue === undefined || overrideValue === null) {
+    return res.status(400).json({
+      success: false,
+      error: 'overrideValue is required',
+    });
+  }
 
   // Validate priority (required for POST, optional for PUT)
   if (req.method === 'POST') {
@@ -245,23 +269,72 @@ export function validateRuleMiddleware(req: Request, res: Response, next: NextFu
   }
 
   // Validate conditions
-  const platformValidation = validatePlatformCondition(platformCondition);
-  if (!platformValidation.valid) {
-    return res.status(400).json({ success: false, error: platformValidation.error });
+  // Validate platform conditions array (optional, but if provided must be valid)
+  if (platformConditions) {
+    if (!Array.isArray(platformConditions)) {
+      return res.status(400).json({ 
+        success: false, 
+        error: 'platformConditions must be an array' 
+      });
+    }
+    for (const platformCond of platformConditions) {
+      // Validate platform name
+      const platformValidation = validatePlatformCondition(platformCond.platform);
+      if (!platformValidation.valid) {
+        return res.status(400).json({ success: false, error: platformValidation.error });
+      }
+      
+      // Validate minVersion if provided
+      if (platformCond.minVersion) {
+        const minVersionValidation = validateVersionFormat(platformCond.minVersion);
+        if (!minVersionValidation.valid) {
+          return res.status(400).json({ success: false, error: `${platformCond.platform} minVersion: ${minVersionValidation.error}` });
+        }
+      }
+      
+      // Validate maxVersion if provided
+      if (platformCond.maxVersion) {
+        const maxVersionValidation = validateVersionFormat(platformCond.maxVersion);
+        if (!maxVersionValidation.valid) {
+          return res.status(400).json({ success: false, error: `${platformCond.platform} maxVersion: ${maxVersionValidation.error}` });
+        }
+      }
+    }
   }
 
-  const versionValidation = validateVersionCondition(versionOperator, versionValue);
-  if (!versionValidation.valid) {
-    return res.status(400).json({ success: false, error: versionValidation.error });
+  // Validate country conditions array (optional, but if provided must be valid)
+  if (countryConditions) {
+    if (!Array.isArray(countryConditions)) {
+      return res.status(400).json({ 
+        success: false, 
+        error: 'countryConditions must be an array' 
+      });
+    }
+    for (const country of countryConditions) {
+      const countryValidation = validateCountryCondition(country);
+      if (!countryValidation.valid) {
+        return res.status(400).json({ success: false, error: countryValidation.error });
+      }
+    }
   }
 
-  const countryValidation = validateCountryCondition(countryCondition);
-  if (!countryValidation.valid) {
-    return res.status(400).json({ success: false, error: countryValidation.error });
+  // Validate segment conditions array (optional, but if provided must be valid)
+  if (segmentConditions) {
+    if (!Array.isArray(segmentConditions)) {
+      return res.status(400).json({ 
+        success: false, 
+        error: 'segmentConditions must be an array' 
+      });
+    }
+    for (const segment of segmentConditions) {
+      const segmentValidation = validateSegmentCondition(segment);
+      if (!segmentValidation.valid) {
+        return res.status(400).json({ success: false, error: segmentValidation.error });
+      }
+    }
   }
 
   const dateValidation = validateDateConditions(
-    activeAfter,
     activeBetweenStart,
     activeBetweenEnd
   );
@@ -269,7 +342,7 @@ export function validateRuleMiddleware(req: Request, res: Response, next: NextFu
     return res.status(400).json({ success: false, error: dateValidation.error });
   }
 
-  logger.debug('Rule validation passed', { priority, platformCondition });
+  logger.debug('Rule validation passed', { priority, platformConditions });
   next();
 }
 

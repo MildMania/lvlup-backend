@@ -275,6 +275,7 @@ export class AnalyticsController {
     async sessionHeartbeat(req: AuthenticatedRequest, res: Response<ApiResponse>) {
         try {
             const sessionId = req.params.sessionId;
+            const countryCode = req.body.countryCode || null;
 
             if (!sessionId) {
                 return res.status(400).json({
@@ -283,7 +284,7 @@ export class AnalyticsController {
                 });
             }
 
-            await analyticsService.updateSessionHeartbeat(sessionId);
+            await analyticsService.updateSessionHeartbeat(sessionId, countryCode);
 
             res.status(200).json({
                 success: true,

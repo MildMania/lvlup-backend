@@ -296,6 +296,41 @@ router.delete(
  */
 
 /**
+ * GET /api/config/configs
+ * Fetch configs with rule evaluation and caching (authenticated via API key)
+ * Query parameters: environment, platform, version, country, segment, debug
+ * Used by game clients (Unity SDK, etc.)
+ */
+router.get(
+  '/configs',
+  authenticateEither,
+  async (req: Request, res: Response) => {
+    try {
+      const { game, dashboardUser } = req as any;
+
+      // This endpoint requires API key authentication (game clients only)
+      if (!game) {
+        return res.status(401).json({
+          success: false,
+          error: 'This endpoint requires API key authentication',
+        });
+      }
+
+      // Inject gameId into params so publicConfigController.fetchConfigs can use it
+      req.params.gameId = game.id;
+      
+      await publicConfigController.fetchConfigs(req, res);
+    } catch (error) {
+      logger.error('Error in GET /api/config/configs:', error);
+      res.status(500).json({
+        success: false,
+        error: 'Internal server error',
+      });
+    }
+  }
+);
+
+/**
  * GET /api/configs/:gameId
  * Fetch configs with rule evaluation and caching (T039)
  * Query parameters: environment, platform, version, country, segment, debug

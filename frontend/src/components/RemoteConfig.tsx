@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { apiClient } from '../lib/apiClient';
 import { useGame } from '../contexts/GameContext';
-import { AlertCircle, Check, Edit2, Trash2, Plus, Eye } from 'lucide-react';
+import { AlertCircle, Check, Edit2, Trash2, Plus, Eye, GitBranch } from 'lucide-react';
 import RuleList from './RuleList';
 import DraggableRuleList from './DraggableRuleList';
 import ConfigHistory from './ConfigHistory';
@@ -66,6 +66,7 @@ const RemoteConfig: React.FC<RemoteConfigProps> = ({ isCollapsed = false }) => {
   const [showDraftsPanel, setShowDraftsPanel] = useState(false);
   const [jsonError, setJsonError] = useState<JsonError | null>(null);
   const [activeTab, setActiveTab] = useState<'overview' | 'rules' | 'history'>('overview');
+  const [rulesCounts, setRulesCounts] = useState<Map<string, number>>(new Map());
   const [formData, setFormData] = useState<CreateConfigForm>({
     gameId: currentGame.id,
     key: '',
@@ -85,6 +86,23 @@ const RemoteConfig: React.FC<RemoteConfigProps> = ({ isCollapsed = false }) => {
         `/config/configs/${currentGame.id}?environment=${environment}`
       );
       setConfigs(response.data.data.configs || []);
+      
+      // Fetch rules count for each config
+      const configsList = response.data.data.configs || [];
+      const counts = new Map<string, number>();
+      
+      for (const config of configsList) {
+        try {
+          const rulesResponse = await apiClient.get(`/config/configs/${config.id}/rules`);
+          const rules = rulesResponse.data.data?.rules || [];
+          counts.set(config.id, rules.length);
+        } catch (error) {
+          // If rules endpoint fails, just set count to 0
+          counts.set(config.id, 0);
+        }
+      }
+      
+      setRulesCounts(counts);
     } catch (error: any) {
       console.error('Failed to fetch configs:', error);
     }
@@ -438,6 +456,7 @@ const RemoteConfig: React.FC<RemoteConfigProps> = ({ isCollapsed = false }) => {
                   <th className="col-key">Configuration Key</th>
                   <th className="col-value">Value</th>
                   <th className="col-type">Type</th>
+                  <th className="col-rules">Rules</th>
                   <th className="col-status">Status</th>
                   <th className="col-actions">Actions</th>
                 </tr>
@@ -460,6 +479,16 @@ const RemoteConfig: React.FC<RemoteConfigProps> = ({ isCollapsed = false }) => {
                       <span className={`type-badge type-${config.dataType}`}>
                         {config.dataType}
                       </span>
+                    </td>
+                    <td className="col-rules">
+                      {rulesCounts.get(config.id) ? (
+                        <span className="rules-badge" title={`${rulesCounts.get(config.id)} override rule(s)`}>
+                          <GitBranch size={14} />
+                          {rulesCounts.get(config.id)}
+                        </span>
+                      ) : (
+                        <span className="rules-badge rules-none">—</span>
+                      )}
                     </td>
                     <td className="col-status">
                       <span className={`status-badge status-${config.enabled ? 'enabled' : 'disabled'}`}>

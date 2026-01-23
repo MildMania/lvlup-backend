@@ -409,13 +409,20 @@
 }
 
 .col-value {
-  width: 40%;
-  min-width: 250px;
+  width: 32%;
+  min-width: 200px;
 }
 
 .col-type {
-  width: 12%;
-  min-width: 100px;
+  width: 10%;
+  min-width: 80px;
+}
+
+.col-rules {
+  width: 10%;
+  min-width: 80px;
+  text-align: left;
+  padding-left: 12px;
 }
 
 .col-status {
@@ -426,7 +433,7 @@
 .col-actions {
   width: 11%;
   min-width: 100px;
-  text-align: right;
+  text-align: left;
 }
 
 .key-content {
@@ -470,6 +477,45 @@
   font-weight: 600;
   text-transform: uppercase;
   letter-spacing: 0.3px;
+}
+
+.rules-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 6px 10px;
+  border-radius: 6px;
+  font-size: 0.8rem;
+  font-weight: 600;
+  background: rgba(59, 130, 246, 0.1);
+  color: #3b82f6;
+  border: 1px solid rgba(59, 130, 246, 0.3);
+  cursor: help;
+  transition: all 0.2s ease;
+}
+
+.rules-badge svg {
+  flex-shrink: 0;
+  stroke-width: 2.5;
+}
+
+.rules-badge:hover {
+  background: rgba(59, 130, 246, 0.15);
+  border-color: rgba(59, 130, 246, 0.5);
+  box-shadow: 0 2px 8px rgba(59, 130, 246, 0.2);
+}
+
+.rules-badge.rules-none {
+  background: transparent;
+  color: var(--text-tertiary);
+  border: none;
+  cursor: default;
+}
+
+.rules-badge.rules-none:hover {
+  background: transparent;
+  border-color: transparent;
+  box-shadow: none;
 }
 
 .type-string {
@@ -1160,6 +1206,7 @@
   .col-key,
   .col-value,
   .col-type,
+  .col-rules,
   .col-env,
   .col-actions {
     width: auto;

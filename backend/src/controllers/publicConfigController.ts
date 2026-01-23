@@ -93,19 +93,22 @@ export async function fetchConfigs(
     if (cached) {
       logger.debug('Config cache hit', { gameId, cacheKey });
 
+      // Convert cached object to ConfigData array format
+      const configsArray = Object.entries(cached).map(([key, value]) => ({
+        key,
+        value,
+        dataType: typeof value,
+        isEnabled: true,
+        environment: environment as string,
+        createdAt: Date.now(),
+        updatedAt: Date.now(),
+      }));
+
       res.status(200).json({
         success: true,
-        data: {
-          configs: cached,
-          metadata: {
-            gameId,
-            environment: environment as any,
-            fetchedAt: new Date().toISOString(),
-            cacheUntil: new Date(Date.now() + 5 * 60 * 1000).toISOString(),
-            totalConfigs: Object.keys(cached).length,
-          },
-        },
-      } as FetchConfigsResponse);
+        configs: configsArray,
+        timestamp: Date.now(),
+      });
       return;
     }
 
@@ -174,23 +177,26 @@ export async function fetchConfigs(
       cached: false,
     });
 
-    const response: FetchConfigsResponse = {
+    // Convert finalConfigs object to ConfigData array for SDK
+    const configsArray = Object.entries(finalConfigs).map(([key, value]) => ({
+      key,
+      value,
+      dataType: typeof value,
+      isEnabled: true,
+      environment: environment as string,
+      createdAt: Date.now(),
+      updatedAt: Date.now(),
+    }));
+
+    const response: any = {
       success: true,
-      data: {
-        configs: finalConfigs,
-        metadata: {
-          gameId,
-          environment: environment as any,
-          fetchedAt: new Date().toISOString(),
-          cacheUntil: new Date(Date.now() + 5 * 60 * 1000).toISOString(),
-          totalConfigs: Object.keys(finalConfigs).length,
-        },
-      },
+      configs: configsArray,
+      timestamp: Date.now(),
     };
 
     // Add debug info if requested
     if (debug === 'true') {
-      response.data.debug = {
+      response.debug = {
         evaluations,
         context: {
           platform: context.platform,

@@ -1,5 +1,6 @@
 import { Request, Response } from 'express';
-import * as draftService from '../services/DraftService';
+import * as draftService from '../services/draftService';
+import * as configService from '../services/configService';
 import logger from '../utils/logger';
 
 /**
@@ -12,16 +13,78 @@ export async function saveAsDraft(req: Request, res: Response): Promise<void> {
 
     const userId = (req as any).user?.id || (req as any).gameId || 'system';
 
-    if (!configId || !gameId) {
-      res.status(400).json({
-        success: false,
-        error: 'configId and gameId are required',
-      });
-      return;
+    let actualConfigId = configId;
+
+    // If configId is empty or not provided, this is a new config - create it first
+    if (!configId || configId.trim() === '') {
+      // Validate fields needed for new config creation
+      if (!gameId) {
+        res.status(400).json({
+          success: false,
+          error: 'Game context is missing. Please refresh the page and try again.',
+        });
+        return;
+      }
+
+      if (!key || value === undefined || !dataType) {
+        res.status(400).json({
+          success: false,
+          error: 'Missing required fields: key, value, and dataType are required',
+        });
+        return;
+      }
+
+      try {
+        // Create the new config
+        const newConfig = await configService.createConfig(
+          {
+            gameId,
+            key,
+            value,
+            dataType,
+            environment: environment || 'production',
+            enabled: enabled !== false,
+            description,
+          },
+          userId
+        );
+
+        actualConfigId = newConfig.id;
+        logger.info('New config created for draft', { configId: actualConfigId, key, gameId });
+      } catch (error: any) {
+        logger.error('Error creating new config:', error);
+        
+        if (error.name === 'DuplicateConfigKeyError') {
+          res.status(409).json({
+            success: false,
+            error: error.message,
+          });
+          return;
+        }
+        
+        if (error.name === 'ConfigValueTooLargeError') {
+          res.status(413).json({
+            success: false,
+            error: error.message,
+          });
+          return;
+        }
+        
+        throw error;
+      }
+    } else {
+      // Editing existing config - gameId should still be provided
+      if (!gameId) {
+        res.status(400).json({
+          success: false,
+          error: 'Game context is missing. Please refresh the page and try again.',
+        });
+        return;
+      }
     }
 
     const draft = await draftService.createConfigDraft({
-      configId,
+      configId: actualConfigId,
       gameId,
       key,
       value,
@@ -33,7 +96,7 @@ export async function saveAsDraft(req: Request, res: Response): Promise<void> {
       createdBy: userId,
     });
 
-    logger.info('Config draft saved', { draftId: draft.id, configId });
+    logger.info('Config draft saved', { draftId: draft.id, configId: actualConfigId });
 
     res.status(201).json({
       success: true,

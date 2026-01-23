@@ -106,8 +106,10 @@ export async function fetchConfigs(
 
       res.status(200).json({
         success: true,
-        configs: configsArray,
-        timestamp: Date.now(),
+        data: {
+          configs: configsArray,
+          timestamp: Date.now(),
+        },
       });
       return;
     }
@@ -190,13 +192,15 @@ export async function fetchConfigs(
 
     const response: any = {
       success: true,
-      configs: configsArray,
-      timestamp: Date.now(),
+      data: {
+        configs: configsArray,
+        timestamp: Date.now(),
+      },
     };
 
     // Add debug info if requested
     if (debug === 'true') {
-      response.debug = {
+      response.data.debug = {
         evaluations,
         context: {
           platform: context.platform,

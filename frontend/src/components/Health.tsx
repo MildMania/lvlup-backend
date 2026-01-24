@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   Activity,
   Bug,
@@ -101,11 +101,66 @@ const Health: React.FC<{ gameId: string }> = ({ gameId }) => {
   // Filters
   const [dateRange, setDateRange] = useState('7d');
   const [platform, setPlatform] = useState('');
-  const [country, setCountry] = useState('');
-  const [appVersion, setAppVersion] = useState('');
+  const [selectedCountries, setSelectedCountries] = useState<string[]>([]);
+  const [selectedVersions, setSelectedVersions] = useState<string[]>([]);
   const [severity, setSeverity] = useState('');
   const [crashType, setCrashType] = useState('');
   const [showFilters, setShowFilters] = useState(false);
+  
+  // Filter dropdown states
+  const [showCountrySelector, setShowCountrySelector] = useState(false);
+  const [showVersionSelector, setShowVersionSelector] = useState(false);
+  
+  // Available filter options from API
+  const [availableCountries, setAvailableCountries] = useState<string[]>(['All']);
+  const [availableVersions, setAvailableVersions] = useState<string[]>(['All']);
+
+
+  // Refs for dropdowns
+  const countryDropdownRef = useRef<HTMLDivElement>(null);
+  const versionDropdownRef = useRef<HTMLDivElement>(null);
+
+  // Click outside to close dropdowns
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (countryDropdownRef.current && !countryDropdownRef.current.contains(event.target as Node)) {
+        setShowCountrySelector(false);
+      }
+      if (versionDropdownRef.current && !versionDropdownRef.current.contains(event.target as Node)) {
+        setShowVersionSelector(false);
+      }
+    };
+
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
+
+  // Fetch filter options on mount
+  useEffect(() => {
+    const fetchFilterOptions = async () => {
+      try {
+        const apiUrl = import.meta.env.VITE_API_BASE_URL;
+        const apiKey = getApiKey();
+        
+        const response = await fetch(`${apiUrl}/games/${gameId}/health/filter-options`, {
+          headers: {
+            'X-API-Key': apiKey,
+            'Content-Type': 'application/json',
+          },
+        });
+        
+        if (response.ok) {
+          const data = await response.json();
+          setAvailableCountries(['All', ...(data.countries || [])]);
+          setAvailableVersions(['All', ...(data.versions || [])]);
+        }
+      } catch (error) {
+        console.error('Error fetching filter options:', error);
+      }
+    };
+
+    fetchFilterOptions();
+  }, [gameId]);
 
   const getDateRange = () => {
     const end = new Date();
@@ -131,9 +186,25 @@ const Health: React.FC<{ gameId: string }> = ({ gameId }) => {
     return { start, end };
   };
 
+  const toggleCountry = (country: string) => {
+    setSelectedCountries(prev => 
+      prev.includes(country) 
+        ? prev.filter(c => c !== country)
+        : [...prev, country]
+    );
+  };
+
+  const toggleVersion = (version: string) => {
+    setSelectedVersions(prev => 
+      prev.includes(version) 
+        ? prev.filter(v => v !== version)
+        : [...prev, version]
+    );
+  };
+
   useEffect(() => {
     fetchHealthData();
-  }, [gameId, dateRange, platform, country, appVersion, severity, crashType]);
+  }, [gameId, dateRange, platform, selectedCountries, selectedVersions, severity, crashType]);
 
   const fetchHealthData = async () => {
     setLoading(true);
@@ -145,8 +216,12 @@ const Health: React.FC<{ gameId: string }> = ({ gameId }) => {
       });
 
       if (platform) params.append('platform', platform);
-      if (country) params.append('country', country);
-      if (appVersion) params.append('appVersion', appVersion);
+      if (selectedCountries.length > 0) {
+        selectedCountries.forEach(country => params.append('country', country));
+      }
+      if (selectedVersions.length > 0) {
+        selectedVersions.forEach(version => params.append('appVersion', version));
+      }
       if (severity) params.append('severity', severity);
       if (crashType) params.append('crashType', crashType);
 
@@ -224,8 +299,12 @@ const Health: React.FC<{ gameId: string }> = ({ gameId }) => {
       });
 
       if (platform) params.append('platform', platform);
-      if (country) params.append('country', country);
-      if (appVersion) params.append('appVersion', appVersion);
+      if (selectedCountries.length > 0) {
+        selectedCountries.forEach(country => params.append('country', country));
+      }
+      if (selectedVersions.length > 0) {
+        selectedVersions.forEach(version => params.append('appVersion', version));
+      }
 
       const apiUrl = import.meta.env.VITE_API_BASE_URL;
       const apiKey = getApiKey();
@@ -413,24 +492,70 @@ const Health: React.FC<{ gameId: string }> = ({ gameId }) => {
             </select>
           </div>
 
-          <div className="filter-group">
+          <div className="filter-group day-selector-group" ref={versionDropdownRef}>
             <label>App Version</label>
-            <input
-              type="text"
-              value={appVersion}
-              onChange={(e) => setAppVersion(e.target.value)}
-              placeholder="e.g., 1.0.0"
-            />
+            <button 
+              className="day-selector-button"
+              onClick={() => {
+                setShowVersionSelector(!showVersionSelector);
+                setShowCountrySelector(false);
+              }}
+            >
+              {selectedVersions.length > 0 ? `${selectedVersions.length} selected` : 'All versions'} ▾
+            </button>
+            {showVersionSelector && (
+              <div className="day-selector-dropdown">
+                <div className="day-selector-header">
+                  <button onClick={() => setSelectedVersions(availableVersions.filter(v => v !== 'All'))} className="day-action-btn">Select All</button>
+                  <button onClick={() => setSelectedVersions([])} className="day-action-btn">Clear All</button>
+                </div>
+                <div className="day-selector-list">
+                  {availableVersions.filter(v => v !== 'All').map(version => (
+                    <label key={version} className="day-checkbox-label">
+                      <input
+                        type="checkbox"
+                        checked={selectedVersions.includes(version)}
+                        onChange={() => toggleVersion(version)}
+                      />
+                      <span>{version}</span>
+                    </label>
+                  ))}
+                </div>
+              </div>
+            )}
           </div>
 
-          <div className="filter-group">
+          <div className="filter-group day-selector-group" ref={countryDropdownRef}>
             <label>Country</label>
-            <input
-              type="text"
-              value={country}
-              onChange={(e) => setCountry(e.target.value)}
-              placeholder="e.g., US"
-            />
+            <button 
+              className="day-selector-button"
+              onClick={() => {
+                setShowCountrySelector(!showCountrySelector);
+                setShowVersionSelector(false);
+              }}
+            >
+              {selectedCountries.length > 0 ? `${selectedCountries.length} selected` : 'All countries'} ▾
+            </button>
+            {showCountrySelector && (
+              <div className="day-selector-dropdown">
+                <div className="day-selector-header">
+                  <button onClick={() => setSelectedCountries(availableCountries.filter(c => c !== 'All'))} className="day-action-btn">Select All</button>
+                  <button onClick={() => setSelectedCountries([])} className="day-action-btn">Clear All</button>
+                </div>
+                <div className="day-selector-list">
+                  {availableCountries.filter(c => c !== 'All').map(country => (
+                    <label key={country} className="day-checkbox-label">
+                      <input
+                        type="checkbox"
+                        checked={selectedCountries.includes(country)}
+                        onChange={() => toggleCountry(country)}
+                      />
+                      <span>{country}</span>
+                    </label>
+                  ))}
+                </div>
+              </div>
+            )}
           </div>
 
           <div className="filter-group">
@@ -459,8 +584,8 @@ const Health: React.FC<{ gameId: string }> = ({ gameId }) => {
             className="clear-filters"
             onClick={() => {
               setPlatform('');
-              setCountry('');
-              setAppVersion('');
+              setSelectedCountries([]);
+              setSelectedVersions([]);
               setSeverity('');
               setCrashType('');
             }}
@@ -478,7 +603,7 @@ const Health: React.FC<{ gameId: string }> = ({ gameId }) => {
           <div className="metric-content">
             <h3>Error Rate</h3>
             <div className="metric-value">{metrics.crashRate.toFixed(2)}%</div>
-            <p className="metric-description">Errors per session</p>
+            <p className="metric-description">Sessions with errors</p>
           </div>
         </div>
 

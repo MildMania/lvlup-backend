@@ -611,37 +611,7 @@
   margin: 0;
 }
 
-/* Responsive Design */
-@media (max-width: 768px) {
-  .sidebar {
-    transform: translateX(-100%);
-    width: 280px;
-  }
 
-  .sidebar.mobile-open {
-    transform: translateX(0);
-  }
-
-  .mobile-menu-btn {
-    display: flex;
-  }
-
-  .mobile-overlay {
-    display: block;
-  }
-
-  .desktop-only {
-    display: none;
-  }
-
-  .mobile-only {
-    display: flex;
-  }
-
-  .sidebar.collapsed {
-    width: 280px;
-  }
-}
 
 /* Scrollbar Styling */
 .sidebar-nav::-webkit-scrollbar {

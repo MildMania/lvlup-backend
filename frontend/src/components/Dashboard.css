@@ -362,17 +362,6 @@
   left: 80px;
 }
 
-/* Mobile update indicator adjustment */
-@media (max-width: 768px) {
-  .update-indicator {
-    left: 0;
-  }
-  
-  .dashboard.sidebar-collapsed .update-indicator {
-    left: 0;
-  }
-}
-
 .update-bar {
   height: 100%;
   background: var(--accent-primary);
@@ -720,158 +709,6 @@
   background: #b91c1c;
 }
 
-/* Responsive Design */
-@media (max-width: 1400px) {
-  .chart-large {
-    grid-column: span 1;
-  }
-}
-
-@media (max-width: 768px) {
-  .dashboard {
-    margin-left: 0;
-    padding: 16px;
-  }
-  
-  .dashboard-header {
-    padding: 16px;
-    margin-bottom: 20px;
-  }
-  
-  .header-main {
-    flex-direction: column;
-    align-items: flex-start;
-    gap: 12px;
-  }
-  
-  .dashboard-controls {
-    flex-direction: column;
-    width: 100%;
-    gap: 12px;
-  }
-  
-  .date-range-controls {
-    flex-direction: column;
-    width: 100%;
-    gap: 12px;
-  }
-  
-  .date-picker-popup {
-    position: fixed;
-    top: 50%;
-    left: 50%;
-    transform: translate(-50%, -50%);
-    width: 90%;
-    max-width: 320px;
-    max-height: 90vh;
-    overflow-y: auto;
-  }
-  
-  .date-picker-trigger {
-    width: 100%;
-    padding: 12px;
-    font-size: 16px; /* Prevents zoom on iOS */
-  }
-  
-  .date-range-select,
-  .refresh-btn,
-  .date-input {
-    width: 100%;
-    justify-content: center;
-    padding: 12px;
-    font-size: 16px; /* Prevents zoom on iOS */
-  }
-  
-  .metrics-grid {
-    grid-template-columns: 1fr;
-    gap: 16px;
-  }
-  
-  .charts-grid {
-    grid-template-columns: 1fr;
-    gap: 16px;
-  }
-  
-  .chart-large,
-  .chart-medium {
-    grid-column: span 1;
-  }
-  
-  .header-title h1 {
-    font-size: 2rem;
-    line-height: 1.2;
-  }
-  
-  /* Better mobile interaction areas */
-  .metric-card {
-    min-height: 100px;
-    padding: 20px;
-  }
-  
-  .metric-info,
-  .chart-info {
-    min-width: 32px;
-    min-height: 32px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-  }
-}
-
-@media (max-width: 480px) {
-  .dashboard {
-    padding: 12px;
-  }
-  
-  .dashboard-header {
-    padding: 12px;
-    margin-bottom: 16px;
-  }
-  
-  .metric-card {
-    padding: 16px;
-    min-height: 90px;
-  }
-  
-  .chart-container {
-    padding: 16px;
-  }
-  
-  .header-title h1 {
-    font-size: 1.75rem;
-  }
-  
-  .metric-value {
-    font-size: 1.75rem;
-  }
-  
-  .metric-title {
-    font-size: 0.875rem;
-  }
-  
-  .chart-content {
-    height: 220px;
-  }
-  
-  /* Very small screens - prioritize content over spacing */
-  .metrics-grid {
-    gap: 12px;
-  }
-  
-  .charts-grid {
-    gap: 12px;
-  }
-  
-  .date-picker-popup {
-    width: 95%;
-    max-width: 280px;
-  }
-  
-  .date-inputs {
-    gap: 12px;
-  }
-}
-
 .chart-title {
   font-size: 1.125rem;
   font-weight: 600;
@@ -948,44 +785,6 @@
   background-color: #2563eb;
 }
 
-/* Responsive Design */
-@media (max-width: 1200px) {
-  .chart-large {
-    grid-column: span 12;
-  }
-  
-  .chart-medium {
-    grid-column: span 12;
-  }
-}
-
-@media (max-width: 768px) {
-  .dashboard {
-    padding: 16px;
-  }
-  
-  .dashboard-header {
-    flex-direction: column;
-    gap: 16px;
-    align-items: flex-start;
-  }
-  
-  .metrics-grid {
-    grid-template-columns: 1fr;
-  }
-  
-  .charts-grid {
-    grid-template-columns: 1fr;
-  }
-  
-  .chart-container {
-    grid-column: span 1 !important;
-  }
-  
-  .chart-content {
-    height: 250px;
-  }
-}
 
 /* Custom Recharts Styling */
 .recharts-tooltip-wrapper {
@@ -1002,26 +801,4 @@
 
 .recharts-legend-wrapper {
   padding-top: 16px !important;
-}
-
-/* Mobile chart optimizations */
-@media (max-width: 768px) {
-  .recharts-tooltip-wrapper {
-    font-size: 14px !important;
-  }
-  
-  .recharts-legend-wrapper {
-    padding-top: 12px !important;
-    font-size: 12px !important;
-  }
-  
-  .recharts-cartesian-axis-tick-value {
-    font-size: 10px !important;
-  }
-  
-  /* Better touch targets for pie chart labels */
-  .recharts-pie-label-text {
-    font-size: 12px !important;
-    font-weight: 600 !important;
-  }
 }

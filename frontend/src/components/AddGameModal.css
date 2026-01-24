@@ -326,28 +326,5 @@
   }
 }
 
-/* Responsive */
-@media (max-width: 768px) {
-  .modal-content {
-    width: 95%;
-    max-height: 95vh;
-  }
 
-  .modal-header {
-    padding: 16px;
-  }
-
-  .modal-form,
-  .success-content {
-    padding: 16px;
-  }
-
-  .modal-header h2 {
-    font-size: 20px;
-  }
-
-  .code-block {
-    font-size: 10px;
-  }
-}
 

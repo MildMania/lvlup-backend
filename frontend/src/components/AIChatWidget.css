@@ -462,53 +462,6 @@
   }
 }
 
-/* Mobile Responsiveness */
-@media (max-width: 768px) {
-  .ai-chat-widget {
-    bottom: 70px;
-    right: 10px;
-    left: 10px;
-    width: auto;
-    max-width: none;
-  }
-
-  .widget-container {
-    height: 400px;
-    border-radius: 12px;
-  }
-
-  .widget-header {
-    padding: 12px 16px;
-  }
-
-  .widget-title {
-    font-size: 0.9rem;
-  }
-
-  .widget-messages {
-    padding: 8px;
-  }
-
-  .widget-message-content {
-    max-width: 90%;
-    font-size: 0.8rem;
-  }
-
-  .widget-input {
-    padding: 8px;
-  }
-
-  .widget-input textarea {
-    font-size: 16px; /* Prevent zoom on iOS */
-  }
-
-  .ai-chat-toggle {
-    bottom: 15px;
-    right: 15px;
-    width: 48px;
-    height: 48px;
-  }
-}
 
 /* Dark mode support */
 @media (prefers-color-scheme: dark) {

@@ -61,11 +61,12 @@ export class AnalyticsService {
                     }
                 },
                 update: {
-                    deviceId: userProfile.deviceId ?? null,
-                    platform: userProfile.platform ?? null,
-                    version: userProfile.version ?? null,
-                    country: userProfile.country ?? null,
-                    language: userProfile.language ?? null,
+                    deviceId: userProfile.deviceId ?? undefined,
+                    // Only update platform if we have a value and user's platform is currently null
+                    platform: userProfile.platform ?? undefined,
+                    version: userProfile.version ?? undefined,
+                    country: userProfile.country ?? undefined,
+                    language: userProfile.language ?? undefined,
                     updatedAt: new Date()
                 },
                 create: {

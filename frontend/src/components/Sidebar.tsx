@@ -61,11 +61,8 @@ const Sidebar: React.FC<SidebarProps> = ({
     return saved === 'true';
   });
   const [isMobileOpen, setIsMobileOpen] = useState(false);
-  // Initialize games expanded state from localStorage
-  const [isGamesExpanded, setIsGamesExpanded] = useState(() => {
-    const saved = localStorage.getItem('lvlup-games-expanded');
-    return saved !== 'false'; // Default to true if not set
-  });
+  // Initialize games dropdown state
+  const [isGamesDropdownOpen, setIsGamesDropdownOpen] = useState(false);
   // Initialize settings expanded state from localStorage
   const [isSettingsExpanded, setIsSettingsExpanded] = useState(() => {
     const saved = localStorage.getItem('lvlup-settings-expanded');
@@ -132,6 +129,21 @@ const Sidebar: React.FC<SidebarProps> = ({
     setIsMobileOpen(!isMobileOpen);
   };
 
+  // Close games dropdown when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      const target = event.target as HTMLElement;
+      if (isGamesDropdownOpen && !target.closest('.games-dropdown-section')) {
+        setIsGamesDropdownOpen(false);
+      }
+    };
+
+    if (isGamesDropdownOpen) {
+      document.addEventListener('mousedown', handleClickOutside);
+      return () => document.removeEventListener('mousedown', handleClickOutside);
+    }
+  }, [isGamesDropdownOpen]);
+
   return (
     <>
       {/* Mobile Menu Button */}
@@ -196,61 +208,77 @@ const Sidebar: React.FC<SidebarProps> = ({
               )}
             </div>
             
-            {/* Games List - Always show so Add Game button is accessible */}
+            {/* Games Dropdown Selector */}
             {!isCollapsed && (
-              <div className="games-section">
-                <div 
-                  className="games-toggle"
-                  onClick={() => {
-                    const newState = !isGamesExpanded;
-                    setIsGamesExpanded(newState);
-                    localStorage.setItem('lvlup-games-expanded', String(newState));
-                  }}
+              <div className="games-dropdown-section">
+                <button 
+                  className="game-selector-button"
+                  onClick={() => setIsGamesDropdownOpen(!isGamesDropdownOpen)}
                 >
-                  <span>Games</span>
-                  {isGamesExpanded ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
-                </div>
+                  <div className="game-selector-content">
+                    <GamepadIcon size={16} />
+                    <span className="game-selector-name">{gameInfo.name}</span>
+                  </div>
+                  <ChevronDown size={16} className={`chevron-icon ${isGamesDropdownOpen ? 'open' : ''}`} />
+                </button>
                 
-                {isGamesExpanded && (
-                  <div className="games-list">
-                    {availableGames.filter(game => game.id !== 'default').map((game) => (
-                      <div key={game.id} className="game-item-wrapper">
+                {isGamesDropdownOpen && (
+                  <div className="games-dropdown-menu">
+                    <div className="games-dropdown-header">
+                      <span>Switch Game</span>
+                    </div>
+                    <div className="games-dropdown-list">
+                      {availableGames.filter(game => game.id !== 'default').map((game) => (
                         <button
-                          className={`game-item ${game.id === gameInfo.id ? 'active' : ''}`}
-                          onClick={() => onGameChange && onGameChange(game.id)}
+                          key={game.id}
+                          className={`game-dropdown-item ${game.id === gameInfo.id ? 'active' : ''}`}
+                          onClick={() => {
+                            if (onGameChange) {
+                              onGameChange(game.id);
+                            }
+                            setIsGamesDropdownOpen(false);
+                          }}
                         >
-                          <GamepadIcon size={14} />
-                          <span className="game-item-name">{game.name}</span>
+                          <div className="game-dropdown-info">
+                            <GamepadIcon size={14} />
+                            <div className="game-dropdown-details">
+                              <span className="game-dropdown-name">{game.name}</span>
+                              {game.description && (
+                                <span className="game-dropdown-desc">{game.description}</span>
+                              )}
+                            </div>
+                          </div>
+                          {onGameDelete && game.id !== gameInfo.id && (
+                            <button
+                              className="game-dropdown-delete"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                if (window.confirm(`Are you sure you want to delete "${game.name}"? This action cannot be undone.`)) {
+                                  onGameDelete(game.id);
+                                }
+                              }}
+                              title="Delete game"
+                            >
+                              <Trash2 size={12} />
+                            </button>
+                          )}
                         </button>
-                        {onGameDelete && (
-                          <button
-                            className="game-item-delete"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              if (window.confirm(`Are you sure you want to delete "${game.name}"? This action cannot be undone.`)) {
-                                onGameDelete(game.id);
-                              }
-                            }}
-                            title="Delete game"
-                          >
-                            <Trash2 size={12} />
-                          </button>
-                        )}
-                      </div>
-                    ))}
-                    {availableGames.filter(game => game.id !== 'default').length === 0 && (
-                      <div className="no-games-message">
-                        <p style={{ fontSize: '12px', color: 'var(--text-secondary)', padding: '8px', textAlign: 'center' }}>
-                          No games yet. Create your first one!
-                        </p>
-                      </div>
-                    )}
+                      ))}
+                      {availableGames.filter(game => game.id !== 'default').length === 0 && (
+                        <div className="no-games-message">
+                          <p>No games yet. Create your first one!</p>
+                        </div>
+                      )}
+                    </div>
                     <button 
-                      className="game-item add-game"
-                      onClick={() => setIsAddGameModalOpen(true)}
+                      className="add-game-button"
+                      onClick={() => {
+                        setIsAddGameModalOpen(true);
+                        setIsGamesDropdownOpen(false);
+                      }}
                     >
                       <Plus size={14} />
-                      <span className="game-item-name">Add Game</span>
+                      <span>Add New Game</span>
                     </button>
                   </div>
                 )}

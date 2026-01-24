@@ -8,6 +8,7 @@ interface LevelFunnelFilters {
     startDate?: Date | undefined;
     endDate?: Date | undefined;
     country?: string | undefined;
+    platform?: string | undefined;
     version?: string | undefined;
     abTestId?: string | undefined;
     variantId?: string | undefined; // For filtering by specific AB test variant
@@ -31,7 +32,8 @@ interface LevelMetrics {
     churnTotal: number; // Total churn rate
     churnStartComplete: number;
     churnCompleteNext: number;
-    aps: number;
+    apsRaw: number; // All starts from completing users (includes orphaned starts)
+    apsClean: number; // Only starts with matching conclusions (filters out orphaned starts)
     meanCompletionDuration: number;
     meanFailDuration: number;
     cumulativeAvgTime: number; // Cumulative average time from level 1 to current level
@@ -46,7 +48,7 @@ export class LevelFunnelService {
      */
     async getLevelFunnelData(filters: LevelFunnelFilters): Promise<LevelMetrics[]> {
         try {
-            const { gameId, startDate, endDate, country, version, abTestId, variantId, levelFunnel, levelFunnelVersion, levelLimit = 100 } = filters;
+            const { gameId, startDate, endDate, country, platform, version, abTestId, variantId, levelFunnel, levelFunnelVersion, levelLimit = 100 } = filters;
 
             // ...existing code...
             // Build where clause for filtering
@@ -70,6 +72,15 @@ export class LevelFunnelService {
                     whereClause.countryCode = { in: countries };
                 } else if (countries.length === 1) {
                     whereClause.countryCode = countries[0];
+                }
+            }
+            if (platform) {
+                // Support multiple platforms (comma-separated)
+                const platforms = platform.split(',').map(p => p.trim()).filter(p => p);
+                if (platforms.length > 1) {
+                    whereClause.platform = { in: platforms };
+                } else if (platforms.length === 1) {
+                    whereClause.platform = platforms[0];
                 }
             }
             if (version) {
@@ -331,12 +342,22 @@ export class LevelFunnelService {
             ? ((usersWhoDidntComplete + usersWhoCompletedButDidntContinue) / usersWhoStarted.size) * 100
             : 0;
 
-        // APS (Attempts Per Success): Average starts per completing user
-        // Only count starts from users who actually finished (completed OR failed)
-        const usersWhoConcluded = new Set([...usersWhoCompleted, ...usersWhoFailed]);
-        const startsFromConcludedUsers = startEvents.filter(e => usersWhoConcluded.has(e.userId)).length;
-        const aps = usersWhoCompleted.size > 0
-            ? startsFromConcludedUsers / usersWhoCompleted.size
+        // APS (Attempts Per Success): Two different calculations
+        
+        // 1. Raw APS: All starts from completing users (includes orphaned starts from crashes, etc.)
+        const allStartsFromCompletedUsers = startEvents.filter(e => usersWhoCompleted.has(e.userId)).length;
+        const apsRaw = usersWhoCompleted.size > 0
+            ? allStartsFromCompletedUsers / usersWhoCompleted.size
+            : 0;
+        
+        // 2. Clean APS: Only starts that have a corresponding conclusion (complete or fail)
+        // This filters out orphaned start events from crashes, network issues, etc.
+        const matchedStarts = this.matchStartsWithConclusions(startEvents, [...completeEvents, ...failEvents]);
+        const matchedStartsFromCompletedUsers = matchedStarts.filter(match => 
+            usersWhoCompleted.has(match.userId)
+        ).length;
+        const apsClean = usersWhoCompleted.size > 0
+            ? matchedStartsFromCompletedUsers / usersWhoCompleted.size
             : 0;
 
         // Mean Completion Duration
@@ -408,7 +429,8 @@ export class LevelFunnelService {
             churnTotal: Math.round(churnTotal * 100) / 100,
             churnStartComplete: Math.round(churnStartComplete * 100) / 100,
             churnCompleteNext: Math.round(churnCompleteNext * 100) / 100,
-            aps: Math.round(aps * 100) / 100,
+            apsRaw: Math.round(apsRaw * 100) / 100,
+            apsClean: Math.round(apsClean * 100) / 100,
             meanCompletionDuration: Math.round(meanCompletionDuration * 100) / 100,
             meanFailDuration: Math.round(meanFailDuration * 100) / 100,
             cumulativeAvgTime: 0, // Will be calculated after all levels are processed
@@ -416,6 +438,38 @@ export class LevelFunnelService {
             egpRate: Math.round(egpRate * 100) / 100,
             customMetrics
         };
+    }
+
+    /**
+     * Match start events with their corresponding conclusion events (complete or fail)
+     * Returns only starts that have a matching conclusion
+     */
+    private matchStartsWithConclusions(startEvents: any[], conclusionEvents: any[]): any[] {
+        const matchedStarts: any[] = [];
+        
+        // Group starts by user
+        const userStarts = new Map<string, any[]>();
+        for (const startEvent of startEvents) {
+            if (!userStarts.has(startEvent.userId)) {
+                userStarts.set(startEvent.userId, []);
+            }
+            userStarts.get(startEvent.userId)!.push(startEvent);
+        }
+        
+        // For each conclusion, find the closest preceding start
+        for (const conclusion of conclusionEvents) {
+            const starts = userStarts.get(conclusion.userId);
+            if (starts && starts.length > 0) {
+                // Find the most recent start before this conclusion
+                const validStarts = starts.filter(s => s.timestamp <= conclusion.timestamp);
+                if (validStarts.length > 0) {
+                    const closestStart = validStarts[validStarts.length - 1];
+                    matchedStarts.push(closestStart);
+                }
+            }
+        }
+        
+        return matchedStarts;
     }
 
     /**

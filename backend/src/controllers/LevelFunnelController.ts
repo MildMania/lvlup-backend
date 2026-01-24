@@ -15,6 +15,7 @@ export class LevelFunnelController {
                 startDate,
                 endDate,
                 country,
+                platform,
                 version,
                 abTestId,
                 levelFunnel,
@@ -38,6 +39,7 @@ export class LevelFunnelController {
                 startDate: processedStartDate,
                 endDate: processedEndDate,
                 country: country as string | undefined,
+                platform: platform as string | undefined,
                 version: version as string | undefined,
                 abTestId: abTestId as string | undefined,
                 levelFunnel: levelFunnel as string | undefined,
@@ -79,6 +81,7 @@ export class LevelFunnelController {
                             end: filters.endDate?.toISOString()
                         },
                         country: filters.country,
+                        platform: filters.platform,
                         version: filters.version
                     },
                     totalPlayers: levels[0]?.startedPlayers || 0,
@@ -106,6 +109,7 @@ export class LevelFunnelController {
                 startDate,
                 endDate,
                 country,
+                platform,
                 version
             } = req.query;
 
@@ -125,6 +129,7 @@ export class LevelFunnelController {
                 startDate: processedStartDate,
                 endDate: processedEndDate,
                 country: country as string | undefined,
+                platform: platform as string | undefined,
                 version: version as string | undefined
             };
 

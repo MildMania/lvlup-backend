@@ -304,6 +304,8 @@ export class AnalyticsService {
     async trackBatchEvents(gameId: string, batchData: BatchEventData) {
         try {
             // Get or create user
+            // Extract country from first event if available (EventData has country/countryCode)
+            const firstEvent = batchData.events[0];
             const userProfile: UserProfile = {
                 externalId: batchData.userId,
                 ...(batchData.deviceInfo?.deviceId && { deviceId: batchData.deviceInfo.deviceId }),
@@ -311,6 +313,7 @@ export class AnalyticsService {
                 ...((batchData.deviceInfo?.appVersion || batchData.deviceInfo?.version) && {
                     version: batchData.deviceInfo.appVersion || batchData.deviceInfo.version
                 }),
+                ...(firstEvent?.country && { country: firstEvent.country }),
             };
 
             const user = await this.getOrCreateUser(gameId, userProfile);

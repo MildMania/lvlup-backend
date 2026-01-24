@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import apiClient from '../lib/apiClient';
 import { useAuth } from '../contexts/AuthContext';
-import { Users, Plus, Trash2, Edit, AlertCircle, X, UserPlus, Shield, ChevronLeft } from 'lucide-react';
+import { Users, Plus, Trash2, Edit, AlertCircle, X, UserPlus, Shield, ChevronLeft, RefreshCw } from 'lucide-react';
 import './TeamManagement.css';
 
 interface Team {
@@ -376,8 +376,9 @@ const TeamManagement: React.FC<TeamManagementProps> = ({ isCollapsed = false }) 
 
     if (loading) {
         return (
-            <div className="loading-spinner">
-                <div className="spinner"></div>
+            <div className="loading-container">
+                <RefreshCw size={48} className="spinning" />
+                <p>Loading teams...</p>
             </div>
         );
     }
@@ -671,8 +672,9 @@ const TeamManagement: React.FC<TeamManagementProps> = ({ isCollapsed = false }) 
                         )}
 
                         {loadingMembers ? (
-                            <div className="loading-spinner">
-                                <div className="spinner"></div>
+                            <div className="loading-container">
+                                <RefreshCw size={48} className="spinning" />
+                                <p>Loading members...</p>
                             </div>
                         ) : teamMembers.length === 0 ? (
                             <div className="empty-state">

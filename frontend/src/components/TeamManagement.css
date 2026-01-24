@@ -303,6 +303,26 @@
   font-size: 0.875rem;
 }
 
+@keyframes spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
+.spinning {
+  animation: spin 1s linear infinite;
+}
+
+.loading-container {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  padding: 4rem;
+  gap: 1rem;
+  color: var(--text-secondary);
+  min-height: 400px;
+}
+
 .loading-spinner {
   display: flex;
   justify-content: center;
@@ -319,9 +339,6 @@
   animation: spin 1s linear infinite;
 }
 
-@keyframes spin {
-  to { transform: rotate(360deg); }
-}
 
 /* Team Details View */
 .team-details-view {

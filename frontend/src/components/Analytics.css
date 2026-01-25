@@ -75,9 +75,12 @@
   margin: 0;
 }
 
-/* Disable padding for tab content specifically inside analytics so child content can be flush */
-.analytics-content .tab-content {
-  padding: 0;
+/* Disable padding for tab content specifically inside analytics so child content can be flush.
+   Use !important to override any global .tab-content padding (e.g., ReleaseManagement.css). */
+.analytics-content .tab-content,
+.analytics-content > .tab-content {
+  padding: 0 !important;
+  margin: 0 !important;
 }
 
 .tab-content {

@@ -12,6 +12,7 @@ import UserProfile from './UserProfile';
 import { AIChatWidget } from './AIChatWidget';
 import { useGame } from '../contexts/GameContext';
 import { setApiKey } from '../lib/apiClient';
+import GameManagement from './GameManagement';
 import './Layout.css';
 
 const Layout: React.FC = () => {
@@ -46,42 +47,6 @@ const Layout: React.FC = () => {
     });
   };
 
-  const handleGameDelete = async (gameId: string) => {
-    try {
-      const apiBaseUrl = import.meta.env.VITE_API_BASE_URL || 'http://localhost:3000/api';
-      const response = await fetch(`${apiBaseUrl}/games/${gameId}`, {
-        method: 'DELETE',
-      });
-
-      if (response.ok) {
-        // Refresh games list
-        await refreshGames();
-        
-        // If deleted game was current, switch to first available or default
-        if (currentGame.id === gameId) {
-          const remainingGames = availableGames.filter(g => g.id !== gameId);
-          if (remainingGames.length > 0) {
-            setCurrentGame(remainingGames[0]);
-          } else {
-            // Reset to default if no games left
-            setCurrentGame({
-              id: 'default',
-              name: 'No Games Yet',
-              description: 'Create your first game',
-              apiKey: 'default_key'
-            });
-          }
-        }
-      } else {
-        const errorData = await response.json();
-        alert(`Failed to delete game: ${errorData.error || response.statusText}`);
-      }
-    } catch (error) {
-      console.error('Error deleting game:', error);
-      alert('Failed to delete game. Please try again.');
-    }
-  };
-
   return (
     <div className="layout">
       <Sidebar 
@@ -91,7 +56,6 @@ const Layout: React.FC = () => {
         onGameChange={handleGameChange}
         onCollapseChange={setIsSidebarCollapsed}
         onGameAdded={handleGameAdded}
-        onGameDelete={handleGameDelete}
       />
       <main className="main-content">
         <Routes>
@@ -103,6 +67,7 @@ const Layout: React.FC = () => {
           <Route path="/funnels" element={<LevelFunnel isCollapsed={isSidebarCollapsed} />} />
           <Route path="/releases" element={<ReleaseManagement isCollapsed={isSidebarCollapsed} />} />
           <Route path="/profile" element={<UserProfile isCollapsed={isSidebarCollapsed} />} />
+          <Route path="/games" element={<GameManagement isCollapsed={isSidebarCollapsed} />} />
           <Route path="/settings" element={<div className="page-placeholder">Settings Page - Coming Soon</div>} />
           <Route path="/" element={<Dashboard gameInfo={currentGame} isCollapsed={isSidebarCollapsed} />} />
         </Routes>

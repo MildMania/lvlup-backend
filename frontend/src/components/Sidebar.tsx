@@ -111,6 +111,8 @@ const Sidebar: React.FC<SidebarProps> = ({
     { id: 'teams', label: 'Teams', icon: UsersRound, adminOnly: true },
     { id: 'users', label: 'Users', icon: Users, adminOnly: true },
     { id: 'settings', label: 'General', icon: Settings, adminOnly: true },
+    // Add Games management as an admin-only settings page
+    { id: 'games', label: 'Games', icon: GamepadIcon, adminOnly: true },
   ];
 
   // Filter settings items based on user role
@@ -222,20 +224,7 @@ const Sidebar: React.FC<SidebarProps> = ({
                           <GamepadIcon size={14} />
                           <span className="game-item-name">{game.name}</span>
                         </button>
-                        {onGameDelete && (
-                          <button
-                            className="game-item-delete"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              if (window.confirm(`Are you sure you want to delete "${game.name}"? This action cannot be undone.`)) {
-                                onGameDelete(game.id);
-                              }
-                            }}
-                            title="Delete game"
-                          >
-                            <Trash2 size={12} />
-                          </button>
-                        )}
+                        {/* Removed inline delete button from sidebar to centralize deletion in admin Games page */}
                       </div>
                     ))}
                     {availableGames.filter(game => game.id !== 'default').length === 0 && (

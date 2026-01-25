@@ -55,12 +55,14 @@
 
 /* Header */
 .sidebar-header {
-  padding: 24px 20px;
+  /* Match the topbar height for visual alignment */
+  height: var(--topbar-height);
+  padding: 14px 20px; /* match TopBar vertical padding */
   border-bottom: 1px solid var(--border-primary);
   display: flex;
   align-items: center;
   justify-content: space-between;
-  min-height: 80px;
+  box-sizing: border-box;
 }
 
 .logo-section {

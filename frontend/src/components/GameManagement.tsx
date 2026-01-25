@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import apiClient from '../lib/apiClient';
 import { useAuth } from '../contexts/AuthContext';
-import { GamepadIcon, Trash2, Plus, AlertCircle, X, ChevronLeft } from 'lucide-react';
+import { GamepadIcon, Trash2, AlertCircle } from 'lucide-react';
 import { useGame } from '../contexts/GameContext';
 import './GameManagement.css';
 
@@ -18,7 +18,7 @@ interface GameManagementProps {
 
 const GameManagement: React.FC<GameManagementProps> = ({ isCollapsed = false }) => {
   const { user } = useAuth();
-  const { availableGames, refreshGames, setCurrentGame } = useGame();
+  const { refreshGames } = useGame();
   const [games, setGames] = useState<GameInfo[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');

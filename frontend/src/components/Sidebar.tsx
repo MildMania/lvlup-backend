@@ -12,17 +12,14 @@ import {
   X,
   ChevronLeft,
   ChevronRight,
-  Plus,
   ChevronDown,
   ChevronUp,
   Moon,
   Sun,
   GitBranch,
-  Trash2,
   UsersRound,
   User,
-  LogOut,
-  Copy
+  LogOut
 } from 'lucide-react';
 import { useTheme } from '../contexts/ThemeContext';
 import { useAuth } from '../contexts/AuthContext';
@@ -48,7 +45,6 @@ interface SidebarProps {
 
 const Sidebar: React.FC<SidebarProps> = ({ 
   currentPage, 
-  // onPageChange,  // TODO: Remove if not needed, or implement usage
   gameInfo, 
   availableGames = [], 
   onGameChange,
@@ -70,34 +66,12 @@ const Sidebar: React.FC<SidebarProps> = ({
   const [isAddGameModalOpen, setIsAddGameModalOpen] = useState(false);
   const { isDarkMode, toggleTheme } = useTheme();
   const { logout, user } = useAuth();
-  // copy feedback
-  const [copied, setCopied] = useState(false);
 
   // Check if user has admin privileges
   const isAdmin = user?.teamMemberships?.some(
     membership => ['ADMIN', 'SUPER_ADMIN'].includes(membership.role)
   ) || false;
 
-  // Helper to render a shortened, professional-looking game id
-  const shortenId = (id?: string) => {
-    if (!id) return '';
-    // If id is short, return as-is
-    if (id.length <= 20) return id;
-    const start = id.slice(0, 8);
-    const end = id.slice(-6);
-    return `${start}...${end}`;
-  };
-
-  const copyIdToClipboard = async (id?: string) => {
-    if (!id || !navigator?.clipboard) return;
-    try {
-      await navigator.clipboard.writeText(id);
-      setCopied(true);
-      setTimeout(() => setCopied(false), 1800);
-    } catch (err) {
-      console.error('Failed to copy id:', err);
-    }
-  };
 
   // Notify parent of initial collapsed state
   useEffect(() => {

@@ -44,13 +44,9 @@ interface SidebarProps {
 }
 
 const Sidebar: React.FC<SidebarProps> = ({ 
-  currentPage, 
-  gameInfo, 
-  availableGames = [], 
-  onGameChange,
+  currentPage,
   onCollapseChange,
   onGameAdded,
-  onGameDelete
 }) => {
   // Initialize collapsed state from localStorage
   const [isCollapsed, setIsCollapsed] = useState(() => {

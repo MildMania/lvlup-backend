@@ -24,6 +24,12 @@ const GameManagement: React.FC<GameManagementProps> = ({ isCollapsed = false }) 
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
 
+  // New state for modal confirmation
+  const [deleteModalOpen, setDeleteModalOpen] = useState(false);
+  const [gameToDelete, setGameToDelete] = useState<GameInfo | null>(null);
+  const [confirmText, setConfirmText] = useState('');
+  const [deleting, setDeleting] = useState(false);
+
   const isAdmin = user?.teamMemberships?.some(
     membership => ['ADMIN', 'SUPER_ADMIN'].includes(membership.role)
   ) || false;
@@ -47,38 +53,43 @@ const GameManagement: React.FC<GameManagementProps> = ({ isCollapsed = false }) 
     }
   };
 
-  const handleDelete = async (game: GameInfo) => {
+  // Open modal instead of using window.prompt
+  const openDeleteModal = (game: GameInfo) => {
+    setGameToDelete(game);
+    setConfirmText('');
+    setError('');
+    setDeleteModalOpen(true);
+  };
+
+  const closeDeleteModal = () => {
+    setDeleteModalOpen(false);
+    setGameToDelete(null);
+    setConfirmText('');
+  };
+
+  const confirmDelete = async () => {
     if (!isAdmin) return setError('Insufficient permissions');
+    if (!gameToDelete) return;
 
-    // Ask user to type 'delete' to validate deletion
-    const userInput = window.prompt(
-      `Type 'delete' to confirm deletion of "${game.name}". This action cannot be undone.`
-    );
-
-    if (userInput === null) {
-      // user cancelled prompt
+    if (confirmText.trim().toLowerCase() !== 'delete') {
+      setError('You must type "delete" to confirm deletion.');
+      setTimeout(() => setError(''), 3000);
       return;
     }
 
-    if (userInput.trim().toLowerCase() !== 'delete') {
-      // Invalid confirmation
-      setError('Deletion cancelled — you must type "delete" to confirm.');
-      setTimeout(() => setError(''), 4000);
-      return;
-    }
-
+    setDeleting(true);
     try {
-      await apiClient.delete(`/games/${game.id}`);
+      await apiClient.delete(`/games/${gameToDelete.id}`);
       setSuccess('Game deleted successfully');
-      // Refresh local and global game lists
       await refreshGames();
       await fetchGames();
-
-      // Clear success message after a short delay
+      closeDeleteModal();
       setTimeout(() => setSuccess(''), 3000);
     } catch (err: any) {
       console.error('[GameManagement] Error deleting game:', err);
       setError(err.response?.data?.error || 'Failed to delete game');
+    } finally {
+      setDeleting(false);
     }
   };
 
@@ -126,7 +137,7 @@ const GameManagement: React.FC<GameManagementProps> = ({ isCollapsed = false }) 
                   <div className="game-actions-buttons">
                     <button
                       className="icon-btn icon-btn-danger"
-                      onClick={(e) => { e.stopPropagation(); handleDelete(g); }}
+                      onClick={(e) => { e.stopPropagation(); openDeleteModal(g); }}
                       title="Delete game"
                     >
                       <Trash2 size={16} />
@@ -141,6 +152,39 @@ const GameManagement: React.FC<GameManagementProps> = ({ isCollapsed = false }) 
           ))
         )}
       </div>
+
+      {/* In-app delete confirmation modal */}
+      {deleteModalOpen && gameToDelete && (
+        <div className="modal-overlay" role="dialog" aria-modal="true">
+          <div className="delete-modal">
+            <h3>Confirm deletion</h3>
+            <p>
+              To permanently delete <strong>{gameToDelete.name}</strong>, type <code>delete</code> below and
+              press Delete. This action cannot be undone.
+            </p>
+
+            <input
+              type="text"
+              className="confirm-input"
+              placeholder="Type delete to confirm"
+              value={confirmText}
+              onChange={(e) => setConfirmText(e.target.value)}
+              autoFocus
+            />
+
+            <div className="modal-actions">
+              <button className="btn btn-secondary" onClick={closeDeleteModal} disabled={deleting}>Cancel</button>
+              <button
+                className="btn btn-danger"
+                onClick={confirmDelete}
+                disabled={deleting || confirmText.trim().toLowerCase() !== 'delete'}
+              >
+                {deleting ? 'Deleting...' : 'Delete'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

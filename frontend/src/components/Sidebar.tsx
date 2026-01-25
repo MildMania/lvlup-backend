@@ -21,7 +21,8 @@ import {
   Trash2,
   UsersRound,
   User,
-  LogOut
+  LogOut,
+  Copy
 } from 'lucide-react';
 import { useTheme } from '../contexts/ThemeContext';
 import { useAuth } from '../contexts/AuthContext';
@@ -61,11 +62,6 @@ const Sidebar: React.FC<SidebarProps> = ({
     return saved === 'true';
   });
   const [isMobileOpen, setIsMobileOpen] = useState(false);
-  // Initialize games expanded state from localStorage
-  const [isGamesExpanded, setIsGamesExpanded] = useState(() => {
-    const saved = localStorage.getItem('lvlup-games-expanded');
-    return saved !== 'false'; // Default to true if not set
-  });
   // Initialize settings expanded state from localStorage
   const [isSettingsExpanded, setIsSettingsExpanded] = useState(() => {
     const saved = localStorage.getItem('lvlup-settings-expanded');
@@ -74,11 +70,34 @@ const Sidebar: React.FC<SidebarProps> = ({
   const [isAddGameModalOpen, setIsAddGameModalOpen] = useState(false);
   const { isDarkMode, toggleTheme } = useTheme();
   const { logout, user } = useAuth();
+  // copy feedback
+  const [copied, setCopied] = useState(false);
 
   // Check if user has admin privileges
   const isAdmin = user?.teamMemberships?.some(
     membership => ['ADMIN', 'SUPER_ADMIN'].includes(membership.role)
   ) || false;
+
+  // Helper to render a shortened, professional-looking game id
+  const shortenId = (id?: string) => {
+    if (!id) return '';
+    // If id is short, return as-is
+    if (id.length <= 20) return id;
+    const start = id.slice(0, 8);
+    const end = id.slice(-6);
+    return `${start}...${end}`;
+  };
+
+  const copyIdToClipboard = async (id?: string) => {
+    if (!id || !navigator?.clipboard) return;
+    try {
+      await navigator.clipboard.writeText(id);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1800);
+    } catch (err) {
+      console.error('Failed to copy id:', err);
+    }
+  };
 
   // Notify parent of initial collapsed state
   useEffect(() => {
@@ -179,74 +198,6 @@ const Sidebar: React.FC<SidebarProps> = ({
             <X size={24} />
           </button>
         </div>
-
-        {/* Game Info Section */}
-        {gameInfo && (
-          <div className="game-info">
-            <div className="game-header">
-              <div className="game-icon">
-                <GamepadIcon size={16} />
-              </div>
-              {!isCollapsed && (
-                <div className="game-details">
-                  <h3 className="game-name">{gameInfo.name}</h3>
-                  <p className="game-id">{gameInfo.id}</p>
-                  {gameInfo.description && (
-                    <p className="game-description">{gameInfo.description}</p>
-                  )}
-                </div>
-              )}
-            </div>
-            
-            {/* Games List - Always show so Add Game button is accessible */}
-            {!isCollapsed && (
-              <div className="games-section">
-                <div 
-                  className="games-toggle"
-                  onClick={() => {
-                    const newState = !isGamesExpanded;
-                    setIsGamesExpanded(newState);
-                    localStorage.setItem('lvlup-games-expanded', String(newState));
-                  }}
-                >
-                  <span>Games</span>
-                  {isGamesExpanded ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
-                </div>
-                
-                {isGamesExpanded && (
-                  <div className="games-list">
-                    {availableGames.filter(game => game.id !== 'default').map((game) => (
-                      <div key={game.id} className="game-item-wrapper">
-                        <button
-                          className={`game-item ${game.id === gameInfo.id ? 'active' : ''}`}
-                          onClick={() => onGameChange && onGameChange(game.id)}
-                        >
-                          <GamepadIcon size={14} />
-                          <span className="game-item-name">{game.name}</span>
-                        </button>
-                        {/* Removed inline delete button from sidebar to centralize deletion in admin Games page */}
-                      </div>
-                    ))}
-                    {availableGames.filter(game => game.id !== 'default').length === 0 && (
-                      <div className="no-games-message">
-                        <p style={{ fontSize: '12px', color: 'var(--text-secondary)', padding: '8px', textAlign: 'center' }}>
-                          No games yet. Create your first one!
-                        </p>
-                      </div>
-                    )}
-                    <button 
-                      className="game-item add-game"
-                      onClick={() => setIsAddGameModalOpen(true)}
-                    >
-                      <Plus size={14} />
-                      <span className="game-item-name">Add Game</span>
-                    </button>
-                  </div>
-                )}
-              </div>
-            )}
-          </div>
-        )}
 
         {/* Navigation Menu */}
         <nav className="sidebar-nav">

@@ -13,6 +13,7 @@ import { AIChatWidget } from './AIChatWidget';
 import { useGame } from '../contexts/GameContext';
 import { setApiKey } from '../lib/apiClient';
 import GameManagement from './GameManagement';
+import TopBar from './TopBar';
 import './Layout.css';
 
 const Layout: React.FC = () => {
@@ -47,8 +48,10 @@ const Layout: React.FC = () => {
     });
   };
 
+  const sidebarWidth = isSidebarCollapsed ? '80px' : '280px';
+
   return (
-    <div className="layout">
+    <div className={`layout ${isSidebarCollapsed ? 'sidebar-collapsed' : ''}`} style={{ ['--sidebar-width' as any]: sidebarWidth } as React.CSSProperties}>
       <Sidebar 
         currentPage={currentPage}
         gameInfo={currentGame}
@@ -57,6 +60,7 @@ const Layout: React.FC = () => {
         onCollapseChange={setIsSidebarCollapsed}
         onGameAdded={handleGameAdded}
       />
+      <TopBar isCollapsed={isSidebarCollapsed} />
       <main className="main-content">
         <Routes>
           <Route path="/dashboard" element={<Dashboard gameInfo={currentGame} isCollapsed={isSidebarCollapsed} />} />

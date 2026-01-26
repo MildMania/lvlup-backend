@@ -29,6 +29,7 @@ model Game {
   releases          Release[]
   configs           RemoteConfig[]
   configDrafts      ConfigDraft[]
+  deployments       Deployment[]
   sessions          Session[]
   users             User[]
   gameAccesses      GameAccess[]
@@ -682,6 +683,30 @@ model AuditLog {
   @@index([userId, createdAt])
   @@index([action, createdAt])
   @@map("audit_logs")
+}
+
+// Deployment history for staging/production environments
+model Deployment {
+  id          String   @id @default(cuid())
+  gameId      String
+  environment String   // 'staging' or 'production'
+  version     Int      // Auto-increment: 1, 2, 3, etc.
+  deployedBy  String
+  deployedAt  DateTime @default(now())
+  source      String   // 'stash-from-dev', 'publish-from-staging', or 'rollback'
+  
+  // Complete snapshot of configs and rules at deployment time
+  snapshot    Json     // { configs: [...], rules: {...} }
+  
+  // Rollback information (only for staging)
+  isRollback     Boolean @default(false)
+  rolledBackFrom String? // deployment ID that was rolled back
+  
+  game Game @relation(fields: [gameId], references: [id], onDelete: Cascade)
+
+  @@index([gameId, environment, deployedAt])
+  @@index([gameId, environment, version])
+  @@map("deployments")
 }
 
 // Enums for Dashboard Authentication

@@ -6,10 +6,11 @@
  */
 
 import { Router, Request, Response } from 'express';
-import * as configController from '../controllers/ConfigController';
-import * as publicConfigController from '../controllers/PublicConfigController';
-import * as ruleController from '../controllers/RuleController';
-import * as draftController from '../controllers/DraftController';
+import * as configController from '../controllers/configController';
+import * as publicConfigController from '../controllers/publicConfigController';
+import * as ruleController from '../controllers/ruleController';
+import * as deploymentController from '../controllers/deploymentController';
+import * as draftController from '../controllers/draftController';
 import { validateConfigMiddleware } from '../middleware/validateConfig';
 import { validateRuleMiddleware } from '../middleware/validateRule';
 import { authenticateEither } from '../middleware/authenticateEither';
@@ -190,10 +191,13 @@ router.post(
     try {
       // TODO: Implement rollback functionality
       // This should revert to a previous version from history
-      res.status(501).json({
-        success: false,
-        error: 'Rollback functionality not yet implemented',
-      });
+      // res.status(501).json({
+      //   success: false,
+      //   error: 'Rollback functionality not yet implemented',
+      // });
+      // Delegate to controller revertConfig which implements revert staging -> development
+      const configController = await import('../controllers/configController');
+      return await configController.revertConfig(req, res);
     } catch (error) {
       logger.error('Error in POST /api/config/configs/:configId/rollback:', error);
       res.status(500).json({
@@ -529,6 +533,134 @@ router.delete(
         success: false,
         error: 'Internal server error',
       });
+    }
+  }
+);
+
+/**
+ * POST /api/config/admin/stash-to-staging
+ * Stash configs from development to staging
+ */
+router.post(
+  '/admin/stash-to-staging',
+  authenticateEither,
+  async (req: Request, res: Response) => {
+    try {
+      await configController.stashToStaging(req, res);
+    } catch (error) {
+      logger.error('Error in POST /api/config/admin/stash-to-staging:', error);
+      res.status(500).json({
+        success: false,
+        error: 'Internal server error',
+      });
+    }
+  }
+);
+
+/**
+ * POST /api/config/admin/publish-to-production
+ * Publish configs from staging to production
+ */
+router.post(
+  '/admin/publish-to-production',
+  authenticateEither,
+  async (req: Request, res: Response) => {
+    try {
+      await configController.publishToProduction(req, res);
+    } catch (error) {
+      logger.error('Error in POST /api/config/admin/publish-to-production:', error);
+      res.status(500).json({
+        success: false,
+        error: 'Internal server error',
+      });
+    }
+  }
+);
+
+/**
+ * POST /api/config/admin/pull-from-staging
+ * Pull configs from staging back to development
+ */
+router.post(
+  '/admin/pull-from-staging',
+  authenticateEither,
+  async (req: Request, res: Response) => {
+    try {
+      await configController.pullFromStaging(req, res);
+    } catch (error) {
+      logger.error('Error in POST /api/config/admin/pull-from-staging:', error);
+      res.status(500).json({
+        success: false,
+        error: 'Internal server error',
+      });
+    }
+  }
+);
+
+/**
+ * GET /api/config/admin/deployments/:gameId/:environment
+ * Get deployment history
+ */
+router.get(
+  '/admin/deployments/:gameId/:environment',
+  authenticateEither,
+  async (req: Request, res: Response) => {
+    try {
+      await deploymentController.getDeploymentHistory(req, res);
+    } catch (error) {
+      logger.error('Error in GET /api/config/admin/deployments/:gameId/:environment:', error);
+      res.status(500).json({ success: false, error: 'Internal server error' });
+    }
+  }
+);
+
+/**
+ * GET /api/config/admin/deployments/:deploymentId
+ * Get single deployment
+ */
+router.get(
+  '/admin/deployments/:deploymentId',
+  authenticateEither,
+  async (req: Request, res: Response) => {
+    try {
+      await deploymentController.getDeployment(req, res);
+    } catch (error) {
+      logger.error('Error in GET /api/config/admin/deployments/:deploymentId:', error);
+      res.status(500).json({ success: false, error: 'Internal server error' });
+    }
+  }
+);
+
+/**
+ * POST /api/config/admin/deployments/:deploymentId/rollback
+ * Rollback staging
+ */
+router.post(
+  '/admin/deployments/:deploymentId/rollback',
+  authenticateEither,
+  async (req: Request, res: Response) => {
+    try {
+      await deploymentController.rollbackDeployment(req, res);
+    } catch (error) {
+      logger.error('Error in POST /api/config/admin/deployments/:deploymentId/rollback:', error);
+      res.status(500).json({ success: false, error: 'Internal server error' });
+    }
+  }
+);
+
+/**
+ * GET /api/config/admin/deployments/compare/:deploymentId1/:deploymentId2
+ * Compare two deployments
+ */
+router.get(
+  '/admin/deployments/compare/:deploymentId1/:deploymentId2',
+  authenticateEither,
+  async (req: Request, res: Response) => {
+    try {
+      await deploymentController.compareDeployments(req, res);
+    } catch (error) {
+      logger.error('Error in GET /api/config/admin/deployments/compare:', error);
+      res.status(500).json({ success: false, error: 'Internal server error' });
     }
   }
 );

@@ -5,7 +5,7 @@
  */
 
 import { Request, Response } from 'express';
-import * as configService from '../services/ConfigService';
+import * as configService from '../services/configService';
 import { CreateRuleInput, UpdateRuleInput } from '../types/config.types';
 import logger from '../utils/logger';
 
@@ -50,6 +50,23 @@ export async function createRule(
       res.status(400).json({
         success: false,
         error: 'overrideValue is required',
+      });
+      return;
+    }
+
+    // Get the existing config to check environment
+    const existingConfig = await configService.getConfig(configId);
+    if (!existingConfig) {
+      res.status(404).json({ success: false, error: 'Config not found' });
+      return;
+    }
+
+    // Production and Staging are read-only - no rule creation allowed
+    const env = (existingConfig.environment || '').toLowerCase();
+    if (env === 'production' || env === 'staging') {
+      res.status(403).json({
+        success: false,
+        error: 'Production and Staging environments are read-only. Rules cannot be created. Create rules in development, then stash/publish.',
       });
       return;
     }
@@ -251,6 +268,29 @@ export async function updateRule(
       return;
     }
 
+    // Get the rule to find its config and check environment
+    const rule = await configService.getRule(ruleId);
+    if (!rule) {
+      res.status(404).json({ success: false, error: 'Rule not found' });
+      return;
+    }
+
+    const existingConfig = await configService.getConfig(rule.configId);
+    if (!existingConfig) {
+      res.status(404).json({ success: false, error: 'Config not found' });
+      return;
+    }
+
+    // Production and Staging are read-only - no rule updates allowed
+    const env = (existingConfig.environment || '').toLowerCase();
+    if (env === 'production' || env === 'staging') {
+      res.status(403).json({
+        success: false,
+        error: 'Production and Staging environments are read-only. Rules cannot be updated. Update rules in development, then stash/publish.',
+      });
+      return;
+    }
+
     // Get user ID from auth context
     const userId = (req as any).user?.id || (req as any).gameId || 'system';
 
@@ -352,6 +392,29 @@ export async function deleteRule(
       return;
     }
 
+    // Get the rule to find its config and check environment
+    const rule = await configService.getRule(ruleId);
+    if (!rule) {
+      res.status(404).json({ success: false, error: 'Rule not found' });
+      return;
+    }
+
+    const existingConfig = await configService.getConfig(rule.configId);
+    if (!existingConfig) {
+      res.status(404).json({ success: false, error: 'Config not found' });
+      return;
+    }
+
+    // Production and Staging are read-only - no rule deletion allowed
+    const env = (existingConfig.environment || '').toLowerCase();
+    if (env === 'production' || env === 'staging') {
+      res.status(403).json({
+        success: false,
+        error: 'Production and Staging environments are read-only. Rules cannot be deleted. Delete rules in development, then stash/publish.',
+      });
+      return;
+    }
+
     // Get user ID from auth context
     const userId = (req as any).user?.id || (req as any).gameId || 'system';
 
@@ -421,6 +484,23 @@ export async function reorderRules(
       res.status(400).json({
         success: false,
         error: 'ruleOrder array is required',
+      });
+      return;
+    }
+
+    // Get the existing config to check environment
+    const existingConfig = await configService.getConfig(configId);
+    if (!existingConfig) {
+      res.status(404).json({ success: false, error: 'Config not found' });
+      return;
+    }
+
+    // Production and Staging are read-only - no rule reordering allowed
+    const env = (existingConfig.environment || '').toLowerCase();
+    if (env === 'production' || env === 'staging') {
+      res.status(403).json({
+        success: false,
+        error: 'Production and Staging environments are read-only. Rules cannot be reordered. Reorder rules in development, then stash/publish.',
       });
       return;
     }
@@ -495,6 +575,14 @@ export async function toggleRule(
     // Get user ID from auth context
     const userId = (req as any).user?.id || (req as any).gameId || 'system';
 
+    if (!configId) {
+      res.status(400).json({
+        success: false,
+        error: 'configId is required',
+      });
+      return;
+    }
+
     // Get current rule to toggle enabled status
     const config = await configService.getConfig(configId);
     if (!config) {
@@ -510,6 +598,16 @@ export async function toggleRule(
       res.status(404).json({
         success: false,
         error: 'Rule not found',
+      });
+      return;
+    }
+
+    // Production and Staging are read-only - no rule toggling allowed
+    const env = (config.environment || '').toLowerCase();
+    if (env === 'production' || env === 'staging') {
+      res.status(403).json({
+        success: false,
+        error: 'Production and Staging environments are read-only. Rules cannot be toggled. Toggle rules in development, then stash/publish.',
       });
       return;
     }
@@ -555,4 +653,3 @@ export async function toggleRule(
     });
   }
 }
-

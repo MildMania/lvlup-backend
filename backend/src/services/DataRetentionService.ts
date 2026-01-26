@@ -30,8 +30,19 @@ export class DataRetentionService {
     // Run cleanup daily at 3 AM (low traffic time)
     private readonly CLEANUP_INTERVAL_MS = 24 * 60 * 60 * 1000; // 24 hours
 
+    // Environment-controlled toggle: set DATA_RETENTION_ENABLED=true to allow deletions.
+    // Default (unset) is false to avoid accidental deletion of data during development.
+    private readonly DELETIONS_ENABLED: boolean = process.env.DATA_RETENTION_ENABLED === 'true';
+
     constructor(prismaClient?: PrismaClient) {
         this.prisma = prismaClient || prisma;
+    }
+
+    /**
+     * Expose whether deletions are enabled (useful for controllers/UI)
+     */
+    public isDeletionEnabled() {
+        return this.DELETIONS_ENABLED;
     }
 
     /**
@@ -44,6 +55,7 @@ export class DataRetentionService {
         }
 
         logger.info('Starting data retention service...');
+        logger.info(`Data retention deletions enabled: ${this.DELETIONS_ENABLED}`);
 
         // Run immediately on start, then schedule
         this.runCleanup();
@@ -75,33 +87,47 @@ export class DataRetentionService {
         const startTime = Date.now();
 
         try {
-            const results = await Promise.allSettled([
-                this.cleanupEvents(),
-                this.cleanupCrashLogs(),
-                this.cleanupSessions(),
-                this.cleanupAiQueries(),
-                this.cleanupAiInsights(),
-                this.cleanupBusinessEvents(),
-            ]);
+            if (this.DELETIONS_ENABLED) {
+                const results = await Promise.allSettled([
+                    this.cleanupEvents(),
+                    this.cleanupCrashLogs(),
+                    this.cleanupSessions(),
+                    this.cleanupAiQueries(),
+                    this.cleanupAiInsights(),
+                    this.cleanupBusinessEvents(),
+                ]);
 
-            // Log results
-            const totalDeleted = results.reduce((sum, result) => {
-                if (result.status === 'fulfilled') {
-                    return sum + result.value;
-                }
-                return sum;
-            }, 0);
+                // Log results
+                const totalDeleted = results.reduce((sum, result) => {
+                    if (result.status === 'fulfilled') {
+                        return sum + result.value;
+                    }
+                    return sum;
+                }, 0);
 
-            const duration = Date.now() - startTime;
-            logger.info(`Data retention cleanup completed in ${duration}ms. Total records deleted: ${totalDeleted}`);
+                const duration = Date.now() - startTime;
+                logger.info(`Data retention cleanup completed in ${duration}ms. Total records deleted: ${totalDeleted}`);
 
-            // Log any failures
-            results.forEach((result, index) => {
-                if (result.status === 'rejected') {
-                    const tableName = ['Event', 'CrashLog', 'Session', 'AiQuery', 'AiInsight', 'BusinessEvent'][index];
-                    logger.error(`Failed to cleanup ${tableName}:`, result.reason);
-                }
-            });
+                // Log any failures
+                results.forEach((result, index) => {
+                    if (result.status === 'rejected') {
+                        const tableName = ['Event', 'CrashLog', 'Session', 'AiQuery', 'AiInsight', 'BusinessEvent'][index];
+                        logger.error(`Failed to cleanup ${tableName}:`, result.reason);
+                    }
+                });
+            } else {
+                // Dry-run mode: only report eligible counts, do not delete
+                const stats = await this.getRetentionStats();
+                const totalEligible = (stats.events.eligibleForDeletion || 0)
+                    + (stats.crashLogs.eligibleForDeletion || 0)
+                    + (stats.sessions.eligibleForDeletion || 0)
+                    + (stats.aiQueries.eligibleForDeletion || 0);
+
+                const duration = Date.now() - startTime;
+                logger.info(`Data retention dry-run completed in ${duration}ms. Total records eligible for deletion: ${totalEligible}. No deletions performed (DATA_RETENTION_ENABLED not set).`);
+
+                logger.debug('Retention stats (dry-run):', stats as any);
+            }
 
         } catch (error) {
             logger.error('Error during data retention cleanup:', error);
@@ -116,16 +142,28 @@ export class DataRetentionService {
         cutoffDate.setDate(cutoffDate.getDate() - this.RETENTION_PERIODS.events);
 
         try {
-            const result = await this.prisma.event.deleteMany({
-                where: {
-                    timestamp: {
-                        lt: cutoffDate
+            if (this.DELETIONS_ENABLED) {
+                const result = await this.prisma.event.deleteMany({
+                    where: {
+                        timestamp: {
+                            lt: cutoffDate
+                        }
                     }
-                }
-            });
+                });
 
-            logger.info(`Deleted ${result.count} events older than ${this.RETENTION_PERIODS.events} days`);
-            return result.count;
+                logger.info(`Deleted ${result.count} events older than ${this.RETENTION_PERIODS.events} days`);
+                return result.count;
+            } else {
+                // Dry-run: just count eligible records
+                const count = await this.prisma.event.count({
+                    where: {
+                        timestamp: { lt: cutoffDate }
+                    }
+                });
+
+                logger.info(`Dry-run: ${count} events eligible for deletion (older than ${this.RETENTION_PERIODS.events} days)`);
+                return 0;
+            }
         } catch (error) {
             logger.error('Error cleaning up events:', error);
             throw error;
@@ -140,16 +178,25 @@ export class DataRetentionService {
         cutoffDate.setDate(cutoffDate.getDate() - this.RETENTION_PERIODS.crashLogs);
 
         try {
-            const result = await this.prisma.crashLog.deleteMany({
-                where: {
-                    timestamp: {
-                        lt: cutoffDate
+            if (this.DELETIONS_ENABLED) {
+                const result = await this.prisma.crashLog.deleteMany({
+                    where: {
+                        timestamp: {
+                            lt: cutoffDate
+                        }
                     }
-                }
-            });
+                });
 
-            logger.info(`Deleted ${result.count} crash logs older than ${this.RETENTION_PERIODS.crashLogs} days`);
-            return result.count;
+                logger.info(`Deleted ${result.count} crash logs older than ${this.RETENTION_PERIODS.crashLogs} days`);
+                return result.count;
+            } else {
+                const count = await this.prisma.crashLog.count({
+                    where: { timestamp: { lt: cutoffDate } }
+                });
+
+                logger.info(`Dry-run: ${count} crash logs eligible for deletion (older than ${this.RETENTION_PERIODS.crashLogs} days)`);
+                return 0;
+            }
         } catch (error) {
             logger.error('Error cleaning up crash logs:', error);
             throw error;
@@ -164,16 +211,25 @@ export class DataRetentionService {
         cutoffDate.setDate(cutoffDate.getDate() - this.RETENTION_PERIODS.sessions);
 
         try {
-            const result = await this.prisma.session.deleteMany({
-                where: {
-                    startTime: {
-                        lt: cutoffDate
+            if (this.DELETIONS_ENABLED) {
+                const result = await this.prisma.session.deleteMany({
+                    where: {
+                        startTime: {
+                            lt: cutoffDate
+                        }
                     }
-                }
-            });
+                });
 
-            logger.info(`Deleted ${result.count} sessions older than ${this.RETENTION_PERIODS.sessions} days`);
-            return result.count;
+                logger.info(`Deleted ${result.count} sessions older than ${this.RETENTION_PERIODS.sessions} days`);
+                return result.count;
+            } else {
+                const count = await this.prisma.session.count({
+                    where: { startTime: { lt: cutoffDate } }
+                });
+
+                logger.info(`Dry-run: ${count} sessions eligible for deletion (older than ${this.RETENTION_PERIODS.sessions} days)`);
+                return 0;
+            }
         } catch (error) {
             logger.error('Error cleaning up sessions:', error);
             throw error;
@@ -188,16 +244,25 @@ export class DataRetentionService {
         cutoffDate.setDate(cutoffDate.getDate() - this.RETENTION_PERIODS.aiQueries);
 
         try {
-            const result = await this.prisma.aiQuery.deleteMany({
-                where: {
-                    createdAt: {
-                        lt: cutoffDate
+            if (this.DELETIONS_ENABLED) {
+                const result = await this.prisma.aiQuery.deleteMany({
+                    where: {
+                        createdAt: {
+                            lt: cutoffDate
+                        }
                     }
-                }
-            });
+                });
 
-            logger.info(`Deleted ${result.count} AI queries older than ${this.RETENTION_PERIODS.aiQueries} days`);
-            return result.count;
+                logger.info(`Deleted ${result.count} AI queries older than ${this.RETENTION_PERIODS.aiQueries} days`);
+                return result.count;
+            } else {
+                const count = await this.prisma.aiQuery.count({
+                    where: { createdAt: { lt: cutoffDate } }
+                });
+
+                logger.info(`Dry-run: ${count} AI queries eligible for deletion (older than ${this.RETENTION_PERIODS.aiQueries} days)`);
+                return 0;
+            }
         } catch (error) {
             logger.error('Error cleaning up AI queries:', error);
             throw error;
@@ -212,16 +277,25 @@ export class DataRetentionService {
         cutoffDate.setDate(cutoffDate.getDate() - this.RETENTION_PERIODS.aiInsights);
 
         try {
-            const result = await this.prisma.aiInsight.deleteMany({
-                where: {
-                    createdAt: {
-                        lt: cutoffDate
+            if (this.DELETIONS_ENABLED) {
+                const result = await this.prisma.aiInsight.deleteMany({
+                    where: {
+                        createdAt: {
+                            lt: cutoffDate
+                        }
                     }
-                }
-            });
+                });
 
-            logger.info(`Deleted ${result.count} AI insights older than ${this.RETENTION_PERIODS.aiInsights} days`);
-            return result.count;
+                logger.info(`Deleted ${result.count} AI insights older than ${this.RETENTION_PERIODS.aiInsights} days`);
+                return result.count;
+            } else {
+                const count = await this.prisma.aiInsight.count({
+                    where: { createdAt: { lt: cutoffDate } }
+                });
+
+                logger.info(`Dry-run: ${count} AI insights eligible for deletion (older than ${this.RETENTION_PERIODS.aiInsights} days)`);
+                return 0;
+            }
         } catch (error) {
             logger.error('Error cleaning up AI insights:', error);
             throw error;
@@ -236,16 +310,25 @@ export class DataRetentionService {
         cutoffDate.setDate(cutoffDate.getDate() - this.RETENTION_PERIODS.businessEvents);
 
         try {
-            const result = await this.prisma.businessEvent.deleteMany({
-                where: {
-                    createdAt: {
-                        lt: cutoffDate
+            if (this.DELETIONS_ENABLED) {
+                const result = await this.prisma.businessEvent.deleteMany({
+                    where: {
+                        createdAt: {
+                            lt: cutoffDate
+                        }
                     }
-                }
-            });
+                });
 
-            logger.info(`Deleted ${result.count} business events older than ${this.RETENTION_PERIODS.businessEvents} days`);
-            return result.count;
+                logger.info(`Deleted ${result.count} business events older than ${this.RETENTION_PERIODS.businessEvents} days`);
+                return result.count;
+            } else {
+                const count = await this.prisma.businessEvent.count({
+                    where: { createdAt: { lt: cutoffDate } }
+                });
+
+                logger.info(`Dry-run: ${count} business events eligible for deletion (older than ${this.RETENTION_PERIODS.businessEvents} days)`);
+                return 0;
+            }
         } catch (error) {
             logger.error('Error cleaning up business events:', error);
             throw error;
@@ -294,17 +377,32 @@ export class DataRetentionService {
      * Run cleanup for a specific table only
      */
     async cleanupTable(tableName: 'events' | 'crashLogs' | 'sessions' | 'aiQueries'): Promise<number> {
-        switch (tableName) {
-            case 'events':
-                return await this.cleanupEvents();
-            case 'crashLogs':
-                return await this.cleanupCrashLogs();
-            case 'sessions':
-                return await this.cleanupSessions();
-            case 'aiQueries':
-                return await this.cleanupAiQueries();
-            default:
-                throw new Error(`Unknown table: ${tableName}`);
+        if (this.DELETIONS_ENABLED) {
+            switch (tableName) {
+                case 'events':
+                    return await this.cleanupEvents();
+                case 'crashLogs':
+                    return await this.cleanupCrashLogs();
+                case 'sessions':
+                    return await this.cleanupSessions();
+                case 'aiQueries':
+                    return await this.cleanupAiQueries();
+                default:
+                    throw new Error(`Unknown table: ${tableName}`);
+            }
+        } else {
+            // Dry-run: return 0 (no deletions) but log eligible counts
+            const stats = await this.getRetentionStats();
+            const mapping: any = {
+                events: stats.events.eligibleForDeletion,
+                crashLogs: stats.crashLogs.eligibleForDeletion,
+                sessions: stats.sessions.eligibleForDeletion,
+                aiQueries: stats.aiQueries.eligibleForDeletion,
+            };
+
+            const eligible = mapping[tableName] ?? 0;
+            logger.info(`Dry-run: ${eligible} records eligible for deletion in table ${tableName}`);
+            return 0;
         }
     }
 }

@@ -5,7 +5,7 @@
  */
 
 import { Request, Response } from 'express';
-import * as configService from '../services/ConfigService';
+import * as configService from '../services/configService';
 import {
   CreateConfigRequest,
   CreateConfigResponse,
@@ -38,6 +38,16 @@ export async function createConfig(
       return;
     }
 
+    // Enforce best-practice workflow: direct create allowed only in development
+    const env = (environment || 'development').toLowerCase();
+    if (env !== 'development') {
+      res.status(403).json({
+        success: false,
+        error: 'Direct creation is only allowed in the development environment. Create changes in development and deploy to staging/publish to production via the drafts/deploy workflow.',
+      });
+      return;
+    }
+
     // Get user ID from auth context
     const userId = (req as any).user?.id || (req as any).gameId || 'system';
 
@@ -48,7 +58,7 @@ export async function createConfig(
         key,
         value,
         dataType,
-        environment: environment || 'production',
+        environment: 'development',
         enabled: enabled !== false,
         description,
       },
@@ -244,6 +254,23 @@ export async function updateConfig(
       return;
     }
 
+    // Get the existing config to check environment
+    const existingConfig = await configService.getConfig(configId);
+    if (!existingConfig) {
+      res.status(404).json({ success: false, error: 'Config not found' });
+      return;
+    }
+
+    // Only allow direct updates in development (staging and production are read-only)
+    const env = (existingConfig.environment || '').toLowerCase();
+    if (env !== 'development') {
+      res.status(403).json({
+        success: false,
+        error: 'Direct updates are only allowed in development. Changes flow: Development → Stash to Staging → Publish to Production.',
+      });
+      return;
+    }
+
     // Get user ID from auth context
     const userId = (req as any).user?.id || (req as any).gameId || 'system';
 
@@ -324,6 +351,22 @@ export async function deleteConfig(
       return;
     }
 
+    // Get the existing config to check environment
+    const existingConfig = await configService.getConfig(configId);
+    if (!existingConfig) {
+      res.status(404).json({ success: false, error: 'Config not found' });
+      return;
+    }
+
+    // Only allow deletion in development environment
+    if ((existingConfig.environment || '').toLowerCase() !== 'development') {
+      res.status(403).json({
+        success: false,
+        error: 'Direct deletion is only allowed in the development environment. Configs in staging/production should be managed through the deployment workflow.',
+      });
+      return;
+    }
+
     // Get user ID from auth context
     const userId = (req as any).user?.id || (req as any).gameId || 'system';
 
@@ -356,6 +399,473 @@ export async function deleteConfig(
       success: false,
       error: 'Failed to delete config',
     });
+  }
+}
+
+/**
+ * POST /api/admin/configs/:configId/revert
+ * Revert a staging config back to development
+ */
+export async function revertConfig(req: Request, res: Response): Promise<void> {
+  try {
+    const { configId } = req.params;
+
+    if (!configId) {
+      res.status(400).json({ success: false, error: 'configId is required' });
+      return;
+    }
+
+    const userId = (req as any).user?.id || (req as any).gameId || 'system';
+
+    const result = await (await import('../services/configService')).revertConfigToDevelopment(configId, userId);
+
+    res.status(200).json({
+      success: true,
+      data: {
+        id: result.id,
+        gameId: result.gameId,
+        key: result.key,
+        environment: result.environment,
+        createdAt: result.createdAt?.toISOString?.(),
+      },
+    });
+  } catch (error: any) {
+    logger.error('Failed to revert config:', error);
+    res.status(500).json({ success: false, error: error.message || 'Failed to revert config' });
+  }
+}
+
+/**
+ * POST /api/config/admin/stash-to-staging
+ * Stash configs from development to staging environment
+ * Replaces ALL staging configs with development configs (complete replacement)
+ * Also copies all rules attached to each config
+ */
+export async function stashToStaging(req: Request, res: Response): Promise<void> {
+  try {
+    const { gameId, configIds } = req.body;
+
+    if (!gameId || !configIds || !Array.isArray(configIds)) {
+      res.status(400).json({
+        success: false,
+        error: 'gameId and configIds array are required',
+      });
+      return;
+    }
+
+    const userId = (req as any).user?.id || (req as any).gameId || 'system';
+
+    logger.info('Stashing configs to staging (complete replacement with rules)', { gameId, configCount: configIds.length, userId });
+
+    // STEP 1: Delete ALL existing staging configs for this game (rules will cascade delete)
+    const existingStagingConfigs = await configService.getConfigs(gameId, 'staging');
+    logger.info('Deleting existing staging configs', { count: existingStagingConfigs.length });
+    
+    await Promise.allSettled(
+      existingStagingConfigs.map(async (config) => {
+        try {
+          await configService.deleteConfig(config.id, userId);
+        } catch (error) {
+          logger.warn(`Failed to delete staging config ${config.id}`, error);
+        }
+      })
+    );
+
+    // STEP 2: Copy all development configs to staging WITH their rules (sequentially to preserve order)
+    const results = [];
+    const snapshotConfigs = [];
+    
+    for (const configId of configIds) {
+      try {
+        const config = await configService.getConfig(configId);
+        if (!config) {
+          throw new Error(`Config ${configId} not found`);
+        }
+
+        // Only allow stashing from development
+        if ((config.environment || '').toLowerCase() !== 'development') {
+          throw new Error(`Config ${configId} is not in development environment`);
+        }
+
+        // Create new staging config
+        const newStagingConfig = await configService.createConfig(
+          {
+            gameId: config.gameId,
+            key: config.key,
+            value: config.value,
+            dataType: config.dataType,
+            environment: 'staging',
+            enabled: config.enabled,
+            description: config.description,
+          },
+          userId
+        );
+
+        // Copy all rules from dev config to new staging config
+        const copiedRules = [];
+        if (config.rules && config.rules.length > 0) {
+          logger.info(`Copying ${config.rules.length} rules for config ${config.key}`);
+          
+          for (const rule of config.rules) {
+            try {
+              const newRule = await configService.createRule(
+                {
+                  configId: newStagingConfig.id,
+                  priority: rule.priority,
+                  overrideValue: rule.overrideValue,
+                  enabled: rule.enabled,
+                  platformConditions: rule.platformConditions,
+                  countryConditions: rule.countryConditions,
+                  segmentConditions: rule.segmentConditions,
+                  activeBetweenStart: rule.activeBetweenStart,
+                  activeBetweenEnd: rule.activeBetweenEnd,
+                },
+                userId
+              );
+              copiedRules.push({
+                id: newRule.id,
+                priority: newRule.priority,
+                overrideValue: newRule.overrideValue,
+                enabled: newRule.enabled,
+                platformConditions: newRule.platformConditions,
+                countryConditions: newRule.countryConditions,
+                segmentConditions: newRule.segmentConditions,
+                activeBetweenStart: newRule.activeBetweenStart,
+                activeBetweenEnd: newRule.activeBetweenEnd,
+              });
+            } catch (error) {
+              logger.warn(`Failed to copy rule ${rule.id} for config ${config.key}`, error);
+            }
+          }
+        }
+
+        // Add to snapshot
+        snapshotConfigs.push({
+          id: newStagingConfig.id,
+          key: newStagingConfig.key,
+          value: newStagingConfig.value,
+          dataType: newStagingConfig.dataType,
+          enabled: newStagingConfig.enabled,
+          description: newStagingConfig.description,
+          rules: copiedRules,
+        });
+
+        results.push({ status: 'fulfilled', value: newStagingConfig });
+      } catch (error: any) {
+        logger.warn(`Failed to stash config ${configId}:`, error);
+        results.push({ status: 'rejected', reason: error });
+      }
+    }
+
+    const successful = results.filter(r => r.status === 'fulfilled').length;
+    const failed = results.filter(r => r.status === 'rejected').length;
+    const deleted = existingStagingConfigs.length;
+
+    // STEP 3: Create deployment record
+    try {
+      const deploymentService = await import('../services/deploymentService');
+      await deploymentService.createDeployment({
+        gameId,
+        environment: 'staging',
+        deployedBy: userId,
+        source: 'stash-from-dev',
+        snapshot: { configs: snapshotConfigs },
+      });
+      logger.info('Deployment record created for staging');
+    } catch (error) {
+      logger.error('Failed to create deployment record:', error);
+    }
+
+    logger.info('Stash to staging complete (full replacement with rules + deployment)', { deleted, successful, failed });
+
+    res.status(200).json({
+      success: true,
+      data: {
+        deleted,
+        successful,
+        failed,
+        total: configIds.length,
+      },
+    });
+  } catch (error: any) {
+    logger.error('Failed to stash to staging:', error);
+    res.status(500).json({ success: false, error: error.message || 'Failed to stash to staging' });
+  }
+}
+
+/**
+ * POST /api/config/admin/publish-to-production
+ * Publish configs from staging to production environment
+ * Replaces ALL production configs with staging configs (complete replacement)
+ * Also copies all rules attached to each config
+ */
+export async function publishToProduction(req: Request, res: Response): Promise<void> {
+  try {
+    const { gameId, configIds } = req.body;
+
+    if (!gameId || !configIds || !Array.isArray(configIds)) {
+      res.status(400).json({
+        success: false,
+        error: 'gameId and configIds array are required',
+      });
+      return;
+    }
+
+    const userId = (req as any).user?.id || (req as any).gameId || 'system';
+
+    logger.info('Publishing configs to production (complete replacement with rules)', { gameId, configCount: configIds.length, userId });
+
+    // STEP 1: Delete ALL existing production configs for this game (rules will cascade delete)
+    const existingProductionConfigs = await configService.getConfigs(gameId, 'production');
+    logger.info('Deleting existing production configs', { count: existingProductionConfigs.length });
+    
+    await Promise.allSettled(
+      existingProductionConfigs.map(async (config) => {
+        try {
+          await configService.deleteConfig(config.id, userId);
+        } catch (error) {
+          logger.warn(`Failed to delete production config ${config.id}`, error);
+        }
+      })
+    );
+
+    // STEP 2: Copy all staging configs to production WITH their rules (sequentially to preserve order)
+    const results = [];
+    const snapshotConfigs = [];
+    
+    for (const configId of configIds) {
+      try {
+        const config = await configService.getConfig(configId);
+        if (!config) {
+          throw new Error(`Config ${configId} not found`);
+        }
+
+        // Only allow publishing from staging
+        if ((config.environment || '').toLowerCase() !== 'staging') {
+          throw new Error(`Config ${configId} is not in staging environment`);
+        }
+
+        // Create new production config
+        const newProductionConfig = await configService.createConfig(
+          {
+            gameId: config.gameId,
+            key: config.key,
+            value: config.value,
+            dataType: config.dataType,
+            environment: 'production',
+            enabled: config.enabled,
+            description: config.description,
+          },
+          userId
+        );
+
+        // Copy all rules from staging config to new production config
+        const copiedRules = [];
+        if (config.rules && config.rules.length > 0) {
+          logger.info(`Copying ${config.rules.length} rules for config ${config.key}`);
+          
+          for (const rule of config.rules) {
+            try {
+              const newRule = await configService.createRule(
+                {
+                  configId: newProductionConfig.id,
+                  priority: rule.priority,
+                  overrideValue: rule.overrideValue,
+                  enabled: rule.enabled,
+                  platformConditions: rule.platformConditions,
+                  countryConditions: rule.countryConditions,
+                  segmentConditions: rule.segmentConditions,
+                  activeBetweenStart: rule.activeBetweenStart,
+                  activeBetweenEnd: rule.activeBetweenEnd,
+                },
+                userId
+              );
+              copiedRules.push({
+                id: newRule.id,
+                priority: newRule.priority,
+                overrideValue: newRule.overrideValue,
+                enabled: newRule.enabled,
+                platformConditions: newRule.platformConditions,
+                countryConditions: newRule.countryConditions,
+                segmentConditions: newRule.segmentConditions,
+                activeBetweenStart: newRule.activeBetweenStart,
+                activeBetweenEnd: newRule.activeBetweenEnd,
+              });
+            } catch (error) {
+              logger.warn(`Failed to copy rule ${rule.id} for config ${config.key}`, error);
+            }
+          }
+        }
+
+        // Add to snapshot
+        snapshotConfigs.push({
+          id: newProductionConfig.id,
+          key: newProductionConfig.key,
+          value: newProductionConfig.value,
+          dataType: newProductionConfig.dataType,
+          enabled: newProductionConfig.enabled,
+          description: newProductionConfig.description,
+          rules: copiedRules,
+        });
+
+        results.push({ status: 'fulfilled', value: newProductionConfig });
+      } catch (error: any) {
+        logger.warn(`Failed to publish config ${configId}:`, error);
+        results.push({ status: 'rejected', reason: error });
+      }
+    }
+
+    const successful = results.filter(r => r.status === 'fulfilled').length;
+    const failed = results.filter(r => r.status === 'rejected').length;
+    const deleted = existingProductionConfigs.length;
+
+    // STEP 3: Create deployment record
+    try {
+      const deploymentService = await import('../services/deploymentService');
+      await deploymentService.createDeployment({
+        gameId,
+        environment: 'production',
+        deployedBy: userId,
+        source: 'publish-from-staging',
+        snapshot: { configs: snapshotConfigs },
+      });
+      logger.info('Deployment record created for production');
+    } catch (error) {
+      logger.error('Failed to create deployment record:', error);
+    }
+
+    logger.info('Publish to production complete (full replacement with rules + deployment)', { deleted, successful, failed });
+
+    res.status(200).json({
+      success: true,
+      data: {
+        deleted,
+        successful,
+        failed,
+        total: configIds.length,
+      },
+    });
+  } catch (error: any) {
+    logger.error('Failed to publish to production:', error);
+    res.status(500).json({ success: false, error: error.message || 'Failed to publish to production' });
+  }
+}
+
+/**
+ * POST /api/config/admin/pull-from-staging
+ * Pull configs from staging back to development environment (two-way sync)
+ * Replaces ALL development configs with staging configs (complete replacement)
+ * Also copies all rules attached to each config
+ */
+export async function pullFromStaging(req: Request, res: Response): Promise<void> {
+  try {
+    const { gameId, configIds } = req.body;
+
+    if (!gameId || !configIds || !Array.isArray(configIds)) {
+      res.status(400).json({
+        success: false,
+        error: 'gameId and configIds array are required',
+      });
+      return;
+    }
+
+    const userId = (req as any).user?.id || (req as any).gameId || 'system';
+
+    logger.info('Pulling configs from staging to development (complete replacement with rules)', { gameId, configCount: configIds.length, userId });
+
+    // STEP 1: Delete ALL existing development configs for this game (rules will cascade delete)
+    const existingDevelopmentConfigs = await configService.getConfigs(gameId, 'development');
+    logger.info('Deleting existing development configs', { count: existingDevelopmentConfigs.length });
+    
+    await Promise.allSettled(
+      existingDevelopmentConfigs.map(async (config) => {
+        try {
+          await configService.deleteConfig(config.id, userId);
+        } catch (error) {
+          logger.warn(`Failed to delete development config ${config.id}`, error);
+        }
+      })
+    );
+
+    // STEP 2: Copy all staging configs to development WITH their rules (sequentially to preserve order)
+    const results = [];
+    for (const configId of configIds) {
+      try {
+        const config = await configService.getConfig(configId);
+        if (!config) {
+          throw new Error(`Config ${configId} not found`);
+        }
+
+        // Only allow pulling from staging
+        if ((config.environment || '').toLowerCase() !== 'staging') {
+          throw new Error(`Config ${configId} is not in staging environment`);
+        }
+
+        // Create new development config
+        const newDevelopmentConfig = await configService.createConfig(
+          {
+            gameId: config.gameId,
+            key: config.key,
+            value: config.value,
+            dataType: config.dataType,
+            environment: 'development',
+            enabled: config.enabled,
+            description: config.description,
+          },
+          userId
+        );
+
+        // Copy all rules from staging config to new development config
+        if (config.rules && config.rules.length > 0) {
+          logger.info(`Copying ${config.rules.length} rules for config ${config.key}`);
+          
+          for (const rule of config.rules) {
+            try {
+              await configService.createRule(
+                {
+                  configId: newDevelopmentConfig.id,
+                  priority: rule.priority,
+                  overrideValue: rule.overrideValue,
+                  enabled: rule.enabled,
+                  platformConditions: rule.platformConditions,
+                  countryConditions: rule.countryConditions,
+                  segmentConditions: rule.segmentConditions,
+                  activeBetweenStart: rule.activeBetweenStart,
+                  activeBetweenEnd: rule.activeBetweenEnd,
+                },
+                userId
+              );
+            } catch (error) {
+              logger.warn(`Failed to copy rule ${rule.id} for config ${config.key}`, error);
+            }
+          }
+        }
+
+        results.push({ status: 'fulfilled', value: newDevelopmentConfig });
+      } catch (error: any) {
+        logger.warn(`Failed to pull config ${configId}:`, error);
+        results.push({ status: 'rejected', reason: error });
+      }
+    }
+
+    const successful = results.filter(r => r.status === 'fulfilled').length;
+    const failed = results.filter(r => r.status === 'rejected').length;
+    const deleted = existingDevelopmentConfigs.length;
+
+    logger.info('Pull from staging complete (full replacement with rules)', { deleted, successful, failed });
+
+    res.status(200).json({
+      success: true,
+      data: {
+        deleted,
+        successful,
+        failed,
+        total: configIds.length,
+      },
+    });
+  } catch (error: any) {
+    logger.error('Failed to pull from staging:', error);
+    res.status(500).json({ success: false, error: error.message || 'Failed to pull from staging' });
   }
 }
 

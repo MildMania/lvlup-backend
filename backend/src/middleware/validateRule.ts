@@ -6,7 +6,6 @@
 import { Request, Response, NextFunction } from 'express';
 import { Platform, VersionOperator } from '../types/config.types';
 import { isValidVersion } from '../utils/semver';
-import { isValidCountryCode } from '../utils/geoip';
 import logger from '../utils/logger';
 
 const VALID_PLATFORMS: Platform[] = ['iOS', 'Android', 'Web'];
@@ -19,6 +18,14 @@ const VALID_OPERATORS: VersionOperator[] = [
   'less_or_equal',
 ];
 const MAX_RULES_PER_CONFIG = 30;
+
+/**
+ * Validates if a country code is valid ISO 3166-1 alpha-2 format
+ */
+function isValidCountryCode(countryCode: string): boolean {
+  // ISO 3166-1 alpha-2 codes are exactly 2 uppercase letters
+  return /^[A-Z]{2}$/.test(countryCode);
+}
 
 /**
  * Validates platform condition

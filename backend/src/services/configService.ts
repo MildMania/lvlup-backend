@@ -21,7 +21,7 @@ import {
   invalidateGameCache,
   generateCachePattern,
   invalidateCachePattern,
-} from './CacheService';
+} from './cacheService';
 import {
   DuplicateConfigKeyError,
   DuplicateRulePriorityError,
@@ -274,6 +274,77 @@ export async function deleteConfig(
 }
 
 /**
+ * Revert a staging config back to development environment
+ * If a development config exists with same key, it will be updated; otherwise created
+ */
+export async function revertConfigToDevelopment(configId: string, changedBy: string = 'system') {
+  const existing = await prisma.remoteConfig.findUnique({ where: { id: configId } });
+  if (!existing) throw new Error(`Config ${configId} not found`);
+
+  const sourceEnv = (existing.environment || 'production').toLowerCase();
+  if (sourceEnv !== 'staging') {
+    throw new Error('Revert operation only allowed for staging configs');
+  }
+
+  // Try find development counterpart
+  const devConfig = await prisma.remoteConfig.findFirst({
+    where: { gameId: existing.gameId, key: existing.key, environment: 'development' },
+  });
+
+  if (devConfig) {
+    // Update development config
+    const updated = await prisma.remoteConfig.update({
+      where: { id: devConfig.id },
+      data: {
+        value: existing.value as any,
+        enabled: existing.enabled,
+        description: existing.description,
+      },
+    });
+
+    await prisma.configHistory.create({
+      data: {
+        configId: devConfig.id,
+        changeType: 'rollback',
+        previousValue: devConfig.value as any,
+        newValue: updated.value as any,
+        changedBy,
+      },
+    });
+
+    await invalidateGameCache(existing.gameId, 'development');
+
+    return updated;
+  } else {
+    // Create development config
+    const created = await prisma.remoteConfig.create({
+      data: {
+        gameId: existing.gameId,
+        key: existing.key,
+        value: existing.value as any,
+        dataType: existing.dataType,
+        environment: 'development',
+        enabled: existing.enabled,
+        description: existing.description,
+      },
+    });
+
+    await prisma.configHistory.create({
+      data: {
+        configId: created.id,
+        changeType: 'rollback',
+        newValue: created.value as any,
+        changedBy,
+      },
+    });
+
+    await invalidateGameCache(existing.gameId, 'development');
+
+    return created;
+  }
+}
+
+/**
  * Gets all configs for a game and environment
  * @param gameId Game ID
  * @param environment Environment (optional, defaults to production)
@@ -295,6 +366,7 @@ export async function getConfigs(
       },
       validationRules: true,
     },
+    orderBy: { createdAt: 'asc' }, // Maintain insertion order
   });
 
   return configs as RemoteConfig[];
@@ -320,7 +392,19 @@ export async function getConfig(configId: string): Promise<RemoteConfig | null> 
 }
 
 /**
- * Creates a rule override for a config
+ * Get a single rule by ID
+ * @param ruleId Rule ID
+ * @returns Rule or null if not found
+ */
+export async function getRule(ruleId: string): Promise<any | null> {
+  const rule = await prisma.ruleOverwrite.findUnique({
+    where: { id: ruleId },
+  });
+  return rule;
+}
+
+/**
+ * Creates a rule overwrite for a config
  * @param input Rule creation input
  * @param changedBy User ID making the change
  * @returns Created rule
@@ -475,156 +559,45 @@ export async function updateRule(
 
     logger.debug(`Rule updated: ${ruleId}`, {
       configId: existing.configId,
-      priority: updated.priority,
     });
 
     return updated;
   } catch (error) {
-    if (error instanceof DuplicateRulePriorityError) {
-      throw error;
-    }
     logger.error('Failed to update rule:', error);
     throw error;
   }
 }
 
 /**
- * Deletes a rule override
- * @param ruleId Rule ID to delete
- * @param changedBy User ID making the change
- * @throws RuleNotFoundError if rule doesn't exist
+ * Normalizes config values to ensure consistent data types
+ * - Parses JSON strings to objects
+ * - Converts numbers and booleans to their respective types
+ * @param config Config object
+ * @returns Normalized config object
  */
-export async function deleteRule(
-  ruleId: string,
-  changedBy: string = 'system'
-): Promise<void> {
-  // Get rule before deletion
-  const rule = await prisma.ruleOverwrite.findUnique({
-    where: { id: ruleId },
-  });
-
-  if (!rule) {
-    throw new RuleNotFoundError(ruleId);
-  }
-
-  try {
-    // Record history
-    await prisma.ruleHistory.create({
-      data: {
-        ruleId,
-        configId: rule.configId,
-        action: 'deleted',
-        previousState: rule,
-        changedBy,
-      },
-    });
-
-    // Delete rule
-    await prisma.ruleOverwrite.delete({
-      where: { id: ruleId },
-    });
-
-    // Get config for cache invalidation
-    const config = await prisma.remoteConfig.findUnique({
-      where: { id: rule.configId },
-    });
-
-    if (config) {
-      await invalidateGameCache(config.gameId, config.environment);
+export function normalizeConfigValues(config: RemoteConfig): RemoteConfig {
+  const normalizeValue = (value: any) => {
+    if (typeof value === 'string') {
+      // Try parse JSON
+      try {
+        return JSON.parse(value);
+      } catch {
+        // Not a JSON string, return as is
+        return value;
+      }
     }
+    // Return number, boolean, or object as is
+    return value;
+  };
 
-    logger.debug(`Rule deleted: ${ruleId}`, {
-      configId: rule.configId,
-      priority: rule.priority,
-    });
-  } catch (error) {
-    logger.error('Failed to delete rule:', error);
-    throw error;
-  }
+  return {
+    ...config,
+    value: normalizeValue(config.value),
+    // Normalize rules
+    rules: config.rules?.map((rule) => ({
+      ...rule,
+      // Normalize overrideValue
+      overrideValue: normalizeValue(rule.overrideValue),
+    })),
+  };
 }
-
-/**
- * Reorders rules for a config
- * @param input Reorder rules input
- * @param changedBy User ID making the change
- * @throws ConfigNotFoundError if config doesn't exist
- */
-export async function reorderRules(
-  input: ReorderRulesInput,
-  changedBy: string = 'system'
-): Promise<void> {
-  logger.info('reorderRules called with:', {
-    configId: input.configId,
-    ruleOrderLength: input.ruleOrder.length,
-    ruleOrderSample: input.ruleOrder.slice(0, 2),
-  });
-
-  // Check config exists
-  const config = await prisma.remoteConfig.findUnique({
-    where: { id: input.configId },
-  });
-
-  if (!config) {
-    throw new ConfigNotFoundError(input.configId);
-  }
-
-  try {
-    logger.info('Updating rules with new priorities:', {
-      updates: input.ruleOrder,
-    });
-
-    // Use temporary negative priorities to avoid unique constraint violations
-    // Step 1: Assign temporary negative priorities
-    await Promise.all(
-      input.ruleOrder.map((order, index) => {
-        const tempPriority = -(index + 1); // Use negative: -1, -2, -3, etc.
-        logger.debug('Assigning temp priority:', { ruleId: order.ruleId, tempPriority });
-        return prisma.ruleOverwrite.update({
-          where: { id: order.ruleId },
-          data: { priority: tempPriority },
-        });
-      })
-    );
-
-    logger.info('Temp priorities assigned');
-
-    // Step 2: Assign final priorities
-    await Promise.all(
-      input.ruleOrder.map((order) => {
-        logger.debug('Assigning final priority:', { ruleId: order.ruleId, finalPriority: order.newPriority });
-        return prisma.ruleOverwrite.update({
-          where: { id: order.ruleId },
-          data: { priority: order.newPriority },
-        });
-      })
-    );
-
-    logger.info('Final priorities assigned');
-
-    // Record history for each rule
-    await Promise.all(
-      input.ruleOrder.map((order) =>
-        prisma.ruleHistory.create({
-          data: {
-            ruleId: order.ruleId,
-            configId: input.configId,
-            action: 'reordered',
-            newState: { priority: order.newPriority },
-            changedBy,
-          },
-        })
-      )
-    );
-
-    // Invalidate cache
-    await invalidateGameCache(config.gameId, config.environment);
-
-    logger.debug(`Rules reordered: ${input.configId}`, {
-      totalRules: input.ruleOrder.length,
-    });
-  } catch (error) {
-    logger.error('Failed to reorder rules:', error);
-    throw error;
-  }
-}
-

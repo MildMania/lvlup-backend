@@ -8,16 +8,20 @@ interface RuleListProps {
   configId: string;
   configDataType: string;
   currentValue?: any;
+  environment?: 'development' | 'staging' | 'production';
   onRulesChange?: () => void;
 }
 
-const RuleList: React.FC<RuleListProps> = ({ configId, configDataType, currentValue, onRulesChange }) => {
+const RuleList: React.FC<RuleListProps> = ({ configId, configDataType, currentValue, environment = 'development', onRulesChange }) => {
   const [rules, setRules] = useState<RuleOverwrite[]>([]);
   const [loading, setLoading] = useState(false);
   const [showEditor, setShowEditor] = useState(false);
   const [editingRule, setEditingRule] = useState<RuleOverwrite | null>(null);
   const [draggedRuleId, setDraggedRuleId] = useState<string | null>(null);
   const [dragOverIndex, setDragOverIndex] = useState<number | null>(null);
+
+  // Production and Staging environments are read-only
+  const isReadOnly = environment === 'production' || environment === 'staging';
 
   useEffect(() => {
     fetchRules();
@@ -151,48 +155,6 @@ const RuleList: React.FC<RuleListProps> = ({ configId, configDataType, currentVa
     }
   };
 
-  const getRuleConditionSummary = (rule: RuleOverwrite): string => {
-    const conditions: string[] = [];
-
-    // Display platform conditions with their version ranges
-    const platforms = (rule as any).platformConditions;
-    if (platforms && Array.isArray(platforms)) {
-      const platformSummaries = platforms.map((pc: any) => {
-        if (pc.minVersion || pc.maxVersion) {
-          return `${pc.platform}(${pc.minVersion || '*'}-${pc.maxVersion || '*'})`;
-        }
-        return pc.platform;
-      });
-      conditions.push(platformSummaries.join(', '));
-    }
-
-    // Handle country conditions
-    const countries = (rule as any).countryConditions;
-    if (countries && Array.isArray(countries)) {
-      conditions.push(countries.join(', '));
-    }
-
-    // Handle segment conditions
-    const segments = (rule as any).segmentConditions;
-    if (segments && Array.isArray(segments)) {
-      conditions.push(segments.join(', '));
-    }
-
-    // Handle activation period
-    if (rule.activeBetweenStart && rule.activeBetweenEnd) {
-      conditions.push(
-        `${new Date(rule.activeBetweenStart).toLocaleDateString()} - ${new Date(
-          rule.activeBetweenEnd
-        ).toLocaleDateString()}`
-      );
-    } else if (rule.activeBetweenStart) {
-      conditions.push(`From ${new Date(rule.activeBetweenStart).toLocaleDateString()}`);
-    } else if (rule.activeBetweenEnd) {
-      conditions.push(`Until ${new Date(rule.activeBetweenEnd).toLocaleDateString()}`);
-    }
-
-    return conditions.length > 0 ? conditions.join(' • ') : 'No conditions';
-  };
 
   const renderRuleConditions = (rule: RuleOverwrite) => {
     const platforms = (rule as any).platformConditions;
@@ -314,31 +276,33 @@ const RuleList: React.FC<RuleListProps> = ({ configId, configDataType, currentVa
       {/* Header */}
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
         <h3 style={{ fontSize: '1.1rem', fontWeight: '600', color: 'var(--text-primary)', margin: 0 }}>Rules ({rules.length})</h3>
-        <button
-          onClick={handleAddRule}
-          disabled={showEditor}
-          style={{
-            padding: '10px 18px',
-            backgroundColor: 'var(--accent-primary)',
-            color: 'white',
-            border: 'none',
-            borderRadius: '8px',
-            cursor: 'pointer',
-            fontSize: '0.875rem',
-            fontWeight: '600',
-            display: 'inline-flex',
-            alignItems: 'center',
-            gap: '8px',
-            transition: 'all 0.2s ease',
-            opacity: showEditor ? 0.5 : 1,
-            pointerEvents: showEditor ? 'none' : 'auto'
-          }}
-          onMouseOver={(e) => !showEditor && (e.currentTarget.style.opacity = '0.9')}
-          onMouseOut={(e) => (e.currentTarget.style.opacity = '1')}
-        >
-          <Plus size={16} />
-          Add Rule
-        </button>
+        {!isReadOnly && (
+          <button
+            onClick={handleAddRule}
+            disabled={showEditor}
+            style={{
+              padding: '10px 18px',
+              backgroundColor: 'var(--accent-primary)',
+              color: 'white',
+              border: 'none',
+              borderRadius: '8px',
+              cursor: 'pointer',
+              fontSize: '0.875rem',
+              fontWeight: '600',
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: '8px',
+              transition: 'all 0.2s ease',
+              opacity: showEditor ? 0.5 : 1,
+              pointerEvents: showEditor ? 'none' : 'auto'
+            }}
+            onMouseOver={(e) => !showEditor && (e.currentTarget.style.opacity = '0.9')}
+            onMouseOut={(e) => (e.currentTarget.style.opacity = '1')}
+          >
+            <Plus size={16} />
+            Add Rule
+          </button>
+        )}
       </div>
 
       {/* Rules List */}
@@ -363,43 +327,45 @@ const RuleList: React.FC<RuleListProps> = ({ configId, configDataType, currentVa
           {rules.map((rule, index) => (
             <div
               key={rule.id}
-              draggable
-              onDragStart={() => handleDragStart(rule.id)}
-              onDragOver={(e) => handleDragOver(e, index)}
-              onDragLeave={handleDragLeave}
-              onDrop={(e) => handleDrop(e, index)}
+              draggable={!isReadOnly}
+              onDragStart={() => !isReadOnly && handleDragStart(rule.id)}
+              onDragOver={(e) => !isReadOnly && handleDragOver(e, index)}
+              onDragLeave={!isReadOnly ? handleDragLeave : undefined}
+              onDrop={(e) => !isReadOnly && handleDrop(e, index)}
               style={{
                 background: draggedRuleId === rule.id ? 'var(--bg-tertiary)' : 'var(--bg-secondary)',
                 border: dragOverIndex === index ? '2px solid var(--accent-primary)' : '1px solid var(--border-primary)',
                 borderRadius: '12px',
                 padding: '16px',
                 transition: 'all 0.2s ease',
-                cursor: draggedRuleId === rule.id ? 'grabbing' : 'grab',
+                cursor: isReadOnly ? 'default' : (draggedRuleId === rule.id ? 'grabbing' : 'grab'),
                 opacity: draggedRuleId === rule.id ? 0.7 : 1,
               }}
-              onMouseOver={(e) => !draggedRuleId && (e.currentTarget.style.borderColor = 'var(--accent-primary)')}
+              onMouseOver={(e) => !draggedRuleId && !isReadOnly && (e.currentTarget.style.borderColor = 'var(--accent-primary)')}
               onMouseOut={(e) => dragOverIndex !== index && (e.currentTarget.style.borderColor = 'var(--border-primary)')}
             >
               <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between' }}>
                 <div style={{ flex: 1 }}>
                   {/* Priority & Conditions */}
                   <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '12px', flexWrap: 'wrap' }}>
-                    <span
-                      style={{
-                        display: 'inline-flex',
-                        alignItems: 'center',
-                        justifyContent: 'center',
-                        width: '20px',
-                        height: '20px',
-                        color: 'var(--text-secondary)',
-                        cursor: 'grab',
-                        flexShrink: 0,
-                        opacity: 0.6
-                      }}
-                      title="Drag to reorder"
-                    >
-                      <GripVertical size={16} />
-                    </span>
+                    {!isReadOnly && (
+                      <span
+                        style={{
+                          display: 'inline-flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          width: '20px',
+                          height: '20px',
+                          color: 'var(--text-secondary)',
+                          cursor: 'grab',
+                          flexShrink: 0,
+                          opacity: 0.6
+                        }}
+                        title="Drag to reorder"
+                      >
+                        <GripVertical size={16} />
+                      </span>
+                    )}
                     <span
                       style={{
                         display: 'inline-flex',
@@ -449,70 +415,72 @@ const RuleList: React.FC<RuleListProps> = ({ configId, configDataType, currentVa
                 </div>
 
                 {/* Actions */}
-                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginLeft: '16px', flexShrink: 0 }}>
-                  <button
-                    onClick={() => handleToggleRule(rule.id)}
-                    style={{
-                      padding: '8px',
-                      background: 'transparent',
-                      border: 'none',
-                      cursor: 'pointer',
-                      borderRadius: '8px',
-                      transition: 'all 0.2s ease',
-                      color: rule.enabled ? '#22c55e' : '#ef4444',
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'center'
-                    }}
-                    onMouseOver={(e) => (e.currentTarget.style.background = rule.enabled ? 'rgba(34, 197, 94, 0.1)' : 'rgba(239, 68, 68, 0.1)')}
-                    onMouseOut={(e) => (e.currentTarget.style.background = 'transparent')}
-                    title={rule.enabled ? 'Disable rule' : 'Enable rule'}
-                  >
-                    <Power size={18} />
-                  </button>
+                {!isReadOnly && (
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginLeft: '16px', flexShrink: 0 }}>
+                    <button
+                      onClick={() => handleToggleRule(rule.id)}
+                      style={{
+                        padding: '8px',
+                        background: 'transparent',
+                        border: 'none',
+                        cursor: 'pointer',
+                        borderRadius: '8px',
+                        transition: 'all 0.2s ease',
+                        color: rule.enabled ? '#22c55e' : '#ef4444',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center'
+                      }}
+                      onMouseOver={(e) => (e.currentTarget.style.background = rule.enabled ? 'rgba(34, 197, 94, 0.1)' : 'rgba(239, 68, 68, 0.1)')}
+                      onMouseOut={(e) => (e.currentTarget.style.background = 'transparent')}
+                      title={rule.enabled ? 'Disable rule' : 'Enable rule'}
+                    >
+                      <Power size={18} />
+                    </button>
 
-                  <button
-                    onClick={() => handleEditRule(rule)}
-                    style={{
-                      padding: '8px',
-                      background: 'transparent',
-                      border: 'none',
-                      cursor: 'pointer',
-                      borderRadius: '8px',
-                      transition: 'all 0.2s ease',
-                      color: 'var(--accent-primary)',
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'center'
-                    }}
-                    onMouseOver={(e) => (e.currentTarget.style.background = 'var(--bg-primary)')}
-                    onMouseOut={(e) => (e.currentTarget.style.background = 'transparent')}
-                    title="Edit rule"
-                  >
-                    <Edit2 size={18} />
-                  </button>
+                    <button
+                      onClick={() => handleEditRule(rule)}
+                      style={{
+                        padding: '8px',
+                        background: 'transparent',
+                        border: 'none',
+                        cursor: 'pointer',
+                        borderRadius: '8px',
+                        transition: 'all 0.2s ease',
+                        color: 'var(--accent-primary)',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center'
+                      }}
+                      onMouseOver={(e) => (e.currentTarget.style.background = 'var(--bg-primary)')}
+                      onMouseOut={(e) => (e.currentTarget.style.background = 'transparent')}
+                      title="Edit rule"
+                    >
+                      <Edit2 size={18} />
+                    </button>
 
-                  <button
-                    onClick={() => handleDeleteRule(rule.id)}
-                    style={{
-                      padding: '8px',
-                      background: 'transparent',
-                      border: 'none',
-                      cursor: 'pointer',
-                      borderRadius: '8px',
-                      transition: 'all 0.2s ease',
-                      color: '#ef4444',
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'center'
-                    }}
-                    onMouseOver={(e) => (e.currentTarget.style.background = 'rgba(239, 68, 68, 0.1)')}
-                    onMouseOut={(e) => (e.currentTarget.style.background = 'transparent')}
-                    title="Delete rule"
-                  >
-                    <Trash2 size={18} />
-                  </button>
-                </div>
+                    <button
+                      onClick={() => handleDeleteRule(rule.id)}
+                      style={{
+                        padding: '8px',
+                        background: 'transparent',
+                        border: 'none',
+                        cursor: 'pointer',
+                        borderRadius: '8px',
+                        transition: 'all 0.2s ease',
+                        color: '#ef4444',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center'
+                      }}
+                      onMouseOver={(e) => (e.currentTarget.style.background = 'rgba(239, 68, 68, 0.1)')}
+                      onMouseOut={(e) => (e.currentTarget.style.background = 'transparent')}
+                      title="Delete rule"
+                    >
+                      <Trash2 size={18} />
+                    </button>
+                  </div>
+                )}
               </div>
             </div>
           ))}

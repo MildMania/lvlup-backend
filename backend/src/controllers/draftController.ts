@@ -15,6 +15,16 @@ export async function saveAsDraft(req: Request, res: Response): Promise<void> {
 
     let actualConfigId = configId;
 
+    // Enforce: users may only edit development environment directly
+    const env = (environment || 'development').toLowerCase();
+    if (env !== 'development') {
+      res.status(403).json({
+        success: false,
+        error: 'Drafts and direct edits are only allowed for the development environment. Use development -> staging -> production workflow.',
+      });
+      return;
+    }
+
     // If configId is empty or not provided, this is a new config - create it first
     if (!configId || configId.trim() === '') {
       // Validate fields needed for new config creation
@@ -35,14 +45,14 @@ export async function saveAsDraft(req: Request, res: Response): Promise<void> {
       }
 
       try {
-        // Create the new config
+        // Create the new config in development environment
         const newConfig = await configService.createConfig(
           {
             gameId,
             key,
             value,
             dataType,
-            environment: environment || 'production',
+            environment: 'development',
             enabled: enabled !== false,
             description,
           },
@@ -89,7 +99,7 @@ export async function saveAsDraft(req: Request, res: Response): Promise<void> {
       key,
       value,
       dataType,
-      environment,
+      environment: 'development',
       enabled,
       description,
       changes,
@@ -177,6 +187,7 @@ export async function deployDraft(req: Request, res: Response): Promise<void> {
   try {
     const { draftId } = req.params;
     const userId = (req as any).user?.id || (req as any).gameId || 'system';
+    const version = (req.body && req.body.version) || (req.query && (req.query.version as string)) || undefined;
 
     if (!draftId) {
       res.status(400).json({
@@ -186,7 +197,7 @@ export async function deployDraft(req: Request, res: Response): Promise<void> {
       return;
     }
 
-    const deployed = await draftService.deployDraft(draftId, userId);
+    const deployed = await (draftService as any).deployDraft(draftId, userId, version);
 
     logger.info('Config draft deployed', { draftId, deployedBy: userId });
 
@@ -344,7 +355,7 @@ export async function deployMultipleDrafts(req: Request, res: Response): Promise
 
     for (const draftId of draftIds) {
       try {
-        await draftService.deployDraft(draftId, userId);
+        await (draftService as any).deployDraft(draftId, userId);
         results.successful.push(draftId);
       } catch (error: any) {
         results.failed.push({
@@ -372,4 +383,3 @@ export async function deployMultipleDrafts(req: Request, res: Response): Promise
     });
   }
 }
-

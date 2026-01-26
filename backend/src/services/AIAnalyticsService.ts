@@ -1,21 +1,18 @@
 import { ContextManager } from './contextManager';
 import { AnalyticsService } from './AnalyticsService';
 import { OpenAIService, AIAnalysisRequest, ConversationMessage } from './OpenAIService';
-import { PrismaClient } from '@prisma/client';
 import prisma from '../prisma';
 
 export class AIAnalyticsService {
   private contextManager: ContextManager;
   private analyticsService: AnalyticsService;
   private openaiService: OpenAIService;
-  private prisma: PrismaClient;
   private conversationHistory: Map<string, ConversationMessage[]> = new Map();
 
   constructor() {
     this.contextManager = new ContextManager();
     this.analyticsService = new AnalyticsService();
     this.openaiService = new OpenAIService();
-    this.prisma = prisma;
   }
 
   /**
@@ -107,7 +104,7 @@ export class AIAnalyticsService {
    */
   private async getAnalyticsData(intentAnalysis: any, gameId?: string): Promise<any> {
     // Get the first available game for demo purposes
-    const game = await this.prisma.game.findFirst();
+    const game = await prisma.game.findFirst();
     if (!game) {
       throw new Error('No games found');
     }

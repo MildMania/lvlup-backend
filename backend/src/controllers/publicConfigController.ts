@@ -5,10 +5,9 @@
  */
 
 import { Request, Response } from 'express';
-import * as configService from '../services/ConfigService';
-import * as cacheService from '../services/CacheService';
+import * as configService from '../services/configService';
+import * as cacheService from '../services/cacheService';
 import { evaluateRules } from '../services/ruleEvaluator';
-import { getCountryFromIP } from '../utils/geoip';
 import {
   FetchConfigsQueryParams,
   FetchConfigsResponse,
@@ -55,23 +54,11 @@ export async function fetchConfigs(
       return;
     }
 
-    // Get client IP for GeoIP lookup if country not provided
-    let detectedCountry = country as string | undefined;
-    if (!detectedCountry) {
-      const clientIp =
-        (req.headers['x-forwarded-for'] as string)?.split(',')[0] ||
-        (req.socket.remoteAddress as string);
-
-      if (clientIp) {
-        detectedCountry = getCountryFromIP(clientIp) || undefined;
-      }
-    }
-
-    // Build evaluation context
+    // Build evaluation context (only use explicitly provided country)
     const context: RuleEvaluationContext = {
       platform: platform as any,
       version: version as string,
-      country: detectedCountry,
+      country: country as string | undefined,
       segment: segment as string,
       serverTime: new Date(),
     };
@@ -82,7 +69,7 @@ export async function fetchConfigs(
       environment: environment as any,
       platform: platform as any,
       version: version as string,
-      country: detectedCountry,
+      country: country as string | undefined,
       segment: segment as string,
     });
 
@@ -141,6 +128,25 @@ export async function fetchConfigs(
       let matchedRuleId: string | undefined;
       let matchedRulePriority: number | undefined;
 
+      // Log rules for debugging
+      if (config.rules && config.rules.length > 0) {
+        logger.info(`Config ${config.key} has ${config.rules.length} rules`, {
+          configKey: config.key,
+          rulesCount: config.rules.length,
+          context,
+          rules: config.rules.map(r => ({
+            id: r.id,
+            priority: r.priority,
+            enabled: r.enabled,
+            platformConditions: r.platformConditions,
+            countryConditions: r.countryConditions,
+            overrideValue: r.overrideValue,
+          })),
+        });
+      } else {
+        logger.info(`Config ${config.key} has NO rules`);
+      }
+
       // Evaluate rules if available
       if (config.rules && config.rules.length > 0) {
         const matchedRule = evaluateRules(config.rules, context, metrics);
@@ -150,6 +156,18 @@ export async function fetchConfigs(
           source = 'rule';
           matchedRuleId = matchedRule.id;
           matchedRulePriority = matchedRule.priority;
+          
+          logger.info(`✅ Rule matched for ${config.key}`, {
+            configKey: config.key,
+            ruleId: matchedRule.id,
+            priority: matchedRule.priority,
+            overrideValue: matchedRule.overrideValue,
+          });
+        } else {
+          logger.info(`❌ No rule matched for ${config.key}`, {
+            configKey: config.key,
+            context,
+          });
         }
       }
 
@@ -354,4 +372,3 @@ export async function validateConfigs(
     });
   }
 }
-

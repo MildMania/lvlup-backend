@@ -57,9 +57,8 @@ const SortableRuleItem: React.FC<SortableRuleItemProps> = ({ rule }) => {
               {rule.priority}
             </span>
             <span className="text-sm font-medium text-gray-700">
-              {rule.platformCondition && `${rule.platformCondition}`}
-              {rule.versionOperator && rule.versionValue && ` v${rule.versionOperator}${rule.versionValue}`}
-              {rule.countryCondition && ` ${rule.countryCondition}`}
+              {rule.platformConditions && rule.platformConditions.length > 0 && `Platform: ${rule.platformConditions.join(', ')}`}
+              {rule.countryConditions && rule.countryConditions.length > 0 && ` Country: ${rule.countryConditions.join(', ')}`}
             </span>
           </div>
           <p className="text-xs text-gray-500">
@@ -138,9 +137,9 @@ const DraggableRuleList: React.FC<DraggableRuleListProps> = ({ configId, onReord
     setSaving(true);
     try {
       const reorderInput = {
-        rules: orderedRules.map((rule, index) => ({
-          id: rule.id,
-          priority: index + 1,
+        ruleOrder: orderedRules.map((rule, index) => ({
+          ruleId: rule.id,
+          newPriority: index + 1,
         })),
       };
 

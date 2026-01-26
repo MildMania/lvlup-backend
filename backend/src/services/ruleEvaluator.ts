@@ -27,9 +27,9 @@ function evaluateRuleCondition(rule: RuleOverwrite, context: RuleEvaluationConte
       return false;
     }
     
-    // Find matching platform condition
+    // Find matching platform condition (case-insensitive)
     const platformMatch = (rule.platformConditions as any[]).find(
-      (pc: any) => pc.platform === context.platform
+      (pc: any) => pc.platform?.toLowerCase() === context.platform?.toLowerCase()
     );
     
     if (!platformMatch) {

@@ -1,10 +1,10 @@
 import React, { useEffect, useState } from 'react';
 import { apiClient } from '../lib/apiClient';
 import { useGame } from '../contexts/GameContext';
-import { AlertCircle, Check, Edit2, Trash2, Plus, Eye, GitBranch } from 'lucide-react';
+import { AlertCircle, Check, Edit2, Trash2, Plus, Eye, GitBranch, Clock } from 'lucide-react';
 import RuleList from './RuleList';
-import DraggableRuleList from './DraggableRuleList';
 import ConfigHistory from './ConfigHistory';
+import DeploymentHistory from './DeploymentHistory';
 import './RemoteConfig.css';
 
 interface Config {
@@ -60,11 +60,17 @@ const RemoteConfig: React.FC<RemoteConfigProps> = ({ isCollapsed = false }) => {
   const [selectedConfig, setSelectedConfig] = useState<Config | null>(null);
   const [selectedDraft, setSelectedDraft] = useState<Draft | null>(null);
   const [showDraftDetailModal, setShowDraftDetailModal] = useState(false);
-  const [environment, setEnvironment] = useState<'development' | 'staging' | 'production'>('production');
+  const [environment, setEnvironment] = useState<'development' | 'staging' | 'production'>('development');
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [showEditModal, setShowEditModal] = useState(false);
   const [showDraftsPanel, setShowDraftsPanel] = useState(false);
+  const [showStashModal, setShowStashModal] = useState(false);
+  const [showPublishModal, setShowPublishModal] = useState(false);
+  const [showPullModal, setShowPullModal] = useState(false);
+  const [publishConfirmed, setPublishConfirmed] = useState(false);
   const [jsonError, setJsonError] = useState<JsonError | null>(null);
+  const [notification, setNotification] = useState<{ type: 'success' | 'error' | 'warning', message: string } | null>(null);
+  const [showDeploymentHistory, setShowDeploymentHistory] = useState(false);
   const [activeTab, setActiveTab] = useState<'overview' | 'rules' | 'history'>('overview');
   const [rulesCounts, setRulesCounts] = useState<Map<string, number>>(new Map());
   const [formData, setFormData] = useState<CreateConfigForm>({
@@ -72,10 +78,25 @@ const RemoteConfig: React.FC<RemoteConfigProps> = ({ isCollapsed = false }) => {
     key: '',
     value: '',
     dataType: 'string',
-    environment: 'production',
+    environment: 'development',
     description: '',
     enabled: true,
   });
+
+  // Environment permissions
+  const canCreate = environment === 'development';
+  const canEdit = environment === 'development'; // Only dev is editable
+  const canDelete = environment === 'development';
+  const canStash = environment === 'development';
+  const canPull = environment === 'development'; // Pull from staging back to dev
+  const canPublish = environment === 'staging';
+  const isReadOnly = environment === 'production' || environment === 'staging'; // Staging is now read-only too
+
+  // Show custom notification instead of browser alert
+  const showNotification = (type: 'success' | 'error' | 'warning', message: string) => {
+    setNotification({ type, message });
+    setTimeout(() => setNotification(null), 5000); // Auto-hide after 5 seconds
+  };
 
   // Fetch configs
   const fetchConfigs = async () => {
@@ -143,101 +164,86 @@ const RemoteConfig: React.FC<RemoteConfigProps> = ({ isCollapsed = false }) => {
     }
   };
 
-  // Create config as draft
+  // Create config directly (no draft system for direct workflow)
   const handleCreateConfig = async () => {
     if (!formData.gameId || !formData.key || formData.value === '') {
-      alert('Please fill all required fields');
+      showNotification('warning', 'Please fill all required fields');
       return;
     }
 
     if (formData.dataType === 'json' && jsonError) {
-      alert('Invalid JSON. Please fix the syntax errors.');
+      showNotification('error', 'Invalid JSON. Please fix the syntax errors.');
       return;
     }
 
     try {
-      await apiClient.post(`/config/admin/drafts`, {
-        configId: '', // Empty for new configs - will be handled by backend
+      // Direct create in development
+      await apiClient.post(`/config/configs`, {
         gameId: formData.gameId,
         key: formData.key,
         value: parseValue(formData.value, formData.dataType),
         dataType: formData.dataType,
-        environment: formData.environment,
+        environment: environment, // Use current environment
         enabled: formData.enabled,
         description: formData.description,
-        changes: {
-          value: parseValue(formData.value, formData.dataType),
-          enabled: formData.enabled,
-          description: formData.description,
-        },
       });
 
-      await fetchDrafts();
+      await fetchConfigs();
       setShowCreateModal(false);
       setFormData({
         gameId: currentGame.id,
         key: '',
         value: '',
         dataType: 'string',
-        environment: 'production',
+        environment: 'development',
         description: '',
         enabled: true,
       });
       setJsonError(null);
-      alert('Configuration saved as draft! Review and deploy when ready.');
+      showNotification('success', '✅ Configuration created successfully!');
     } catch (error: any) {
-      alert(error.response?.data?.error || 'Failed to save draft');
+      showNotification('error', error.response?.data?.error || 'Failed to create configuration');
     }
   };
 
-  // Save config changes as draft
-  const handleSaveAsDraft = async () => {
+  // Save config changes directly (no draft system)
+  const handleSaveConfig = async () => {
     if (!selectedConfig) return;
 
     if (formData.dataType === 'json' && jsonError) {
-      alert('Invalid JSON. Please fix the syntax errors.');
+      showNotification('error', 'Invalid JSON. Please fix the syntax errors.');
       return;
     }
 
     try {
-      await apiClient.post(
-        `/config/admin/drafts`,
-        {
-          configId: selectedConfig.id,
-          gameId: selectedConfig.gameId,
-          key: selectedConfig.key,
-          value: parseValue(formData.value, formData.dataType),
-          dataType: selectedConfig.dataType,
-          environment: selectedConfig.environment,
-          enabled: selectedConfig.enabled,
-          description: formData.description,
-          changes: {
-            value: parseValue(formData.value, formData.dataType),
-            description: formData.description,
-          },
-        }
-      );
+      // Direct update
+      await apiClient.put(`/config/configs/${selectedConfig.id}`, {
+        value: parseValue(formData.value, formData.dataType),
+        enabled: selectedConfig.enabled,
+        description: formData.description,
+      });
 
-      await fetchDrafts();
+      await fetchConfigs();
       setShowEditModal(false);
       setSelectedConfig(null);
       setJsonError(null);
-      alert('Changes saved as draft! Review and deploy when ready.');
+      showNotification('success', '✅ Configuration updated successfully!');
     } catch (error: any) {
-      alert(error.response?.data?.error || 'Failed to save draft');
+      showNotification('error', error.response?.data?.error || 'Failed to update configuration');
     }
   };
 
   // Delete config
   const handleDeleteConfig = async (configId: string) => {
+    // Use custom confirm dialog in future, for now just proceed
     if (!window.confirm('Are you sure you want to delete this config?')) return;
 
     try {
       await apiClient.delete(`/config/configs/${configId}`);
       setConfigs(configs.filter((c) => c.id !== configId));
-      alert('Config deleted successfully!');
+      showNotification('success', 'Config deleted successfully!');
     } catch (error: any) {
-      alert(error.response?.data?.error || 'Failed to delete config');
+      showNotification('error', error.response?.data?.error || 'Failed to delete config');
     }
   };
 
@@ -293,12 +299,60 @@ const RemoteConfig: React.FC<RemoteConfigProps> = ({ isCollapsed = false }) => {
 
   return (
     <div className={`remote-config-container ${isCollapsed ? 'sidebar-collapsed' : ''}`}>
+      {/* Custom Notification */}
+      {notification && (
+        <div className={`notification notification-${notification.type}`}>
+          <div className="notification-content">
+            {notification.type === 'success' && <Check size={20} />}
+            {notification.type === 'error' && <AlertCircle size={20} />}
+            {notification.type === 'warning' && <AlertCircle size={20} />}
+            <span>{notification.message}</span>
+          </div>
+          <button 
+            className="notification-close" 
+            onClick={() => setNotification(null)}
+            aria-label="Close notification"
+          >
+            ×
+          </button>
+        </div>
+      )}
+
       <div className="config-header">
         <div>
           <h1>Remote Configurations</h1>
           <p className="subtitle">Manage your game configurations and feature flags</p>
         </div>
       </div>
+
+      {/* Environment Workflow Info Banner */}
+      {isReadOnly && (
+        <div className="environment-banner banner-readonly">
+          <AlertCircle size={18} />
+          <div>
+            <strong>Production Environment (Read-Only)</strong>
+            <p>Configurations can only be published to production from staging. No direct edits allowed.</p>
+          </div>
+        </div>
+      )}
+      {environment === 'staging' && (
+        <div className="environment-banner banner-staging">
+          <GitBranch size={18} />
+          <div>
+            <strong>Staging Environment (Test & Publish)</strong>
+            <p>Review and test configurations stashed from development. When ready, publish to production.</p>
+          </div>
+        </div>
+      )}
+      {environment === 'development' && (
+        <div className="environment-banner banner-development">
+          <Edit2 size={18} />
+          <div>
+            <strong>Development Environment (Full Edit)</strong>
+            <p>Create, edit, and delete configurations. Stash to staging when ready for testing.</p>
+          </div>
+        </div>
+      )}
 
       {/* Controls Section */}
       <div className="config-controls">
@@ -313,10 +367,40 @@ const RemoteConfig: React.FC<RemoteConfigProps> = ({ isCollapsed = false }) => {
             <option value="production">Production</option>
           </select>
         </div>
-        <button onClick={() => setShowCreateModal(true)} className="btn btn-create">
-          <Plus size={18} />
-          New Configuration
-        </button>
+        <div className="controls-right">
+          {canCreate && (
+            <button onClick={() => setShowCreateModal(true)} className="btn btn-create">
+              <Plus size={18} />
+              New Configuration
+            </button>
+          )}
+          {canPull && (
+            <button onClick={() => setShowPullModal(true)} className="btn btn-create" title="Pull changes from staging to development">
+              <GitBranch size={18} style={{ transform: 'scaleX(-1)' }} />
+              Pull from Staging
+            </button>
+          )}
+          {canStash && configs.length > 0 && (
+            <button onClick={() => setShowStashModal(true)} className="btn btn-create">
+              <GitBranch size={18} />
+              Stash to Staging
+            </button>
+          )}
+          {canPublish && configs.length > 0 && (
+            <button onClick={() => {
+              setShowPublishModal(true);
+              setPublishConfirmed(false);
+            }} className="btn btn-create">
+              🚀 Publish to Production
+            </button>
+          )}
+          {(environment === 'staging' || environment === 'production') && (
+            <button onClick={() => setShowDeploymentHistory(true)} className="btn btn-create">
+              <Clock size={18} />
+              Deployment History
+            </button>
+          )}
+        </div>
       </div>
 
       {/* Pending Drafts Section */}
@@ -339,9 +423,9 @@ const RemoteConfig: React.FC<RemoteConfigProps> = ({ isCollapsed = false }) => {
                     await fetchConfigs();
                     await fetchDrafts();
                     
-                    alert(`Deployment complete: ${result.successful.length} deployed${result.failed.length > 0 ? `, ${result.failed.length} failed` : ''}`);
+                    showNotification('success', `Deployment complete: ${result.successful.length} deployed${result.failed.length > 0 ? `, ${result.failed.length} failed` : ''}`);
                   } catch (error: any) {
-                    alert('Failed to deploy drafts');
+                    showNotification('error', 'Failed to deploy drafts');
                   }
                 }}
                 className="btn btn-create"
@@ -419,9 +503,9 @@ const RemoteConfig: React.FC<RemoteConfigProps> = ({ isCollapsed = false }) => {
                               try {
                                 await apiClient.post(`/config/admin/drafts/${draft.id}/reject`, { reason });
                                 await fetchDrafts();
-                                alert('Draft rejected');
+                                showNotification('success', 'Draft rejected');
                               } catch (error: any) {
-                                alert(error.response?.data?.error || 'Failed to reject draft');
+                                showNotification('error', error.response?.data?.error || 'Failed to reject draft');
                               }
                             }}
                             className="btn btn-sm btn-danger"
@@ -507,33 +591,37 @@ const RemoteConfig: React.FC<RemoteConfigProps> = ({ isCollapsed = false }) => {
                       >
                         <Eye size={16} />
                       </button>
-                      <button
-                        onClick={() => {
-                          setSelectedConfig(config);
-                          setFormData({
-                            gameId: config.gameId,
-                            key: config.key,
-                            dataType: config.dataType as 'string' | 'number' | 'boolean' | 'json',
-                            environment: config.environment as 'development' | 'staging' | 'production',
-                            value: stringifyValue(config.value, config.dataType),
-                            description: config.description,
-                            enabled: config.enabled,
-                          });
-                          setJsonError(null);
-                          setShowEditModal(true);
-                        }}
-                        className="action-btn edit-btn"
-                        title="Edit configuration"
-                      >
-                        <Edit2 size={16} />
-                      </button>
-                      <button
-                        onClick={() => handleDeleteConfig(config.id)}
-                        className="action-btn delete-btn"
-                        title="Delete configuration"
-                      >
-                        <Trash2 size={16} />
-                      </button>
+                      {canEdit && (
+                        <button
+                          onClick={() => {
+                            setSelectedConfig(config);
+                            setFormData({
+                              gameId: config.gameId,
+                              key: config.key,
+                              dataType: config.dataType as 'string' | 'number' | 'boolean' | 'json',
+                              environment: config.environment as 'development' | 'staging' | 'production',
+                              value: stringifyValue(config.value, config.dataType),
+                              description: config.description,
+                              enabled: config.enabled,
+                            });
+                            setJsonError(null);
+                            setShowEditModal(true);
+                          }}
+                          className="action-btn edit-btn"
+                          title="Edit configuration"
+                        >
+                          <Edit2 size={16} />
+                        </button>
+                      )}
+                      {canDelete && (
+                        <button
+                          onClick={() => handleDeleteConfig(config.id)}
+                          className="action-btn delete-btn"
+                          title="Delete configuration"
+                        >
+                          <Trash2 size={16} />
+                        </button>
+                      )}
                     </td>
                   </tr>
                 ))}
@@ -612,6 +700,7 @@ const RemoteConfig: React.FC<RemoteConfigProps> = ({ isCollapsed = false }) => {
                 configId={selectedConfig.id}
                 configDataType={selectedConfig.dataType}
                 currentValue={selectedConfig.value}
+                environment={environment}
                 onRulesChange={() => fetchConfigs()}
               />
             )}
@@ -626,13 +715,6 @@ const RemoteConfig: React.FC<RemoteConfigProps> = ({ isCollapsed = false }) => {
                 }}
               />
             )}
-
-            {activeTab === 'reorder' && (
-              <DraggableRuleList
-                configId={selectedConfig.id}
-                onReorderComplete={() => fetchConfigs()}
-              />
-            )}
             </div>
           </div>
         </div>
@@ -640,7 +722,7 @@ const RemoteConfig: React.FC<RemoteConfigProps> = ({ isCollapsed = false }) => {
 
       {/* Create Modal */}
       {showCreateModal && (
-        <div className="modal-overlay" onClick={() => setShowCreateModal(false)}>
+        <div className="modal-overlay">
           <div className="modal" onClick={(e) => e.stopPropagation()}>
             <div className="modal-header">
               <h2>Create New Configuration</h2>
@@ -673,19 +755,6 @@ const RemoteConfig: React.FC<RemoteConfigProps> = ({ isCollapsed = false }) => {
                     <option value="number">Number</option>
                     <option value="boolean">Boolean</option>
                     <option value="json">JSON</option>
-                  </select>
-                </div>
-
-                <div className="form-group">
-                  <label>Environment *</label>
-                  <select
-                    value={formData.environment}
-                    onChange={(e) => setFormData({ ...formData, environment: e.target.value as any })}
-                    className="form-select"
-                  >
-                    <option value="development">Development</option>
-                    <option value="staging">Staging</option>
-                    <option value="production">Production</option>
                   </select>
                 </div>
               </div>
@@ -842,33 +911,21 @@ const RemoteConfig: React.FC<RemoteConfigProps> = ({ isCollapsed = false }) => {
               <button
                 onClick={async () => {
                   const newEnabledState = !selectedConfig.enabled;
-                  setSelectedConfig({
-                    ...selectedConfig,
-                    enabled: newEnabledState
-                  });
                   
                   try {
-                    await apiClient.post(
-                      `/config/admin/drafts`,
-                      {
-                        configId: selectedConfig.id,
-                        gameId: selectedConfig.gameId,
-                        key: selectedConfig.key,
-                        value: parseValue(formData.value, formData.dataType),
-                        dataType: selectedConfig.dataType,
-                        environment: selectedConfig.environment,
-                        enabled: newEnabledState,
-                        description: formData.description,
-                        changes: {
-                          enabled: newEnabledState,
-                        },
-                      }
-                    );
-                    await fetchDrafts();
+                    // Direct update of enabled state
+                    await apiClient.put(`/config/configs/${selectedConfig.id}`, {
+                      value: parseValue(formData.value, formData.dataType),
+                      enabled: newEnabledState,
+                      description: formData.description,
+                    });
+                    
+                    await fetchConfigs();
                     setShowEditModal(false);
                     setSelectedConfig(null);
+                    showNotification('success', '✅ Configuration updated successfully!');
                   } catch (error) {
-                    alert('Failed to save configuration');
+                    showNotification('error', 'Failed to update configuration');
                   }
                 }}
                 className={`btn btn-toggle ${selectedConfig.enabled ? 'btn-disable' : 'btn-enable'}`}
@@ -882,9 +939,9 @@ const RemoteConfig: React.FC<RemoteConfigProps> = ({ isCollapsed = false }) => {
               }} className="btn btn-secondary">
                 Cancel
               </button>
-              <button onClick={handleSaveAsDraft} className="btn btn-primary">
+              <button onClick={handleSaveConfig} className="btn btn-primary">
                 <Check size={16} />
-                Save as Draft
+                Save Changes
               </button>
             </div>
           </div>
@@ -942,9 +999,238 @@ const RemoteConfig: React.FC<RemoteConfigProps> = ({ isCollapsed = false }) => {
           </div>
         </div>
       )}
+
+      {/* Stash to Staging Modal */}
+      {showStashModal && (
+        <div className="modal-overlay">
+          <div className="modal" onClick={(e) => e.stopPropagation()}>
+            <div className="modal-header">
+              <h2>Stash to Staging</h2>
+              <button className="modal-close" onClick={() => setShowStashModal(false)}>×</button>
+            </div>
+            <div className="modal-body">
+              <div className="stash-info">
+                <GitBranch size={24} />
+                <p>
+                  This will <strong>REPLACE ALL</strong> staging configurations with 
+                  <strong> {configs.length}</strong> configuration(s) from <strong>Development</strong>.
+                </p>
+                <p className="stash-warning">
+                  ⚠️ <strong>Complete Replacement:</strong> All existing staging configs will be deleted first, 
+                  then replaced with development configs. Any deleted configs in development will also be removed from staging.
+                </p>
+              </div>
+              <div className="config-list-preview">
+                <h4>Configs to stash:</h4>
+                <ul>
+                  {configs.slice(0, 10).map(config => (
+                    <li key={config.id}>{config.key}</li>
+                  ))}
+                  {configs.length > 10 && <li>... and {configs.length - 10} more</li>}
+                </ul>
+              </div>
+            </div>
+            <div className="modal-footer">
+              <button onClick={() => setShowStashModal(false)} className="btn btn-secondary">
+                Cancel
+              </button>
+              <button
+                onClick={async () => {
+                  try {
+                    // Call backend API to stash configs from dev to staging
+                    await apiClient.post('/config/admin/stash-to-staging', {
+                      gameId: currentGame.id,
+                      configIds: configs.map(c => c.id),
+                    });
+                    setShowStashModal(false);
+                    showNotification('success', '✅ Configurations stashed to staging successfully!');
+                    // Switch to staging to view
+                    setEnvironment('staging');
+                    // Refresh configs
+                    await fetchConfigs();
+                  } catch (error: any) {
+                    showNotification('error', error.response?.data?.error || 'Failed to stash configurations');
+                  }
+                }}
+                className="btn btn-primary"
+              >
+                <GitBranch size={16} />
+                Stash to Staging
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Pull from Staging Modal */}
+      {showPullModal && (
+        <div className="modal-overlay">
+          <div className="modal" onClick={(e) => e.stopPropagation()}>
+            <div className="modal-header">
+              <h2>Pull from Staging</h2>
+              <button className="modal-close" onClick={() => setShowPullModal(false)}>×</button>
+            </div>
+            <div className="modal-body">
+              <div className="stash-info">
+                <GitBranch size={24} style={{ transform: 'scaleX(-1)' }} />
+                <p>
+                  This will <strong>REPLACE ALL</strong> development configurations with 
+                  configurations from <strong>Staging</strong>.
+                </p>
+                <p className="stash-warning">
+                  ⚠️ <strong>Complete Replacement:</strong> All existing development configs will be deleted first, 
+                  then replaced with staging configs. Use this to sync tested changes back to development.
+                </p>
+              </div>
+              <div className="config-list-preview">
+                <h4>This will fetch all staging configs</h4>
+                <p style={{ fontSize: '0.875rem', color: 'var(--text-secondary)' }}>
+                  Click below to completely replace development with staging configurations.
+                </p>
+              </div>
+            </div>
+            <div className="modal-footer">
+              <button onClick={() => setShowPullModal(false)} className="btn btn-secondary">
+                Cancel
+              </button>
+              <button
+                onClick={async () => {
+                  try {
+                    // Fetch staging configs
+                    const stagingResponse = await apiClient.get(
+                      `/config/configs/${currentGame.id}?environment=staging`
+                    );
+                    const stagingConfigs = stagingResponse.data.data.configs || [];
+                    
+                    if (stagingConfigs.length === 0) {
+                      showNotification('warning', 'No configurations found in staging to pull.');
+                      setShowPullModal(false);
+                      return;
+                    }
+
+                    // Call backend API to pull from staging to dev
+                    await apiClient.post('/config/admin/pull-from-staging', {
+                      gameId: currentGame.id,
+                      configIds: stagingConfigs.map((c: any) => c.id),
+                    });
+                    setShowPullModal(false);
+                    showNotification('success', `✅ ${stagingConfigs.length} configuration(s) pulled from staging to development successfully!`);
+                    // Refresh configs in development
+                    await fetchConfigs();
+                  } catch (error: any) {
+                    showNotification('error', error.response?.data?.error || 'Failed to pull configurations from staging');
+                  }
+                }}
+                className="btn btn-primary"
+              >
+                <GitBranch size={16} style={{ transform: 'scaleX(-1)' }} />
+                Pull from Staging
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Publish to Production Modal */}
+      {showPublishModal && (
+        <div className="modal-overlay">
+          <div className="modal" onClick={(e) => e.stopPropagation()}>
+            <div className="modal-header">
+              <h2>🚀 Publish to Production</h2>
+              <button className="modal-close" onClick={() => {
+                setShowPublishModal(false);
+                setPublishConfirmed(false);
+              }}>×</button>
+            </div>
+            <div className="modal-body">
+              <div className="publish-info">
+                <AlertCircle size={24} color="#e74c3c" />
+                <p>
+                  You are about to <strong>REPLACE ALL</strong> production configurations with 
+                  <strong> {configs.length}</strong> configuration(s) from <strong>Staging</strong>.
+                </p>
+                <p className="publish-warning">
+                  ⚠️ <strong>THIS WILL AFFECT LIVE USERS IMMEDIATELY!</strong> All existing production configs 
+                  will be deleted first, then replaced with staging configs. Ensure all configs have been tested in staging.
+                </p>
+              </div>
+              <div className="config-list-preview">
+                <h4>Configs to publish:</h4>
+                <ul>
+                  {configs.slice(0, 10).map(config => (
+                    <li key={config.id}>
+                      <strong>{config.key}</strong>: {getDisplayValue(config.value, config.dataType)}
+                    </li>
+                  ))}
+                  {configs.length > 10 && <li>... and {configs.length - 10} more</li>}
+                </ul>
+              </div>
+              <div className="publish-confirmation">
+                <label>
+                  <input
+                    type="checkbox"
+                    checked={publishConfirmed}
+                    onChange={(e) => setPublishConfirmed(e.target.checked)}
+                  />
+                  I understand this will completely replace production immediately
+                </label>
+              </div>
+            </div>
+            <div className="modal-footer">
+              <button onClick={() => {
+                setShowPublishModal(false);
+                setPublishConfirmed(false);
+              }} className="btn btn-secondary">
+                Cancel
+              </button>
+              <button
+                disabled={!publishConfirmed}
+                onClick={async () => {
+                  if (!publishConfirmed) return;
+                  
+                  try {
+                    // Call backend API to publish configs from staging to production
+                    await apiClient.post('/config/admin/publish-to-production', {
+                      gameId: currentGame.id,
+                      configIds: configs.map(c => c.id),
+                    });
+                    setShowPublishModal(false);
+                    setPublishConfirmed(false);
+                    showNotification('success', '✅ Configurations published to production successfully!');
+                    // Switch to production to view
+                    setEnvironment('production');
+                    // Refresh configs
+                    await fetchConfigs();
+                  } catch (error: any) {
+                    console.error('Publish error:', error);
+                    showNotification('error', error.response?.data?.error || 'Failed to publish configurations');
+                  }
+                }}
+                className="btn btn-danger"
+                style={{ opacity: publishConfirmed ? 1 : 0.5 }}
+              >
+                🚀 Publish to Production
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Deployment History Modal */}
+      {showDeploymentHistory && (
+        <DeploymentHistory
+          gameId={currentGame.id}
+          environment={environment as 'staging' | 'production'}
+          onClose={() => setShowDeploymentHistory(false)}
+          onRollback={async () => {
+            await fetchConfigs();
+            showNotification('success', '✅ Rollback completed successfully!');
+          }}
+          showNotification={showNotification}
+        />
+      )}
     </div>
   );
 };
 
 export default RemoteConfig;
-

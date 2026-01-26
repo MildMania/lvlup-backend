@@ -207,10 +207,10 @@ async function seedLevelFunnelData(games: any[], daysAgoFn: (days: number) => Da
 
     console.log(`📝 Generated ${levelEvents.length} level events`);
 
-    // Batch insert level events
+    // Batch insert level events with smaller chunks for SQLite
     const levelEventChunks = [];
-    for (let i = 0; i < levelEvents.length; i += 1000) {
-        levelEventChunks.push(levelEvents.slice(i, i + 1000));
+    for (let i = 0; i < levelEvents.length; i += 100) { // Reduced from 1000 to 100
+        levelEventChunks.push(levelEvents.slice(i, i + 100));
     }
 
     for (const chunk of levelEventChunks) {
@@ -392,10 +392,10 @@ async function main() {
         }
     }
 
-    // Batch insert sessions
+    // Batch insert sessions with smaller chunks for SQLite
     const sessionInsertChunks = [];
-    for (let i = 0; i < allSessions.length; i += 1000) {
-        sessionInsertChunks.push(allSessions.slice(i, i + 1000));
+    for (let i = 0; i < allSessions.length; i += 100) { // Reduced from 1000 to 100
+        sessionInsertChunks.push(allSessions.slice(i, i + 100));
     }
     let createdSessions = [];
     for (const chunk of sessionInsertChunks) {
@@ -410,7 +410,7 @@ async function main() {
     for (const session of sessionsWithIds) {
         const gameName = allUsers.find(u => u.id === session.userId)?.game?.name || 'Puzzle Quest Adventures';
         const gameEvents = eventTypes[gameName as keyof typeof eventTypes] || eventTypes['Puzzle Quest Adventures'];
-        const eventsCount = 5; // 5 events per session for performance
+        const eventsCount = 2; // Reduced from 5 to 2 for SQLite performance
         for (let j = 0; j < eventsCount; j++) {
             const eventTime = new Date(
                 session.startTime.getTime() + (j / eventsCount) * (session.duration || 300) * 1000
@@ -461,10 +461,10 @@ async function main() {
         }
     }
 
-    // Batch insert events
+    // Batch insert events with smaller chunks for SQLite
     const eventInsertChunks = [];
-    for (let i = 0; i < allEvents.length; i += 1000) {
-        eventInsertChunks.push(allEvents.slice(i, i + 1000));
+    for (let i = 0; i < allEvents.length; i += 100) { // Reduced from 1000 to 100
+        eventInsertChunks.push(allEvents.slice(i, i + 100));
     }
     let createdEvents = [];
     for (const chunk of eventInsertChunks) {

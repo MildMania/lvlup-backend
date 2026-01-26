@@ -89,7 +89,7 @@ export async function getPendingDrafts(gameId: string, environment?: string) {
 /**
  * Deploy a draft (apply changes to production config)
  */
-export async function deployDraft(draftId: string, deployedBy: string) {
+export async function deployDraft(draftId: string, deployedBy: string, version?: string) {
   try {
     const draft = await prisma.configDraft.findUnique({
       where: { id: draftId },
@@ -104,44 +104,182 @@ export async function deployDraft(draftId: string, deployedBy: string) {
       throw new Error(`Draft ${draftId} already deployed`);
     }
 
-    // Update the actual config with draft values
-    const updatedConfig = await prisma.remoteConfig.update({
-      where: { id: draft.configId },
-      data: {
-        value: draft.value as any,
-        enabled: draft.enabled,
-        description: draft.description,
-      },
-    });
+    // Determine source environment (drafts are created in development by controller)
+    const sourceEnv = (draft.environment || draft.config?.environment || 'development').toLowerCase();
 
-    // Mark draft as deployed
-    const deployedDraft = await prisma.configDraft.update({
-      where: { id: draftId },
-      data: {
-        status: 'deployed',
-        deployedAt: new Date(),
-        deployedBy,
-      },
-    });
+    if (sourceEnv === 'development') {
+      // Promote to staging
+      const targetEnv = 'staging';
 
-    // Log deployment in history
-    await prisma.configHistory.create({
-      data: {
+      // Try to find existing target config
+      const existingTarget = await prisma.remoteConfig.findFirst({
+        where: {
+          gameId: draft.gameId,
+          key: draft.key,
+          environment: targetEnv,
+        },
+      });
+
+      if (existingTarget) {
+        // Update staging config
+        const updatedConfig = await prisma.remoteConfig.update({
+          where: { id: existingTarget.id },
+          data: {
+            value: draft.value as any,
+            enabled: draft.enabled,
+            description: draft.description,
+          },
+        });
+
+        // Log history for staging
+        await prisma.configHistory.create({
+          data: {
+            configId: existingTarget.id,
+            changeType: 'updated',
+            previousValue: existingTarget.value as any,
+            newValue: draft.value as any,
+            changedBy: deployedBy,
+          },
+        });
+      } else {
+        // Create staging config
+        const createdConfig = await prisma.remoteConfig.create({
+          data: {
+            gameId: draft.gameId,
+            key: draft.key,
+            value: draft.value as any,
+            dataType: draft.dataType,
+            environment: targetEnv,
+            enabled: draft.enabled,
+            description: draft.description,
+          },
+        });
+
+        // Log create history
+        await prisma.configHistory.create({
+          data: {
+            configId: createdConfig.id,
+            changeType: 'created',
+            newValue: createdConfig.value as any,
+            changedBy: deployedBy,
+          },
+        });
+      }
+
+      // Mark original draft as deployed
+      const deployedDraft = await prisma.configDraft.update({
+        where: { id: draftId },
+        data: {
+          status: 'deployed',
+          deployedAt: new Date(),
+          deployedBy,
+        },
+      });
+
+      logger.info('Config draft deployed to staging', {
+        draftId,
         configId: draft.configId,
-        changeType: 'updated',
-        previousValue: draft.config.value as any,
-        newValue: draft.value as any,
-        changedBy: deployedBy,
-      },
-    });
+        deployedBy,
+      });
 
-    logger.info('Config draft deployed', {
-      draftId,
-      configId: draft.configId,
-      deployedBy,
-    });
+      return deployedDraft;
+    } else if (sourceEnv === 'staging') {
+      // Publish to production
+      const targetEnv = 'production';
 
-    return deployedDraft;
+      // version may be passed into this function; fallback to draft.changes if not
+      let resolvedVersion = version;
+      try {
+        if (!resolvedVersion && draft.changes && typeof draft.changes === 'object' && (draft.changes as any).version) {
+          resolvedVersion = (draft.changes as any).version;
+        }
+      } catch (_) {}
+
+      if (!resolvedVersion) {
+        // Auto version: timestamp-based
+        const pad = (n: number) => n.toString().padStart(2, '0');
+        const d = new Date();
+        resolvedVersion = `v${d.getUTCFullYear()}${pad(d.getUTCMonth() + 1)}${pad(d.getUTCDate())}-${pad(d.getUTCHours())}${pad(d.getUTCMinutes())}${pad(d.getUTCSeconds())}`;
+      }
+
+      // Upsert production config
+      const existingProd = await prisma.remoteConfig.findFirst({
+        where: {
+          gameId: draft.gameId,
+          key: draft.key,
+          environment: targetEnv,
+        },
+      });
+
+      if (existingProd) {
+        const updatedConfig = await prisma.remoteConfig.update({
+          where: { id: existingProd.id },
+          data: {
+            value: draft.value as any,
+            enabled: draft.enabled,
+            description: draft.description,
+          },
+        });
+
+        await prisma.configHistory.create({
+          data: {
+            configId: existingProd.id,
+            changeType: 'updated',
+            previousValue: existingProd.value as any,
+            newValue: draft.value as any,
+            changedBy: deployedBy,
+          },
+        });
+      } else {
+        const createdConfig = await prisma.remoteConfig.create({
+          data: {
+            gameId: draft.gameId,
+            key: draft.key,
+            value: draft.value as any,
+            dataType: draft.dataType,
+            environment: targetEnv,
+            enabled: draft.enabled,
+            description: draft.description,
+          },
+        });
+
+        await prisma.configHistory.create({
+          data: {
+            configId: createdConfig.id,
+            changeType: 'created',
+            newValue: createdConfig.value as any,
+            changedBy: deployedBy,
+          },
+        });
+      }
+
+      // Create a Release record for production publish
+      await prisma.release.create({
+        data: {
+          version: resolvedVersion!,
+          releaseDate: new Date(),
+          description: `Published ${draft.key} to production via draft ${draftId}`,
+          gameId: draft.gameId,
+          status: 'active',
+        },
+      });
+
+      // Mark draft as deployed
+      const deployedDraft = await prisma.configDraft.update({
+        where: { id: draftId },
+        data: {
+          status: 'deployed',
+          deployedAt: new Date(),
+          deployedBy,
+        },
+      });
+
+      logger.info('Config draft published to production', { draftId, deployedBy, version: resolvedVersion });
+
+      return deployedDraft;
+    } else {
+      throw new Error(`Unsupported draft source environment: ${sourceEnv}`);
+    }
   } catch (error) {
     logger.error('Failed to deploy draft:', error);
     throw error;

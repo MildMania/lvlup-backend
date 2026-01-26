@@ -135,10 +135,7 @@ model Event {
 
   @@index([gameId, eventName, timestamp])
   @@index([userId, timestamp])
-  @@index([gameId, platform, timestamp])
   @@index([gameId, appVersion, timestamp])
-  @@index([gameId, country, timestamp])
-  @@index([gameId, countryCode, timestamp])
   @@map("events")
 }
 

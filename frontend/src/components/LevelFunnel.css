@@ -376,7 +376,7 @@
 
 .level-funnel-table {
   width: 100%;
-  min-width: 1600px;
+  min-width: 1700px;
   border-collapse: separate;
   border-spacing: 0;
   table-layout: auto;
@@ -668,56 +668,7 @@
   opacity: 1;
 }
 
-/* Responsive Design */
-@media (max-width: 1024px) {
-  .level-funnel {
-    margin-left: 0;
-    padding: 20px;
-  }
 
-  .level-funnel.sidebar-collapsed {
-    margin-left: 0;
-  }
-
-  .level-funnel-header {
-    flex-direction: column;
-    align-items: stretch;
-  }
-
-  .export-button {
-    width: 100%;
-    justify-content: center;
-  }
-
-  .filters-grid {
-    grid-template-columns: 1fr;
-  }
-
-
-  .summary-grid {
-    grid-template-columns: repeat(2, 1fr);
-  }
-}
-
-@media (max-width: 640px) {
-  .level-funnel {
-    padding: 16px;
-  }
-
-  .level-funnel-title h1 {
-    font-size: 1.5rem;
-  }
-
-  .summary-grid {
-    grid-template-columns: 1fr;
-  }
-
-  .level-funnel-table th,
-  .level-funnel-table td {
-    padding: 10px 12px;
-    font-size: 0.8125rem;
-  }
-}
 
 /* Metric Tooltip Styles */
 .metric-tooltip-container {

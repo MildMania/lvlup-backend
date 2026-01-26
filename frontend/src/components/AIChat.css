@@ -332,39 +332,4 @@
   transform: none;
 }
 
-/* Mobile responsiveness */
-@media (max-width: 768px) {
-  .ai-chat {
-    height: 100vh;
-    border-radius: 0;
-  }
-  
-  .chat-header {
-    padding: 1rem;
-  }
-  
-  .chat-header h2 {
-    font-size: 1.125rem;
-  }
-  
-  .examples-button {
-    padding: 0.5rem 0.75rem;
-    font-size: 0.8rem;
-  }
-  
-  .message-content {
-    max-width: 90%;
-  }
-  
-  .data-grid {
-    grid-template-columns: 1fr;
-  }
-  
-  .chat-input {
-    padding: 0.75rem;
-  }
-  
-  .chat-input textarea {
-    font-size: 16px; /* Prevent zoom on iOS */
-  }
-}
+

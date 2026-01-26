@@ -49,10 +49,10 @@ export class AnalyticsController {
 
             const userProfile: UserProfile = {
                 externalId: userId,
-                deviceId: req.body.deviceId,
-                platform: req.body.platform,
-                version: req.body.version,
-                country: req.body.country,
+                deviceId: req.body.deviceId || eventData.deviceId,
+                platform: req.body.platform || eventData.platform,
+                version: req.body.version || eventData.appVersion,
+                country: req.body.country || eventData.country,
                 language: req.body.language
             };
 

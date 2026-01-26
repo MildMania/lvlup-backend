@@ -16,7 +16,8 @@ const METRIC_TOOLTIPS: Record<string, string> = {
     'Completion Rate': '(Unique players completed / Unique players started) × 100',
     'Win Rate': '(Completed attempts / (Completed + Failed attempts)) × 100. Only counts users who finished (excludes incomplete attempts)',
     'Fail Rate': '(Failed attempts / (Completed + Failed attempts)) × 100',
-    'APS': 'Attempts Per Success - Average number of starts per completing user (only counts starts from users who completed or failed)',
+    'APS Raw': 'All starts from completing users, including orphaned starts from crashes/network issues',
+    'APS Clean': 'Only starts with matching conclusions (complete/fail). Filters out orphaned start events for cleaner data',
     'AVG Time': 'Average time to complete the level in seconds',
     'Cumulative AVG Time': 'Total cumulative average time from level 1 to this level in seconds',
     'Booster': '% of completing/failing users who used at least one booster',
@@ -76,7 +77,8 @@ interface LevelMetrics {
     churnTotal: number;
     churnStartComplete: number;
     churnCompleteNext: number;
-    aps: number;
+    apsRaw: number; // All starts from completing users (includes orphaned starts)
+    apsClean: number; // Only starts with matching conclusions (filters out orphaned starts)
     meanCompletionDuration: number;
     meanFailDuration: number;
     cumulativeAvgTime: number;
@@ -112,8 +114,10 @@ export default function LevelFunnel({ isCollapsed = false }: LevelFunnelProps) {
 
     // Multi-select filter states
     const [selectedCountries, setSelectedCountries] = useState<string[]>([]);
+    const [selectedPlatforms, setSelectedPlatforms] = useState<string[]>([]);
     const [selectedVersions, setSelectedVersions] = useState<string[]>([]);
     const [showCountrySelector, setShowCountrySelector] = useState(false);
+    const [showPlatformSelector, setShowPlatformSelector] = useState(false);
     const [showVersionSelector, setShowVersionSelector] = useState(false);
 
     // Level funnel filter state
@@ -123,10 +127,12 @@ export default function LevelFunnel({ isCollapsed = false }: LevelFunnelProps) {
 
     // Filter options from API
     const [availableCountries, setAvailableCountries] = useState<string[]>([]);
+    const [availablePlatforms, setAvailablePlatforms] = useState<string[]>([]);
     const [availableVersions, setAvailableVersions] = useState<string[]>([]);
 
     // Refs for dropdowns
     const countryDropdownRef = useRef<HTMLDivElement>(null);
+    const platformDropdownRef = useRef<HTMLDivElement>(null);
     const versionDropdownRef = useRef<HTMLDivElement>(null);
     const levelFunnelDropdownRef = useRef<HTMLDivElement>(null);
 
@@ -137,6 +143,9 @@ export default function LevelFunnel({ isCollapsed = false }: LevelFunnelProps) {
         const handleClickOutside = (event: MouseEvent) => {
             if (countryDropdownRef.current && !countryDropdownRef.current.contains(event.target as Node)) {
                 setShowCountrySelector(false);
+            }
+            if (platformDropdownRef.current && !platformDropdownRef.current.contains(event.target as Node)) {
+                setShowPlatformSelector(false);
             }
             if (versionDropdownRef.current && !versionDropdownRef.current.contains(event.target as Node)) {
                 setShowVersionSelector(false);
@@ -156,6 +165,14 @@ export default function LevelFunnel({ isCollapsed = false }: LevelFunnelProps) {
             prev.includes(country)
                 ? prev.filter(c => c !== country)
                 : [...prev, country]
+        );
+    };
+
+    const togglePlatform = (platform: string) => {
+        setSelectedPlatforms(prev =>
+            prev.includes(platform)
+                ? prev.filter(p => p !== platform)
+                : [...prev, platform]
         );
     };
 
@@ -182,6 +199,7 @@ export default function LevelFunnel({ isCollapsed = false }: LevelFunnelProps) {
                 const response = await apiClient.get(`/analytics/filters/options?gameId=${currentGame.id}`);
                 if (response.data.success) {
                     setAvailableCountries(['All', ...response.data.data.countries]);
+                    setAvailablePlatforms(['All', ...response.data.data.platforms]);
                     setAvailableVersions(['All', ...response.data.data.versions]);
                     setAvailableLevelFunnels(response.data.data.levelFunnels || []);
                 }
@@ -201,7 +219,7 @@ export default function LevelFunnel({ isCollapsed = false }: LevelFunnelProps) {
         } else {
             setLoading(false);
         }
-    }, [currentGame, filters, selectedCountries, selectedVersions, selectedLevelFunnels, levelLimit]);
+    }, [currentGame, filters, selectedCountries, selectedPlatforms, selectedVersions, selectedLevelFunnels, levelLimit]);
 
     const fetchLevelFunnelData = async () => {
         try {
@@ -216,6 +234,7 @@ export default function LevelFunnel({ isCollapsed = false }: LevelFunnelProps) {
             if (filters.startDate) params.append('startDate', filters.startDate);
             if (filters.endDate) params.append('endDate', filters.endDate);
             if (selectedCountries.length > 0) params.append('country', selectedCountries.join(','));
+            if (selectedPlatforms.length > 0) params.append('platform', selectedPlatforms.join(','));
             if (selectedVersions.length > 0) params.append('version', selectedVersions.join(','));
             if (selectedLevelFunnels.length > 0) {
                 // Parse selected funnels and send as separate params
@@ -263,7 +282,8 @@ export default function LevelFunnel({ isCollapsed = false }: LevelFunnelProps) {
             'Completion Rate (%)',
             'Win Rate (%)',
             'Fail Rate (%)',
-            'APS',
+            'APS Raw',
+            'APS Clean',
             'Avg Completion Time (s)',
             'Cumulative Avg Time (s)',
             'Booster Usage (%)',
@@ -282,7 +302,8 @@ export default function LevelFunnel({ isCollapsed = false }: LevelFunnelProps) {
             level.completionRate.toFixed(2),
             level.winRate.toFixed(2),
             level.failRate.toFixed(2),
-            level.aps.toFixed(2),
+            level.apsRaw.toFixed(2),
+            level.apsClean.toFixed(2),
             level.meanCompletionDuration.toFixed(2),
             level.cumulativeAvgTime.toFixed(2),
             level.boosterUsage.toFixed(2),
@@ -400,6 +421,45 @@ export default function LevelFunnel({ isCollapsed = false }: LevelFunnelProps) {
                                                 onChange={() => toggleCountry(country)}
                                             />
                                             <span>{country}</span>
+                                        </label>
+                                    ))}
+                                </div>
+                            </div>
+                        )}
+                    </div>
+                    <div className="filter-group multi-select-group" ref={platformDropdownRef}>
+                        <label>Platform</label>
+                        <button
+                            className="multi-select-button"
+                            onClick={() => setShowPlatformSelector(!showPlatformSelector)}
+                        >
+                            {selectedPlatforms.length > 0 ? `${selectedPlatforms.length} selected` : 'All platforms'} ▾
+                        </button>
+                        {showPlatformSelector && (
+                            <div className="multi-select-dropdown">
+                                <div className="multi-select-header">
+                                    <button
+                                        onClick={() => setSelectedPlatforms(availablePlatforms.filter(p => p !== 'All'))}
+                                        className="multi-select-action-btn"
+                                    >
+                                        Select All
+                                    </button>
+                                    <button
+                                        onClick={() => setSelectedPlatforms([])}
+                                        className="multi-select-action-btn"
+                                    >
+                                        Clear All
+                                    </button>
+                                </div>
+                                <div className="multi-select-list">
+                                    {availablePlatforms.filter(p => p !== 'All').map(platform => (
+                                        <label key={platform} className="multi-select-checkbox-label">
+                                            <input
+                                                type="checkbox"
+                                                checked={selectedPlatforms.includes(platform)}
+                                                onChange={() => togglePlatform(platform)}
+                                            />
+                                            <span>{platform}</span>
                                         </label>
                                     ))}
                                 </div>
@@ -550,7 +610,8 @@ export default function LevelFunnel({ isCollapsed = false }: LevelFunnelProps) {
                                 <th><MetricTooltip text={METRIC_TOOLTIPS['Completion Rate']}>Completion Rate</MetricTooltip></th>
                                 <th><MetricTooltip text={METRIC_TOOLTIPS['Win Rate']}>Win Rate</MetricTooltip></th>
                                 <th><MetricTooltip text={METRIC_TOOLTIPS['Fail Rate']}>Fail Rate</MetricTooltip></th>
-                                <th><MetricTooltip text={METRIC_TOOLTIPS['APS']}>APS</MetricTooltip></th>
+                                <th><MetricTooltip text={METRIC_TOOLTIPS['APS Raw']}>APS Raw</MetricTooltip></th>
+                                <th><MetricTooltip text={METRIC_TOOLTIPS['APS Clean']}>APS Clean</MetricTooltip></th>
                                 <th><MetricTooltip text={METRIC_TOOLTIPS['AVG Time']}>AVG Time</MetricTooltip></th>
                                 <th><MetricTooltip text={METRIC_TOOLTIPS['Cumulative AVG Time']}>Cumulative AVG Time</MetricTooltip></th>
                                 <th><MetricTooltip text={METRIC_TOOLTIPS['Booster']}>Booster %</MetricTooltip></th>
@@ -622,7 +683,8 @@ export default function LevelFunnel({ isCollapsed = false }: LevelFunnelProps) {
                                         </span>
                                     </td>
                                     <td>{level.failRate.toFixed(1)}%</td>
-                                    <td>{level.aps.toFixed(2)}</td>
+                                    <td>{level.apsRaw.toFixed(2)}</td>
+                                    <td>{level.apsClean.toFixed(2)}</td>
                                     <td>{level.meanCompletionDuration.toFixed(1)}s</td>
                                     <td>{level.cumulativeAvgTime.toFixed(1)}s</td>
                                     <td>{level.boosterUsage.toFixed(1)}%</td>
@@ -694,9 +756,15 @@ LvlUpEvents.TrackLevelFailed(1, "timeout", time);`}
                             </div>
                         </div>
                         <div className="summary-item">
-                            <div className="summary-item-label">Avg APS</div>
+                            <div className="summary-item-label">Avg APS Raw</div>
                             <div className="summary-item-value">
-                                {(levels.reduce((sum, l) => sum + l.aps, 0) / levels.length).toFixed(2)}
+                                {(levels.reduce((sum, l) => sum + l.apsRaw, 0) / levels.length).toFixed(2)}
+                            </div>
+                        </div>
+                        <div className="summary-item">
+                            <div className="summary-item-label">Avg APS Clean</div>
+                            <div className="summary-item-value">
+                                {(levels.reduce((sum, l) => sum + l.apsClean, 0) / levels.length).toFixed(2)}
                             </div>
                         </div>
                     </div>

@@ -1,7 +1,6 @@
 import { PrismaClient, DashboardRole, Team, TeamMember } from '@prisma/client';
 import auditLogService, { AUDIT_ACTIONS } from './AuditLogService';
-
-const prisma = new PrismaClient();
+import prisma from '../prisma';
 
 interface CreateTeamInput {
     name: string;

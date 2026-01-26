@@ -3,12 +3,13 @@ import { EventData, BatchEventData, UserProfile, SessionData, AnalyticsData } fr
 import logger from '../utils/logger';
 import { v4 as uuidv4 } from 'uuid';
 import { cache, generateCacheKey } from '../utils/simpleCache';
+import prisma from '../prisma';
 
 export class AnalyticsService {
     private prisma: PrismaClient;
 
     constructor(prismaClient?: PrismaClient) {
-        this.prisma = prismaClient || new PrismaClient();
+        this.prisma = prismaClient || prisma;
     }
 
     /**
@@ -61,11 +62,12 @@ export class AnalyticsService {
                     }
                 },
                 update: {
-                    deviceId: userProfile.deviceId ?? null,
-                    platform: userProfile.platform ?? null,
-                    version: userProfile.version ?? null,
-                    country: userProfile.country ?? null,
-                    language: userProfile.language ?? null,
+                    deviceId: userProfile.deviceId ?? undefined,
+                    // Only update platform if we have a value and user's platform is currently null
+                    platform: userProfile.platform ?? undefined,
+                    version: userProfile.version ?? undefined,
+                    country: userProfile.country ?? undefined,
+                    language: userProfile.language ?? undefined,
                     updatedAt: new Date()
                 },
                 create: {
@@ -303,6 +305,8 @@ export class AnalyticsService {
     async trackBatchEvents(gameId: string, batchData: BatchEventData) {
         try {
             // Get or create user
+            // Extract country from first event if available (EventData has country/countryCode)
+            const firstEvent = batchData.events[0];
             const userProfile: UserProfile = {
                 externalId: batchData.userId,
                 ...(batchData.deviceInfo?.deviceId && { deviceId: batchData.deviceInfo.deviceId }),
@@ -310,6 +314,7 @@ export class AnalyticsService {
                 ...((batchData.deviceInfo?.appVersion || batchData.deviceInfo?.version) && {
                     version: batchData.deviceInfo.appVersion || batchData.deviceInfo.version
                 }),
+                ...(firstEvent?.country && { country: firstEvent.country }),
             };
 
             const user = await this.getOrCreateUser(gameId, userProfile);

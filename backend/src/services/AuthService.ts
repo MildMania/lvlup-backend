@@ -2,8 +2,7 @@ import bcrypt from 'bcrypt';
 import { PrismaClient, DashboardUser } from '@prisma/client';
 import crypto from 'crypto';
 import tokenService from './TokenService';
-
-const prisma = new PrismaClient();
+import prisma from '../prisma';
 
 interface RegisterInput {
     email: string;

@@ -12,13 +12,11 @@ import {
   X,
   ChevronLeft,
   ChevronRight,
-  Plus,
   ChevronDown,
   ChevronUp,
   Moon,
   Sun,
   GitBranch,
-  Trash2,
   UsersRound,
   User,
   LogOut,
@@ -47,14 +45,9 @@ interface SidebarProps {
 }
 
 const Sidebar: React.FC<SidebarProps> = ({ 
-  currentPage, 
-  // onPageChange,  // TODO: Remove if not needed, or implement usage
-  gameInfo, 
-  availableGames = [], 
-  onGameChange,
+  currentPage,
   onCollapseChange,
   onGameAdded,
-  onGameDelete
 }) => {
   // Initialize collapsed state from localStorage
   const [isCollapsed, setIsCollapsed] = useState(() => {
@@ -62,11 +55,6 @@ const Sidebar: React.FC<SidebarProps> = ({
     return saved === 'true';
   });
   const [isMobileOpen, setIsMobileOpen] = useState(false);
-  // Initialize games expanded state from localStorage
-  const [isGamesExpanded, setIsGamesExpanded] = useState(() => {
-    const saved = localStorage.getItem('lvlup-games-expanded');
-    return saved !== 'false'; // Default to true if not set
-  });
   // Initialize settings expanded state from localStorage
   const [isSettingsExpanded, setIsSettingsExpanded] = useState(() => {
     const saved = localStorage.getItem('lvlup-settings-expanded');
@@ -80,6 +68,7 @@ const Sidebar: React.FC<SidebarProps> = ({
   const isAdmin = user?.teamMemberships?.some(
     membership => ['ADMIN', 'SUPER_ADMIN'].includes(membership.role)
   ) || false;
+
 
   // Notify parent of initial collapsed state
   useEffect(() => {
@@ -113,6 +102,8 @@ const Sidebar: React.FC<SidebarProps> = ({
     { id: 'teams', label: 'Teams', icon: UsersRound, adminOnly: true },
     { id: 'users', label: 'Users', icon: Users, adminOnly: true },
     { id: 'settings', label: 'General', icon: Settings, adminOnly: true },
+    // Add Games management as an admin-only settings page
+    { id: 'games', label: 'Games', icon: GamepadIcon, adminOnly: true },
   ];
 
   // Filter settings items based on user role
@@ -179,87 +170,6 @@ const Sidebar: React.FC<SidebarProps> = ({
             <X size={24} />
           </button>
         </div>
-
-        {/* Game Info Section */}
-        {gameInfo && (
-          <div className="game-info">
-            <div className="game-header">
-              <div className="game-icon">
-                <GamepadIcon size={16} />
-              </div>
-              {!isCollapsed && (
-                <div className="game-details">
-                  <h3 className="game-name">{gameInfo.name}</h3>
-                  <p className="game-id">{gameInfo.id}</p>
-                  {gameInfo.description && (
-                    <p className="game-description">{gameInfo.description}</p>
-                  )}
-                </div>
-              )}
-            </div>
-            
-            {/* Games List - Always show so Add Game button is accessible */}
-            {!isCollapsed && (
-              <div className="games-section">
-                <div 
-                  className="games-toggle"
-                  onClick={() => {
-                    const newState = !isGamesExpanded;
-                    setIsGamesExpanded(newState);
-                    localStorage.setItem('lvlup-games-expanded', String(newState));
-                  }}
-                >
-                  <span>Games</span>
-                  {isGamesExpanded ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
-                </div>
-                
-                {isGamesExpanded && (
-                  <div className="games-list">
-                    {availableGames.filter(game => game.id !== 'default').map((game) => (
-                      <div key={game.id} className="game-item-wrapper">
-                        <button
-                          className={`game-item ${game.id === gameInfo.id ? 'active' : ''}`}
-                          onClick={() => onGameChange && onGameChange(game.id)}
-                        >
-                          <GamepadIcon size={14} />
-                          <span className="game-item-name">{game.name}</span>
-                        </button>
-                        {onGameDelete && (
-                          <button
-                            className="game-item-delete"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              if (window.confirm(`Are you sure you want to delete "${game.name}"? This action cannot be undone.`)) {
-                                onGameDelete(game.id);
-                              }
-                            }}
-                            title="Delete game"
-                          >
-                            <Trash2 size={12} />
-                          </button>
-                        )}
-                      </div>
-                    ))}
-                    {availableGames.filter(game => game.id !== 'default').length === 0 && (
-                      <div className="no-games-message">
-                        <p style={{ fontSize: '12px', color: 'var(--text-secondary)', padding: '8px', textAlign: 'center' }}>
-                          No games yet. Create your first one!
-                        </p>
-                      </div>
-                    )}
-                    <button 
-                      className="game-item add-game"
-                      onClick={() => setIsAddGameModalOpen(true)}
-                    >
-                      <Plus size={14} />
-                      <span className="game-item-name">Add Game</span>
-                    </button>
-                  </div>
-                )}
-              </div>
-            )}
-          </div>
-        )}
 
         {/* Navigation Menu */}
         <nav className="sidebar-nav">

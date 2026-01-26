@@ -1,0 +1,64 @@
+import { PrismaClient } from '@prisma/client';
+import logger from './utils/logger';
+
+/**
+ * Singleton Prisma Client instance to prevent connection pool exhaustion
+ * 
+ * IMPORTANT: Always import prisma from this file, never create new PrismaClient() instances
+ * 
+ * Connection pool configuration:
+ * - connection_limit: Controls max connections to database
+ * - pool_timeout: How long to wait for a connection before timing out (default: 10s)
+ * 
+ * For PostgreSQL in production, add these params to DATABASE_URL:
+ * postgresql://user:pass@host:port/db?connection_limit=10&pool_timeout=20&connect_timeout=10
+ */
+
+// Prevent multiple instances in hot-reload scenarios (development)
+const globalForPrisma = global as unknown as { prisma: PrismaClient };
+
+export const prisma =
+  globalForPrisma.prisma ||
+  new PrismaClient({
+    log: [
+      { level: 'warn', emit: 'event' },
+      { level: 'error', emit: 'event' },
+    ],
+  });
+
+// Log Prisma warnings and errors
+(prisma as any).$on('warn', (e: any) => {
+  logger.warn('Prisma warning:', e);
+});
+
+(prisma as any).$on('error', (e: any) => {
+  logger.error('Prisma error:', e);
+});
+
+// Store in global for hot-reload in development
+if (process.env.NODE_ENV !== 'production') {
+  globalForPrisma.prisma = prisma;
+}
+
+// Graceful shutdown handlers
+const gracefulShutdown = async (signal: string) => {
+  logger.info(`${signal} received, closing Prisma connection...`);
+  try {
+    await prisma.$disconnect();
+    logger.info('Prisma client disconnected successfully');
+    process.exit(0);
+  } catch (error) {
+    logger.error('Error disconnecting Prisma client:', error);
+    process.exit(1);
+  }
+};
+
+process.on('SIGINT', () => gracefulShutdown('SIGINT'));
+process.on('SIGTERM', () => gracefulShutdown('SIGTERM'));
+process.on('beforeExit', async () => {
+  await prisma.$disconnect();
+  logger.info('Prisma client disconnected on beforeExit');
+});
+
+export default prisma;
+

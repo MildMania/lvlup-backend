@@ -33,6 +33,51 @@
   justify-content: space-between;
   align-items: center;
   margin-bottom: 24px;
+  max-width: 100%;
+}
+
+.user-actions > div:first-child {
+  flex: 1;
+}
+
+.user-actions .btn {
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.user-management .btn {
+  display: inline-flex !important;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 20px;
+  border-radius: 8px;
+  font-weight: 500;
+  transition: all 0.2s ease;
+  cursor: pointer;
+  border: none;
+  font-size: 14px;
+  width: auto;
+}
+
+.user-management .btn-primary {
+  background: linear-gradient(135deg, #3b82f6, #1d4ed8);
+  color: white;
+  box-shadow: 0 4px 12px rgba(59, 130, 246, 0.3);
+}
+
+.user-management .btn-primary:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 6px 16px rgba(59, 130, 246, 0.4);
+}
+
+.user-management .btn-secondary {
+  background: var(--bg-tertiary);
+  color: var(--text-primary);
+  border: 1px solid var(--border-secondary);
+}
+
+.user-management .btn-secondary:hover {
+  background: var(--bg-secondary);
 }
 
 .users-table-container {
@@ -400,23 +445,60 @@
   min-height: 400px;
 }
 
-@media (max-width: 768px) {
-  .user-management {
-    margin-left: 0;
-    padding: 20px;
-  }
+/* Form Styles */
+.team-form-card {
+  background: var(--bg-secondary);
+  border-radius: 16px;
+  padding: 24px;
+  margin-bottom: 24px;
+  box-shadow: var(--card-shadow);
+  border: 1px solid var(--border-secondary);
+}
 
-  .users-table-container {
-    overflow-x: auto;
-  }
+.team-form-card h3 {
+  font-size: 1.25rem;
+  font-weight: 600;
+  color: var(--text-primary);
+  margin-bottom: 20px;
+}
 
-  .users-table {
-    min-width: 800px;
-  }
+.form-group {
+  margin-bottom: 20px;
+}
 
-  .user-actions {
-    flex-direction: column;
-    gap: 16px;
-  }
+.form-group label {
+  display: block;
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--text-secondary);
+  margin-bottom: 8px;
+}
+
+.form-group input,
+.form-group select,
+.form-group textarea {
+  width: 100%;
+  padding: 10px 14px;
+  border: 1px solid var(--border-secondary);
+  border-radius: 8px;
+  background: var(--bg-primary);
+  color: var(--text-primary);
+  font-size: 14px;
+  transition: all 0.2s ease;
+}
+
+.form-group input:focus,
+.form-group select:focus,
+.form-group textarea:focus {
+  outline: none;
+  border-color: #3b82f6;
+  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
+}
+
+.form-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 12px;
+  margin-top: 24px;
 }
 

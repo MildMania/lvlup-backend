@@ -647,53 +647,7 @@
   color: var(--text-secondary);
 }
 
-/* Responsive Design */
-@media (max-width: 768px) {
-  .health-container {
-    padding: 1rem;
-  }
 
-  .health-header {
-    flex-direction: column;
-    align-items: flex-start;
-    gap: 1rem;
-  }
-
-  .header-controls {
-    width: 100%;
-    flex-direction: column;
-  }
-
-  .date-range-select,
-  .filters-toggle {
-    width: 100%;
-  }
-
-  .filters-panel {
-    grid-template-columns: 1fr;
-  }
-
-  .metrics-grid {
-    grid-template-columns: 1fr;
-  }
-
-  .charts-section {
-    grid-template-columns: 1fr;
-  }
-
-  .crashes-table {
-    font-size: 0.75rem;
-  }
-
-  .crash-message {
-    max-width: 200px;
-  }
-
-  .modal-content {
-    max-height: 100vh;
-    border-radius: 0;
-  }
-}
 
 /* Loading State for Top Error Rows */
 .loading-row {

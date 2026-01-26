@@ -3,8 +3,7 @@ import authService from './AuthService';
 import teamService from './TeamService';
 import gameAccessService from './GameAccessService';
 import auditLogService, { AUDIT_ACTIONS } from './AuditLogService';
-
-const prisma = new PrismaClient();
+import prisma from '../prisma';
 
 interface CreateUserInput {
     email: string;

@@ -1,4 +1,5 @@
 import { PrismaClient } from '@prisma/client';
+import prisma from '../prisma';
 
 interface ReleaseData {
     version: string;
@@ -33,7 +34,7 @@ export class ContextManager {
     private prisma: PrismaClient;
 
     constructor() {
-        this.prisma = new PrismaClient();
+        this.prisma = prisma;
     }
 
     /**

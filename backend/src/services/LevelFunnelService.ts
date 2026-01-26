@@ -1,7 +1,6 @@
 import { PrismaClient } from '@prisma/client';
 import logger from '../utils/logger';
-
-const prisma = new PrismaClient();
+import prisma from '../prisma';
 
 interface LevelFunnelFilters {
     gameId: string;

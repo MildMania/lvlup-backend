@@ -1,4 +1,5 @@
 import { PrismaClient } from '@prisma/client';
+import prismaInstance from '../prisma';
 
 // Cohort data for a specific install date
 export interface CohortData {
@@ -24,7 +25,7 @@ export class CohortAnalyticsService {
     private prisma: PrismaClient;
 
     constructor() {
-        this.prisma = new PrismaClient();
+        this.prisma = prismaInstance;
     }
 
     /**

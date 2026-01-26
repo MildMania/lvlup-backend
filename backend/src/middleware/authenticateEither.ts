@@ -1,8 +1,7 @@
 import { Request, Response, NextFunction } from 'express';
 import { PrismaClient } from '@prisma/client';
 import tokenService from '../services/TokenService';
-
-const prisma = new PrismaClient();
+import prisma from '../prisma';
 
 /**
  * Middleware that accepts BOTH API key authentication (for games) 

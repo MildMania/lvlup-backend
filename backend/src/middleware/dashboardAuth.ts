@@ -3,6 +3,7 @@ import { DashboardRole, AccessLevel } from '@prisma/client';
 import tokenService from '../services/TokenService';
 import gameAccessService from '../services/GameAccessService';
 import { ApiResponse } from '../types/api';
+import prisma from '../prisma';
 
 export interface DashboardAuthRequest extends Request {
     dashboardUser?: {
@@ -71,8 +72,6 @@ export const requireRole = (...roles: DashboardRole[]) => {
             }
 
             // Get user's highest role from team memberships
-            const { PrismaClient } = require('@prisma/client');
-            const prisma = new PrismaClient();
 
             const memberships = await prisma.teamMember.findMany({
                 where: { userId: req.dashboardUser.id },

@@ -7,6 +7,7 @@ import dotenv from 'dotenv';
 import apiRoutes from './routes';
 import logger from './utils/logger';
 import { sessionHeartbeatService } from './services/SessionHeartbeatService';
+import dataRetentionService from './services/DataRetentionService';
 
 // Load environment variables
 dotenv.config();
@@ -174,17 +175,23 @@ app.listen(PORT, '0.0.0.0', () => {
     // Start session heartbeat monitoring service
     sessionHeartbeatService.start();
     logger.info('Session heartbeat service started');
+    
+    // Start data retention service
+    dataRetentionService.start();
+    logger.info('Data retention service started');
 });
 
 // Graceful shutdown
 process.on('SIGTERM', () => {
     logger.info('SIGTERM signal received: closing HTTP server');
     sessionHeartbeatService.stop();
+    dataRetentionService.stop();
     process.exit(0);
 });
 
 process.on('SIGINT', () => {
     logger.info('SIGINT signal received: closing HTTP server');
     sessionHeartbeatService.stop();
+    dataRetentionService.stop();
     process.exit(0);
 });

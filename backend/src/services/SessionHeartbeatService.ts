@@ -1,5 +1,6 @@
 import { PrismaClient } from '@prisma/client';
 import logger from '../utils/logger';
+import prismaInstance from '../prisma';
 
 /**
  * Session Heartbeat Service
@@ -12,7 +13,7 @@ export class SessionHeartbeatService {
     private readonly CLEANUP_INTERVAL_SECONDS = 60; // Check every 1 minute
 
     constructor() {
-        this.prisma = new PrismaClient();
+        this.prisma = prismaInstance;
     }
 
     /**

@@ -6,8 +6,7 @@
 
 import { PrismaClient } from '@prisma/client';
 import logger from '../utils/logger';
-
-const prisma = new PrismaClient();
+import prisma from '../prisma';
 
 /**
  * Check for sessions where lastHeartbeat > endTime

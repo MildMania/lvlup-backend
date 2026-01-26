@@ -7,6 +7,7 @@ import aiContextRoutes from './ai-context';
 import aiAnalyticsRoutes from './ai-analytics';
 import healthRoutes from './health';
 import levelFunnelRoutes from './level-funnel';
+import dataRetentionRoutes from './data-retention';
 
 // Authentication & Authorization routes
 import authRoutes from './auth';
@@ -52,6 +53,9 @@ router.use('/games', gameRoutes); // General game routes
 router.use('/ai-context', aiContextRoutes);
 router.use('/ai-analytics', aiAnalyticsRoutes);
 router.use('/', gameAccessRoutes); // Includes /games/:gameId/access and /users/:userId/games
+
+// Admin Routes
+router.use('/admin/data-retention', dataRetentionRoutes);
 
 // TODO: Add these routes as we implement them
 // router.use('/config', configRoutes);

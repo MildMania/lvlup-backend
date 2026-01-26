@@ -2,6 +2,7 @@ import { ContextManager } from './ContextManager';
 import { AnalyticsService } from './AnalyticsService';
 import { OpenAIService, AIAnalysisRequest, ConversationMessage } from './OpenAIService';
 import { PrismaClient } from '@prisma/client';
+import prisma from '../prisma';
 
 export class AIAnalyticsService {
   private contextManager: ContextManager;
@@ -14,7 +15,7 @@ export class AIAnalyticsService {
     this.contextManager = new ContextManager();
     this.analyticsService = new AnalyticsService();
     this.openaiService = new OpenAIService();
-    this.prisma = new PrismaClient();
+    this.prisma = prisma;
   }
 
   /**

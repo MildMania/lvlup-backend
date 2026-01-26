@@ -21,8 +21,7 @@ interface GameWithCounts {
     };
 }
 
-// Create PrismaClient with type assertion to avoid the type errors
-const prisma = new PrismaClient() as any;
+import prisma from '../prisma';
 
 export class GameController {
     // Create a new game

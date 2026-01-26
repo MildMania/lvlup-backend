@@ -2,6 +2,7 @@ import { PrismaClient } from '@prisma/client';
 import logger from '../utils/logger';
 import { AnalyticsFilterParams } from '../types/api';
 import { cache, generateCacheKey } from '../utils/simpleCache';
+import prisma from '../prisma';
 
 export interface RetentionData {
     day: number;
@@ -27,7 +28,7 @@ export class AnalyticsMetricsService {
     private prisma: PrismaClient;
 
     constructor(prismaClient?: PrismaClient) {
-        this.prisma = prismaClient || new PrismaClient();
+        this.prisma = prismaClient || prisma;
     }
 
     // Calculate retention metrics with flexible retention days and filters

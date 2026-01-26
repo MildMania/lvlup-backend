@@ -1,8 +1,6 @@
 import { Request, Response, NextFunction } from 'express';
-import { PrismaClient } from '@prisma/client';
 import { ApiResponse } from '../types/api';
-
-const prisma = new PrismaClient();
+import prisma from '../prisma';
 
 export interface AuthenticatedRequest extends Request {
     game?: {

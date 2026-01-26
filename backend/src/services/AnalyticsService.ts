@@ -3,12 +3,13 @@ import { EventData, BatchEventData, UserProfile, SessionData, AnalyticsData } fr
 import logger from '../utils/logger';
 import { v4 as uuidv4 } from 'uuid';
 import { cache, generateCacheKey } from '../utils/simpleCache';
+import prisma from '../prisma';
 
 export class AnalyticsService {
     private prisma: PrismaClient;
 
     constructor(prismaClient?: PrismaClient) {
-        this.prisma = prismaClient || new PrismaClient();
+        this.prisma = prismaClient || prisma;
     }
 
     /**

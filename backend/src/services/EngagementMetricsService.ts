@@ -1,9 +1,7 @@
 import { PrismaClient } from '@prisma/client';
 import { AnalyticsFilterParams } from '../types/api';
 import logger from '../utils/logger';
-
-// Create PrismaClient with type assertion
-const prisma = new PrismaClient() as any;
+import prisma from '../prisma';
 
 // Types for Session Count Analytics
 export interface SessionCountData {

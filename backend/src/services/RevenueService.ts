@@ -1,4 +1,4 @@
-import { PrismaClient } from '@prisma/client';
+ import { PrismaClient } from '@prisma/client';
 import { RevenueData, RevenueType, RevenueAnalytics, MonetizationMetrics } from '../types/revenue';
 import logger from '../utils/logger';
 import prisma from '../prisma';

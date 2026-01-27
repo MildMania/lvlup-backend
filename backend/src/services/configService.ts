@@ -601,3 +601,50 @@ export function normalizeConfigValues(config: RemoteConfig): RemoteConfig {
     })),
   };
 }
+
+/**
+ * Delete a rule
+ */
+export async function deleteRule(ruleId: string, userId: string): Promise<void> {
+  // Get the rule to find configId before deleting
+  const rule = await prisma.ruleOverwrite.findUnique({
+    where: { id: ruleId },
+  });
+
+  if (!rule) {
+    throw new Error('Rule not found');
+  }
+
+  // Delete the rule
+  await prisma.ruleOverwrite.delete({
+    where: { id: ruleId },
+  });
+
+  // Log to rule history
+  await prisma.ruleHistory.create({
+    data: {
+      ruleId,
+      configId: rule.configId,
+      action: 'deleted',
+      changedBy: userId,
+      previousState: rule as any,
+      newState: undefined,
+    },
+  });
+}
+
+/**
+ * Reorder rules by updating their priorities
+ */
+export async function reorderRules(rules: Array<{ id: string; priority: number }>): Promise<void> {
+  // Update each rule's priority
+  await Promise.all(
+    rules.map((rule) =>
+      prisma.ruleOverwrite.update({
+        where: { id: rule.id },
+        data: { priority: rule.priority },
+      })
+    )
+  );
+}
+

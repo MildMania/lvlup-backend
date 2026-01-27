@@ -496,7 +496,7 @@ export async function stashToStaging(req: Request, res: Response): Promise<void>
             dataType: config.dataType,
             environment: 'staging',
             enabled: config.enabled,
-            description: config.description,
+            description: config.description ?? undefined,
           },
           userId
         );
@@ -514,11 +514,11 @@ export async function stashToStaging(req: Request, res: Response): Promise<void>
                   priority: rule.priority,
                   overrideValue: rule.overrideValue,
                   enabled: rule.enabled,
-                  platformConditions: rule.platformConditions,
-                  countryConditions: rule.countryConditions,
-                  segmentConditions: rule.segmentConditions,
-                  activeBetweenStart: rule.activeBetweenStart,
-                  activeBetweenEnd: rule.activeBetweenEnd,
+                  platformConditions: rule.platformConditions ?? undefined,
+                  countryConditions: rule.countryConditions ?? undefined,
+                  segmentConditions: rule.segmentConditions ?? undefined,
+                  activeBetweenStart: rule.activeBetweenStart ?? undefined,
+                  activeBetweenEnd: rule.activeBetweenEnd ?? undefined,
                 },
                 userId
               );
@@ -654,7 +654,7 @@ export async function publishToProduction(req: Request, res: Response): Promise<
             dataType: config.dataType,
             environment: 'production',
             enabled: config.enabled,
-            description: config.description,
+            description: config.description ?? undefined,
           },
           userId
         );
@@ -672,11 +672,11 @@ export async function publishToProduction(req: Request, res: Response): Promise<
                   priority: rule.priority,
                   overrideValue: rule.overrideValue,
                   enabled: rule.enabled,
-                  platformConditions: rule.platformConditions,
-                  countryConditions: rule.countryConditions,
-                  segmentConditions: rule.segmentConditions,
-                  activeBetweenStart: rule.activeBetweenStart,
-                  activeBetweenEnd: rule.activeBetweenEnd,
+                  platformConditions: rule.platformConditions ?? undefined,
+                  countryConditions: rule.countryConditions ?? undefined,
+                  segmentConditions: rule.segmentConditions ?? undefined,
+                  activeBetweenStart: rule.activeBetweenStart ?? undefined,
+                  activeBetweenEnd: rule.activeBetweenEnd ?? undefined,
                 },
                 userId
               );
@@ -810,7 +810,7 @@ export async function pullFromStaging(req: Request, res: Response): Promise<void
             dataType: config.dataType,
             environment: 'development',
             enabled: config.enabled,
-            description: config.description,
+            description: config.description ?? undefined,
           },
           userId
         );
@@ -827,11 +827,11 @@ export async function pullFromStaging(req: Request, res: Response): Promise<void
                   priority: rule.priority,
                   overrideValue: rule.overrideValue,
                   enabled: rule.enabled,
-                  platformConditions: rule.platformConditions,
-                  countryConditions: rule.countryConditions,
-                  segmentConditions: rule.segmentConditions,
-                  activeBetweenStart: rule.activeBetweenStart,
-                  activeBetweenEnd: rule.activeBetweenEnd,
+                  platformConditions: rule.platformConditions ?? undefined,
+                  countryConditions: rule.countryConditions ?? undefined,
+                  segmentConditions: rule.segmentConditions ?? undefined,
+                  activeBetweenStart: rule.activeBetweenStart ?? undefined,
+                  activeBetweenEnd: rule.activeBetweenEnd ?? undefined,
                 },
                 userId
               );

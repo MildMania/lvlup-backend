@@ -515,13 +515,7 @@ export async function reorderRules(
     });
 
     // Reorder rules
-    await configService.reorderRules(
-      {
-        configId,
-        ruleOrder,
-      },
-      userId
-    );
+    await configService.reorderRules(ruleOrder);
 
     logger.info('Rules reordered', {
       configId,

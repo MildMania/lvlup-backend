@@ -1,5 +1,5 @@
 import { Request, Response } from 'express';
-import { ContextManager } from '../services/contextManager';
+import { ContextManager } from '../services/ContextManager';
 
 export class AIContextController {
     private contextManager: ContextManager;

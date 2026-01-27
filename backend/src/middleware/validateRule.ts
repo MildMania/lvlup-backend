@@ -342,6 +342,7 @@ export function validateRuleMiddleware(req: Request, res: Response, next: NextFu
   }
 
   const dateValidation = validateDateConditions(
+    null, // activeAfter is not used in current schema
     activeBetweenStart,
     activeBetweenEnd
   );

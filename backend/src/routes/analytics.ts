@@ -97,4 +97,16 @@ router.get('/metrics/active-users', (req, res) => analyticsMetricsController.get
  */
 router.get('/metrics/playtime', (req, res) => analyticsMetricsController.getPlaytimeMetrics(req, res));
 
+/**
+ * GET /analytics/metrics/monetization-cohorts - Get monetization cohort analysis
+ * @query {string} startDate - Optional start date (ISO format)
+ * @query {string} endDate - Optional end date (ISO format)
+ * @query {string} cohortPeriod - Optional cohort period: 'day', 'week', 'month' (default: 'week')
+ * @query {number} maxDays - Optional maximum days to track (default: 30)
+ * @query {string|string[]} country - Optional country or countries to filter by
+ * @query {string|string[]} platform - Optional platform or platforms to filter by
+ * @query {string|string[]} version - Optional version or versions to filter by
+ */
+router.get('/metrics/monetization-cohorts', (req, res) => analyticsController.getMonetizationCohorts(req, res));
+
 export default router;

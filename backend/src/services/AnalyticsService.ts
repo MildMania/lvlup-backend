@@ -1,15 +1,19 @@
 import { PrismaClient } from '@prisma/client';
 import { EventData, BatchEventData, UserProfile, SessionData, AnalyticsData } from '../types/api';
+import { RevenueType } from '../types/revenue';
 import logger from '../utils/logger';
 import { v4 as uuidv4 } from 'uuid';
 import { cache, generateCacheKey } from '../utils/simpleCache';
 import prisma from '../prisma';
+import { RevenueService } from './RevenueService';
 
 export class AnalyticsService {
     private prisma: PrismaClient;
+    private revenueService: RevenueService;
 
     constructor(prismaClient?: PrismaClient) {
         this.prisma = prismaClient || prisma;
+        this.revenueService = new RevenueService(prismaClient);
     }
 
     /**
@@ -294,10 +298,95 @@ export class AnalyticsService {
             });
 
             logger.debug(`Event ${eventData.eventName} tracked for user ${userId} with full metadata`);
+            
+            // Dual-write pattern: Create revenue record for monetization events
+            if (eventData.eventName === 'ad_impression' || eventData.eventName === 'iap_purchase') {
+                try {
+                    await this.trackRevenueFromEvent(gameId, userId, sessionId, eventData, event.id);
+                } catch (revenueError) {
+                    // Don't fail the event tracking if revenue tracking fails
+                    logger.error(`Failed to create revenue record for ${eventData.eventName}:`, revenueError);
+                }
+            }
+            
             return event;
         } catch (error) {
             logger.error('Error tracking event:', error);
             throw error;
+        }
+    }
+
+    /**
+     * Extract revenue data from event and create revenue record (dual-write pattern)
+     */
+    private async trackRevenueFromEvent(
+        gameId: string,
+        userId: string,
+        sessionId: string | null,
+        eventData: EventData,
+        eventId: string
+    ) {
+        const props = eventData.properties || {};
+        
+        if (eventData.eventName === 'ad_impression') {
+            // Extract ad impression revenue data
+            const revenue = (props as any).revenue || 0;
+            if (revenue <= 0) return; // Skip if no revenue
+            
+            const revenueData: any = {
+                revenueType: RevenueType.AD_IMPRESSION,
+                revenue,
+                currency: (props as any).revenueCurrency || 'USD',
+                timestamp: eventData.timestamp,
+                clientTs: eventData.clientTs,
+                transactionTimestamp: (props as any).impressionTimestamp,
+                adNetworkName: (props as any).adNetworkName || 'Unknown',
+                adFormat: (props as any).adFormat || 'Unknown',
+                adUnitId: (props as any).adUnitId,
+                adUnitName: (props as any).adUnitName,
+                adPlacement: (props as any).placement,
+                adCreativeId: (props as any).creativeId,
+                adImpressionId: (props as any).impressionId,
+                adNetworkPlacement: (props as any).adNetworkPlacement,
+                platform: eventData.platform,
+                appVersion: eventData.appVersion,
+                country: eventData.country,
+                countryCode: eventData.countryCode,
+            };
+            
+            await this.revenueService.trackRevenue(gameId, userId, sessionId, revenueData, eventData);
+            
+        } else if (eventData.eventName === 'iap_purchase') {
+            // Extract in-app purchase revenue data
+            const revenue = (props as any).revenue || (props as any).price || 0;
+            if (revenue <= 0) return; // Skip if no revenue
+            
+            const revenueData: any = {
+                revenueType: RevenueType.IN_APP_PURCHASE,
+                revenue,
+                currency: (props as any).currency || 'USD',
+                timestamp: eventData.timestamp,
+                clientTs: eventData.clientTs,
+                transactionTimestamp: (props as any).transactionTimestamp || (props as any).purchaseTimestamp,
+                productId: (props as any).productId || 'Unknown',
+                productName: (props as any).productName,
+                productType: (props as any).productType,
+                transactionId: (props as any).transactionId || (props as any).orderId,
+                orderId: (props as any).orderId,
+                purchaseToken: (props as any).purchaseToken,
+                store: (props as any).store || 'Unknown',
+                isVerified: (props as any).isVerified || false,
+                quantity: (props as any).quantity || 1,
+                isSandbox: (props as any).isSandbox || false,
+                isRestored: (props as any).isRestored || false,
+                subscriptionPeriod: (props as any).subscriptionPeriod,
+                platform: eventData.platform,
+                appVersion: eventData.appVersion,
+                country: eventData.country,
+                countryCode: eventData.countryCode,
+            };
+            
+            await this.revenueService.trackRevenue(gameId, userId, sessionId, revenueData, eventData);
         }
     }
 
@@ -335,7 +424,7 @@ export class AnalyticsService {
                     logger.info(`Extracted levelFunnel: ${levelFunnel}, levelFunnelVersion: ${levelFunnelVersion} from event ${eventData.eventName}`);
                 }
                 
-                // Remove levelFunnel fields from properties since they're stored in dedicated columns
+                // Remove levelFunnel fields from properties since they're stored in dedicated cis it olumns
                 delete (properties as any).levelFunnel;
                 delete (properties as any).levelFunnelVersion;
                 

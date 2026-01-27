@@ -1,11 +1,13 @@
 import { Request, Response } from 'express';
 import { AnalyticsService } from '../services/AnalyticsService';
+import { MonetizationCohortService } from '../services/MonetizationCohortService';
 import { AuthenticatedRequest } from '../middleware/auth';
 import { ApiResponse, BatchEventData, EventData, SessionData, UserProfile } from '../types/api';
 import { requireGameId } from '../utils/gameIdHelper';
 import logger from '../utils/logger';
 
 const analyticsService = new AnalyticsService();
+const monetizationCohortService = new MonetizationCohortService();
 
 export class AnalyticsController {
     // Track a single event
@@ -382,6 +384,52 @@ export class AnalyticsController {
             res.status(500).json({
                 success: false,
                 error: 'Failed to get events'
+            });
+        }
+    }
+
+    // Get monetization cohort analysis
+    async getMonetizationCohorts(req: AuthenticatedRequest, res: Response<ApiResponse>) {
+        try {
+            const gameId = requireGameId(req);
+            const startDate = req.query.startDate ? new Date(req.query.startDate as string) : new Date(Date.now() - 90 * 24 * 60 * 60 * 1000);
+            const endDate = req.query.endDate ? new Date(req.query.endDate as string) : new Date();
+            const cohortPeriod = (req.query.cohortPeriod as 'day' | 'week' | 'month') || 'week';
+            const maxDays = parseInt(req.query.maxDays as string) || 30;
+
+            // Parse filters (same as engagement metrics)
+            const filters: any = {};
+            
+            if (req.query.country) {
+                filters.country = req.query.country;
+            }
+            
+            if (req.query.platform) {
+                filters.platform = req.query.platform;
+            }
+            
+            if (req.query.version) {
+                filters.version = req.query.version;
+            }
+
+            const cohorts = await monetizationCohortService.getMonetizationCohorts(
+                gameId,
+                startDate,
+                endDate,
+                cohortPeriod,
+                maxDays,
+                filters
+            );
+
+            res.status(200).json({
+                success: true,
+                data: cohorts
+            });
+        } catch (error) {
+            logger.error('Error in getMonetizationCohorts controller:', error);
+            res.status(500).json({
+                success: false,
+                error: 'Failed to get monetization cohorts'
             });
         }
     }

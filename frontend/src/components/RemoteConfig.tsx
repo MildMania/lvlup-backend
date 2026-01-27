@@ -71,6 +71,7 @@ const RemoteConfig: React.FC<RemoteConfigProps> = ({ isCollapsed = false }) => {
   const [jsonError, setJsonError] = useState<JsonError | null>(null);
   const [notification, setNotification] = useState<{ type: 'success' | 'error' | 'warning', message: string } | null>(null);
   const [showDeploymentHistory, setShowDeploymentHistory] = useState(false);
+  const [deleteConfirmConfig, setDeleteConfirmConfig] = useState<{ id: string; key: string } | null>(null);
   const [activeTab, setActiveTab] = useState<'overview' | 'rules' | 'history'>('overview');
   const [rulesCounts, setRulesCounts] = useState<Map<string, number>>(new Map());
   const [formData, setFormData] = useState<CreateConfigForm>({
@@ -235,15 +236,24 @@ const RemoteConfig: React.FC<RemoteConfigProps> = ({ isCollapsed = false }) => {
 
   // Delete config
   const handleDeleteConfig = async (configId: string) => {
-    // Use custom confirm dialog in future, for now just proceed
-    if (!window.confirm('Are you sure you want to delete this config?')) return;
+    const config = configs.find(c => c.id === configId);
+    if (!config) return;
+    
+    // Show custom confirmation modal
+    setDeleteConfirmConfig({ id: configId, key: config.key });
+  };
+
+  const confirmDeleteConfig = async () => {
+    if (!deleteConfirmConfig) return;
 
     try {
-      await apiClient.delete(`/config/configs/${configId}`);
-      setConfigs(configs.filter((c) => c.id !== configId));
+      await apiClient.delete(`/config/configs/${deleteConfirmConfig.id}`);
+      setConfigs(configs.filter((c) => c.id !== deleteConfirmConfig.id));
       showNotification('success', 'Config deleted successfully!');
+      setDeleteConfirmConfig(null);
     } catch (error: any) {
       showNotification('error', error.response?.data?.error || 'Failed to delete config');
+      setDeleteConfirmConfig(null);
     }
   };
 
@@ -380,13 +390,13 @@ const RemoteConfig: React.FC<RemoteConfigProps> = ({ isCollapsed = false }) => {
               Pull from Staging
             </button>
           )}
-          {canStash && configs.length > 0 && (
+          {canStash && (
             <button onClick={() => setShowStashModal(true)} className="btn btn-create">
               <GitBranch size={18} />
               Stash to Staging
             </button>
           )}
-          {canPublish && configs.length > 0 && (
+          {canPublish && (
             <button onClick={() => {
               setShowPublishModal(true);
               setPublishConfirmed(false);
@@ -1011,24 +1021,39 @@ const RemoteConfig: React.FC<RemoteConfigProps> = ({ isCollapsed = false }) => {
             <div className="modal-body">
               <div className="stash-info">
                 <GitBranch size={24} />
-                <p>
-                  This will <strong>REPLACE ALL</strong> staging configurations with 
-                  <strong> {configs.length}</strong> configuration(s) from <strong>Development</strong>.
-                </p>
-                <p className="stash-warning">
-                  ⚠️ <strong>Complete Replacement:</strong> All existing staging configs will be deleted first, 
-                  then replaced with development configs. Any deleted configs in development will also be removed from staging.
-                </p>
+                {configs.length > 0 ? (
+                  <>
+                    <p>
+                      This will <strong>REPLACE ALL</strong> staging configurations with 
+                      <strong> {configs.length}</strong> configuration(s) from <strong>Development</strong>.
+                    </p>
+                    <p className="stash-warning">
+                      ⚠️ <strong>Complete Replacement:</strong> All existing staging configs will be deleted first, 
+                      then replaced with development configs. Any deleted configs in development will also be removed from staging.
+                    </p>
+                  </>
+                ) : (
+                  <>
+                    <p>
+                      This will <strong>DELETE ALL</strong> configurations from <strong>Staging</strong>.
+                    </p>
+                    <p className="stash-warning">
+                      ⚠️ <strong>Warning:</strong> Development has 0 configs. Stashing will clear all configs from staging.
+                    </p>
+                  </>
+                )}
               </div>
-              <div className="config-list-preview">
-                <h4>Configs to stash:</h4>
-                <ul>
-                  {configs.slice(0, 10).map(config => (
-                    <li key={config.id}>{config.key}</li>
-                  ))}
-                  {configs.length > 10 && <li>... and {configs.length - 10} more</li>}
-                </ul>
-              </div>
+              {configs.length > 0 && (
+                <div className="config-list-preview">
+                  <h4>Configs to stash:</h4>
+                  <ul>
+                    {configs.slice(0, 10).map(config => (
+                      <li key={config.id}>{config.key}</li>
+                    ))}
+                    {configs.length > 10 && <li>... and {configs.length - 10} more</li>}
+                  </ul>
+                </div>
+              )}
             </div>
             <div className="modal-footer">
               <button onClick={() => setShowStashModal(false)} className="btn btn-secondary">
@@ -1145,26 +1170,42 @@ const RemoteConfig: React.FC<RemoteConfigProps> = ({ isCollapsed = false }) => {
             <div className="modal-body">
               <div className="publish-info">
                 <AlertCircle size={24} color="#e74c3c" />
-                <p>
-                  You are about to <strong>REPLACE ALL</strong> production configurations with 
-                  <strong> {configs.length}</strong> configuration(s) from <strong>Staging</strong>.
-                </p>
-                <p className="publish-warning">
-                  ⚠️ <strong>THIS WILL AFFECT LIVE USERS IMMEDIATELY!</strong> All existing production configs 
-                  will be deleted first, then replaced with staging configs. Ensure all configs have been tested in staging.
-                </p>
+                {configs.length > 0 ? (
+                  <>
+                    <p>
+                      You are about to <strong>REPLACE ALL</strong> production configurations with 
+                      <strong> {configs.length}</strong> configuration(s) from <strong>Staging</strong>.
+                    </p>
+                    <p className="publish-warning">
+                      ⚠️ <strong>THIS WILL AFFECT LIVE USERS IMMEDIATELY!</strong> All existing production configs 
+                      will be deleted first, then replaced with staging configs. Ensure all configs have been tested in staging.
+                    </p>
+                  </>
+                ) : (
+                  <>
+                    <p>
+                      You are about to <strong>DELETE ALL</strong> configurations from <strong>Production</strong>.
+                    </p>
+                    <p className="publish-warning">
+                      🚨 <strong>CRITICAL: THIS WILL AFFECT LIVE USERS IMMEDIATELY!</strong> Staging has 0 configs. 
+                      Publishing will remove all configs from production.
+                    </p>
+                  </>
+                )}
               </div>
-              <div className="config-list-preview">
-                <h4>Configs to publish:</h4>
-                <ul>
-                  {configs.slice(0, 10).map(config => (
-                    <li key={config.id}>
-                      <strong>{config.key}</strong>: {getDisplayValue(config.value, config.dataType)}
-                    </li>
-                  ))}
-                  {configs.length > 10 && <li>... and {configs.length - 10} more</li>}
-                </ul>
-              </div>
+              {configs.length > 0 && (
+                <div className="config-list-preview">
+                  <h4>Configs to publish:</h4>
+                  <ul>
+                    {configs.slice(0, 10).map(config => (
+                      <li key={config.id}>
+                        <strong>{config.key}</strong>: {getDisplayValue(config.value, config.dataType)}
+                      </li>
+                    ))}
+                    {configs.length > 10 && <li>... and {configs.length - 10} more</li>}
+                  </ul>
+                </div>
+              )}
               <div className="publish-confirmation">
                 <label>
                   <input
@@ -1172,7 +1213,10 @@ const RemoteConfig: React.FC<RemoteConfigProps> = ({ isCollapsed = false }) => {
                     checked={publishConfirmed}
                     onChange={(e) => setPublishConfirmed(e.target.checked)}
                   />
-                  I understand this will completely replace production immediately
+                  {configs.length > 0 
+                    ? 'I understand this will completely replace production immediately'
+                    : 'I understand this will DELETE ALL production configs immediately'
+                  }
                 </label>
               </div>
             </div>
@@ -1228,6 +1272,46 @@ const RemoteConfig: React.FC<RemoteConfigProps> = ({ isCollapsed = false }) => {
           }}
           showNotification={showNotification}
         />
+      )}
+
+      {/* Delete Confirmation Modal */}
+      {deleteConfirmConfig && (
+        <div className="modal-overlay">
+          <div className="modal" onClick={(e) => e.stopPropagation()}>
+            <div className="modal-header">
+              <h2>🗑️ Delete Configuration</h2>
+              <button className="modal-close" onClick={() => setDeleteConfirmConfig(null)}>×</button>
+            </div>
+            <div className="modal-body">
+              <div className="delete-confirm-info">
+                <AlertCircle size={48} color="#e74c3c" />
+                <p>
+                  Are you sure you want to delete the configuration:
+                </p>
+                <p style={{ fontSize: '1.2em', fontWeight: 'bold', margin: '10px 0' }}>
+                  "{deleteConfirmConfig.key}"
+                </p>
+                <p className="delete-warning">
+                  ⚠️ This action cannot be undone. The configuration will be permanently deleted from <strong>{environment}</strong>.
+                </p>
+              </div>
+            </div>
+            <div className="modal-footer">
+              <button 
+                onClick={() => setDeleteConfirmConfig(null)} 
+                className="btn btn-secondary"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={confirmDeleteConfig}
+                className="btn btn-danger"
+              >
+                Delete Configuration
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );

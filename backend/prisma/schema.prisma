@@ -3,12 +3,12 @@ generator client {
 }
 
 datasource db {
-  provider = "sqlite"
+  provider = "postgresql"
   url      = env("DATABASE_URL")
 }
 
-// Note: For Railway deployment, this will be automatically set to PostgreSQL
-// The switch-env.sh script handles changing this for local/production
+// Note: Use PostgreSQL for production (Railway)
+// For local development with SQLite, set DATABASE_URL=file:./dev.db
 
 model Game {
   id                String             @id @default(cuid())

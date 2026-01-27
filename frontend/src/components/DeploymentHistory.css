@@ -13,7 +13,7 @@
 }
 
 .deployment-modal {
-  background: var(--bg-primary);
+  background: var(--bg-primary, #ffffff);
   border-radius: 12px;
   width: 90%;
   max-width: 600px;
@@ -25,7 +25,7 @@
 
 .deployment-header {
   padding: 20px 24px;
-  border-bottom: 1px solid var(--border-color);
+  border-bottom: 1px solid var(--border-color, #e2e8f0);
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -37,21 +37,22 @@
   gap: 12px;
   font-size: 1.25rem;
   margin: 0;
+  color: var(--text-primary, #1e293b);
 }
 
 .close-btn {
   background: none;
   border: none;
   cursor: pointer;
-  color: var(--text-secondary);
+  color: var(--text-secondary, #64748b);
   padding: 4px;
   border-radius: 4px;
   transition: all 0.2s;
 }
 
 .close-btn:hover {
-  background: var(--bg-secondary);
-  color: var(--text-primary);
+  background: var(--bg-secondary, #f1f5f9);
+  color: var(--text-primary, #1e293b);
 }
 
 .deployment-body {
@@ -64,7 +65,7 @@
 .deployment-empty {
   text-align: center;
   padding: 40px 20px;
-  color: var(--text-secondary);
+  color: var(--text-secondary, #64748b);
 }
 
 .deployment-list {
@@ -74,8 +75,8 @@
 }
 
 .deployment-item {
-  background: var(--bg-secondary);
-  border: 1px solid var(--border-color);
+  background: var(--bg-secondary, #f1f5f9);
+  border: 1px solid var(--border-color, #e2e8f0);
   border-radius: 8px;
   padding: 16px;
   display: flex;
@@ -85,7 +86,7 @@
 }
 
 .deployment-item.current {
-  border-color: var(--primary-color);
+  border-color: var(--primary-color, #6366f1);
   background: rgba(99, 102, 241, 0.05);
 }
 
@@ -100,7 +101,7 @@
 
 .current-badge {
   font-size: 0.7rem;
-  background: var(--primary-color);
+  background: var(--primary-color, #6366f1);
   color: white;
   padding: 2px 6px;
   border-radius: 4px;
@@ -109,7 +110,7 @@
 
 .rollback-badge {
   font-size: 0.7rem;
-  background: var(--warning-color);
+  background: var(--warning-color, #f59e0b);
   color: white;
   padding: 2px 6px;
   border-radius: 4px;
@@ -128,17 +129,17 @@
   display: flex;
   align-items: center;
   gap: 6px;
-  color: var(--text-primary);
+  color: var(--text-primary, #1e293b);
 }
 
 .deployment-meta {
   font-size: 0.875rem;
-  color: var(--text-secondary);
+  color: var(--text-secondary, #64748b);
 }
 
 .deployment-configs {
   font-size: 0.8rem;
-  color: var(--text-tertiary);
+  color: var(--text-tertiary, #94a3b8);
 }
 
 .deployment-actions {
@@ -148,9 +149,9 @@
 }
 
 .diff-btn {
-  background: var(--bg-tertiary);
-  color: var(--text-primary);
-  border: 1px solid var(--border-color);
+  background: var(--bg-tertiary, #e2e8f0);
+  color: var(--text-primary, #1e293b);
+  border: 1px solid var(--border-color, #e2e8f0);
   padding: 8px 16px;
   border-radius: 6px;
   cursor: pointer;
@@ -163,13 +164,13 @@
 }
 
 .diff-btn:hover {
-  background: var(--bg-secondary);
-  border-color: var(--primary-color);
+  background: var(--bg-secondary, #f1f5f9);
+  border-color: var(--primary-color, #6366f1);
   transform: translateY(-1px);
 }
 
 .rollback-btn {
-  background: var(--primary-color);
+  background: var(--primary-color, #6366f1);
   color: white;
   border: none;
   padding: 8px 16px;
@@ -184,7 +185,7 @@
 }
 
 .rollback-btn:hover {
-  background: var(--primary-hover);
+  background: var(--primary-hover, #4f46e5);
   transform: translateY(-1px);
 }
 
@@ -203,7 +204,7 @@
 }
 
 .rollback-modal {
-  background: var(--bg-primary);
+  background: var(--bg-primary, #ffffff);
   border-radius: 12px;
   width: 90%;
   max-width: 500px;
@@ -212,7 +213,7 @@
 
 .rollback-header {
   padding: 20px 24px;
-  border-bottom: 1px solid var(--border-color);
+  border-bottom: 1px solid var(--border-color, #e2e8f0);
 }
 
 .rollback-header h3 {
@@ -228,7 +229,7 @@
 }
 
 .rollback-info {
-  background: var(--bg-secondary);
+  background: var(--bg-secondary, #f1f5f9);
   padding: 12px;
   border-radius: 6px;
   font-size: 0.875rem;
@@ -239,7 +240,7 @@
 }
 
 .rollback-warning {
-  color: var(--text-secondary);
+  color: var(--text-secondary, #64748b);
   font-size: 0.875rem;
 }
 
@@ -253,7 +254,7 @@
 }
 
 .rollback-note {
-  color: var(--text-tertiary);
+  color: var(--text-tertiary, #94a3b8);
   font-style: italic;
   margin-top: 8px;
 }
@@ -272,7 +273,7 @@
 
 .rollback-footer {
   padding: 16px 24px;
-  border-top: 1px solid var(--border-color);
+  border-top: 1px solid var(--border-color, #e2e8f0);
   display: flex;
   gap: 12px;
   justify-content: flex-end;
@@ -280,9 +281,9 @@
 
 .btn-cancel {
   padding: 8px 16px;
-  border: 1px solid var(--border-color);
-  background: var(--bg-secondary);
-  color: var(--text-primary);
+  border: 1px solid var(--border-color, #e2e8f0);
+  background: var(--bg-secondary, #f1f5f9);
+  color: var(--text-primary, #1e293b);
   border-radius: 6px;
   cursor: pointer;
   font-size: 0.875rem;
@@ -291,12 +292,12 @@
 }
 
 .btn-cancel:hover {
-  background: var(--bg-tertiary);
+  background: var(--bg-tertiary, #e2e8f0);
 }
 
 .btn-rollback {
   padding: 8px 16px;
-  background: var(--danger-color);
+  background: var(--danger-color, #ef4444);
   color: white;
   border: none;
   border-radius: 6px;
@@ -310,7 +311,7 @@
 }
 
 .btn-rollback:hover:not(:disabled) {
-  background: var(--danger-hover);
+  background: var(--danger-hover, #dc2626);
 }
 
 .btn-rollback:disabled {
@@ -333,7 +334,7 @@
 }
 
 .diff-modal {
-  background: var(--bg-primary);
+  background: var(--bg-primary, #ffffff);
   border-radius: 12px;
   width: 90%;
   max-width: 700px;
@@ -345,7 +346,7 @@
 
 .diff-header {
   padding: 20px 24px;
-  border-bottom: 1px solid var(--border-color);
+  border-bottom: 1px solid var(--border-color, #e2e8f0);
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -368,7 +369,7 @@
 .diff-empty {
   text-align: center;
   padding: 40px 20px;
-  color: var(--text-secondary);
+  color: var(--text-secondary, #64748b);
 }
 
 .diff-section {
@@ -394,7 +395,7 @@
 }
 
 .diff-item {
-  background: var(--bg-secondary);
+  background: var(--bg-secondary, #f1f5f9);
   border-left: 3px solid;
   padding: 12px;
   border-radius: 6px;
@@ -408,7 +409,7 @@
 }
 
 .diff-value {
-  color: var(--text-secondary);
+  color: var(--text-secondary, #64748b);
   font-family: monospace;
 }
 
@@ -451,7 +452,7 @@
 
 .diff-footer {
   padding: 16px 24px;
-  border-top: 1px solid var(--border-color);
+  border-top: 1px solid var(--border-color, #e2e8f0);
   display: flex;
   justify-content: flex-end;
 }

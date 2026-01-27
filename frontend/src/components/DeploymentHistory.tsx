@@ -37,7 +37,6 @@ const DeploymentHistory: React.FC<Props> = ({ gameId, environment, onClose, onRo
   const [rollbackConfirm, setRollbackConfirm] = useState<Deployment | null>(null);
   const [rollbackChecked, setRollbackChecked] = useState(false);
   const [diffData, setDiffData] = useState<{ deployment1: Deployment; deployment2: Deployment; diff: DiffData } | null>(null);
-  const [loadingDiff, setLoadingDiff] = useState(false);
 
   useEffect(() => {
     fetchHistory();
@@ -86,7 +85,6 @@ const DeploymentHistory: React.FC<Props> = ({ gameId, environment, onClose, onRo
     // Compare with the NEXT deployment (older version) since deployments are sorted desc by version
     const previousDeployment = deployments[currentIndex + 1];
     
-    setLoadingDiff(true);
     try {
       // Compare: older version (previous) -> newer version (current deployment)
       const response = await apiClient.get(`/config/admin/deployments/compare/${previousDeployment.id}/${deployment.id}`);
@@ -99,8 +97,6 @@ const DeploymentHistory: React.FC<Props> = ({ gameId, environment, onClose, onRo
       if (showNotification) {
         showNotification('error', 'Failed to load diff');
       }
-    } finally {
-      setLoadingDiff(false);
     }
   };
 

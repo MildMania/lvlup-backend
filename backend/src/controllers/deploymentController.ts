@@ -221,21 +221,53 @@ export async function compareDeployments(req: Request, res: Response): Promise<v
     const configs2 = snapshot2.configs || [];
 
     // Calculate diff
-    const added = configs2.filter((c2: any) => !configs1.find((c1: any) => c1.key === c2.key));
-    const removed = configs1.filter((c1: any) => !configs2.find((c2: any) => c2.key === c1.key));
-    const modified = configs2.filter((c2: any) => {
-      const c1 = configs1.find((c: any) => c.key === c2.key);
-      return c1 && JSON.stringify(c1.value) !== JSON.stringify(c2.value);
-    }).map((c2: any) => {
-      const c1 = configs1.find((c: any) => c.key === c2.key);
-      return {
-        key: c2.key,
-        oldValue: c1.value,
-        newValue: c2.value,
-        oldEnabled: c1.enabled,
-        newEnabled: c2.enabled,
-      };
-    });
+    const added = configs2
+      .filter((c2: any) => !configs1.find((c1: any) => c1.key === c2.key))
+      .map((c: any) => ({
+        key: c.key,
+        value: c.value,
+        dataType: c.dataType,
+        enabled: c.enabled,
+        description: c.description,
+        rulesCount: c.rules?.length || 0,
+      }));
+
+    const removed = configs1
+      .filter((c1: any) => !configs2.find((c2: any) => c2.key === c1.key))
+      .map((c: any) => ({
+        key: c.key,
+        value: c.value,
+        dataType: c.dataType,
+        enabled: c.enabled,
+        description: c.description,
+        rulesCount: c.rules?.length || 0,
+      }));
+
+    const modified = configs2
+      .filter((c2: any) => {
+        const c1 = configs1.find((c: any) => c.key === c2.key);
+        if (!c1) return false;
+        // Check if value, enabled status, or rules changed
+        return (
+          JSON.stringify(c1.value) !== JSON.stringify(c2.value) ||
+          c1.enabled !== c2.enabled ||
+          (c1.rules?.length || 0) !== (c2.rules?.length || 0)
+        );
+      })
+      .map((c2: any) => {
+        const c1 = configs1.find((c: any) => c.key === c2.key);
+        return {
+          key: c2.key,
+          oldValue: c1.value,
+          newValue: c2.value,
+          oldEnabled: c1.enabled,
+          newEnabled: c2.enabled,
+          oldRulesCount: c1.rules?.length || 0,
+          newRulesCount: c2.rules?.length || 0,
+          dataType: c2.dataType,
+          description: c2.description,
+        };
+      });
 
     res.status(200).json({
       success: true,

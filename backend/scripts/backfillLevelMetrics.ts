@@ -1,6 +1,6 @@
-import { LevelMetricsAggregationService } from './src/services/LevelMetricsAggregationService';
-import logger from './src/utils/logger';
-import dotenv from 'dotenv';
+import { LevelMetricsAggregationService } from '../src/services/LevelMetricsAggregationService';
+import logger from '../src/utils/logger';
+import * as dotenv from 'dotenv';
 
 dotenv.config();
 
@@ -25,6 +25,7 @@ async function backfill() {
     logger.info(`📅 Backfilling last ${BACKFILL_DAYS} days`);
 
     const service = new LevelMetricsAggregationService();
+    const prisma = require('../src/prisma').default;
 
     // Calculate date range
     const endDate = new Date();
@@ -51,10 +52,70 @@ async function backfill() {
 
     for (const gameId of games) {
       try {
-        logger.info(`\n▶️  Backfilling for game: ${gameId}`);
-        await service.backfillHistorical(gameId, startDate, endDate);
+        logger.info(`\n▶️  Processing game: ${gameId}`);
+
+        // Get count of aggregated rows per date for this game
+        const existingCounts = await (prisma as any).levelMetricsDaily.groupBy({
+          by: ['date'],
+          where: {
+            gameId,
+            date: {
+              gte: startDate,
+              lte: endDate
+            }
+          },
+          _count: true
+        });
+
+        const aggregatedRowCounts = new Map<string, number>();
+        for (const count of existingCounts) {
+          const dateStr = count.date.toISOString().split('T')[0];
+          aggregatedRowCounts.set(dateStr, count._count);
+        }
+
+        logger.info(`   📊 Found aggregated rows for ${aggregatedRowCounts.size} dates`);
+
+        // Process only missing or incomplete dates
+        const currentDate = new Date(startDate);
+        let processedDaysForGame = 0;
+        let fullyCompleteCount = 0;
+
+        while (currentDate <= endDate) {
+          const dateStr = currentDate.toISOString().split('T')[0];
+          const rowCount = aggregatedRowCounts.get(dateStr) || 0;
+
+          // Get expected row count for this date
+          const eventCount = await (prisma as any).event.count({
+            where: {
+              gameId,
+              eventName: { in: ['level_start', 'level_complete', 'level_failed'] },
+              timestamp: {
+                gte: new Date(`${dateStr}T00:00:00.000Z`),
+                lte: new Date(`${dateStr}T23:59:59.999Z`)
+              }
+            }
+          });
+
+          if (eventCount === 0) {
+            logger.debug(`   ⏭️  Skipping ${dateStr} (no events)`);
+            fullyCompleteCount++;
+          } else if (rowCount > 0 && rowCount >= Math.min(eventCount / 50, 1000)) {
+            // Heuristic: if we have reasonable number of rows relative to events, likely complete
+            logger.debug(`   ⏭️  Skipping ${dateStr} (${rowCount} rows, likely complete)`);
+            fullyCompleteCount++;
+          } else {
+            logger.debug(`   ⬇️  Aggregating ${dateStr} (${rowCount} existing rows, ${eventCount} events)`);
+            await service.aggregateDailyMetrics(gameId, new Date(currentDate));
+            processedDaysForGame++;
+          }
+
+          currentDate.setDate(currentDate.getDate() + 1);
+        }
+
+        logger.info(
+          `✅ Game ${gameId}: reprocessed ${processedDaysForGame} dates (${fullyCompleteCount} already complete)`
+        );
         successCount++;
-        logger.info(`✅ Successfully backfilled game: ${gameId}`);
       } catch (error) {
         errorCount++;
         logger.error(`❌ Failed to backfill game ${gameId}:`, error);
@@ -63,8 +124,9 @@ async function backfill() {
 
     // Summary
     logger.info(`\n${'='.repeat(60)}`);
-    logger.info(`✅ Backfill Complete!`);
+    logger.info(`✅ Smart Backfill Complete!`);
     logger.info(`✅ Successful: ${successCount} games`);
+    logger.info(`⏭️  Reprocessed: ${successCount > 0 ? 'Check logs above' : 'N/A'} incomplete dates`);
     logger.error(`❌ Failed: ${errorCount} games`);
     logger.info(`${'='.repeat(60)}`);
 

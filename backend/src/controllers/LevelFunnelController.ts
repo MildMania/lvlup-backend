@@ -68,7 +68,7 @@ export class LevelFunnelController {
                 });
             }
 
-            const levels = await levelFunnelService.getLevelFunnelDataHybrid(filters);
+            const levels = await levelFunnelService.getLevelFunnelData(filters);
 
             res.json({
                 success: true,
@@ -133,7 +133,7 @@ export class LevelFunnelController {
                 version: version as string | undefined
             };
 
-            const allLevels = await levelFunnelService.getLevelFunnelDataHybrid(filters);
+            const allLevels = await levelFunnelService.getLevelFunnelData(filters);
             const levelIdNum = parseInt(levelId || '0');
             const levelData = allLevels.find(l => l.levelId === levelIdNum);
 

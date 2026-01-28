@@ -208,10 +208,7 @@ export class HealthMetricsController {
         deviceId: crashData.deviceId,
         appVersion: crashData.appVersion,
         appBuild: crashData.appBuild,
-        bundleId: crashData.bundleId,
-        engineVersion: crashData.engineVersion,
         sdkVersion: crashData.sdkVersion,
-        country: crashData.country,
         connectionType: crashData.connectionType,
         memoryUsage: crashData.memoryUsage,
         batteryLevel: crashData.batteryLevel,
@@ -219,12 +216,7 @@ export class HealthMetricsController {
         breadcrumbs: crashData.Breadcrumbs || crashData.breadcrumbs,
         customData: {
           eventUuid: crashData.eventUuid,
-          appSignature: crashData.appSignature,
-          channelId: crashData.channelId,
           countryCode: crashData.countryCode,
-          region: crashData.region,
-          city: crashData.city,
-          timezone: crashData.timezone,
           ...(crashData.customData || {}),
         },
       };

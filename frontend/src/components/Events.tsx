@@ -25,24 +25,14 @@ interface Event {
   // App info
   appVersion?: string;
   appBuild?: string;
-  bundleId?: string;
-  engineVersion?: string;
   sdkVersion?: string;
   
   // Network & Additional
   connectionType?: string;
   sessionNum?: number;
-  appSignature?: string;
-  channelId?: string;
   
-  // Geographic location
-  country?: string;
+  // Geographic location (minimal)
   countryCode?: string;
-  region?: string;
-  city?: string;
-  latitude?: number;
-  longitude?: number;
-  timezone?: string;
   
   // Level funnel tracking
   levelFunnel?: string;
@@ -453,26 +443,6 @@ const Events: React.FC<EventsProps> = ({ gameInfo, isCollapsed = false }) => {
                       </div>
                     )}
 
-                    {event.engineVersion && (
-                      <div className="detail-item">
-                        <span className="detail-label">Engine:</span>
-                        <code className="detail-value">{event.engineVersion}</code>
-                      </div>
-                    )}
-
-                    {event.bundleId && (
-                      <div className="detail-item">
-                        <span className="detail-label">Bundle ID:</span>
-                        <code className="detail-value">{event.bundleId}</code>
-                      </div>
-                    )}
-
-                    {event.channelId && (
-                      <div className="detail-item">
-                        <span className="detail-label">Channel:</span>
-                        <code className="detail-value">{event.channelId}</code>
-                      </div>
-                    )}
 
                     {event.sdkVersion && (
                       <div className="detail-item">
@@ -514,41 +484,11 @@ const Events: React.FC<EventsProps> = ({ gameInfo, isCollapsed = false }) => {
                       </div>
                     )}
 
-                    {event.appSignature && (
-                      <div className="detail-item">
-                        <span className="detail-label">App Signature:</span>
-                        <code className="detail-value">{event.appSignature}</code>
-                      </div>
-                    )}
-                    
-                    {/* Geographic Location */}
-                    {(event.country || event.city || event.region) && (
-                      <div className="detail-item detail-item-full">
-                        <span className="detail-label">Location:</span>
-                        <code className="detail-value">
-                          {[event.city, event.region, event.country].filter(Boolean).join(', ')}
-                        </code>
-                      </div>
-                    )}
-                    
+                    {/* Geographic Location (minimal) */}
                     {event.countryCode && (
                       <div className="detail-item">
                         <span className="detail-label">Country Code:</span>
                         <code className="detail-value">{event.countryCode}</code>
-                      </div>
-                    )}
-                    
-                    {(event.latitude !== undefined && event.longitude !== undefined) && (
-                      <div className="detail-item">
-                        <span className="detail-label">Coordinates:</span>
-                        <code className="detail-value">{event.latitude?.toFixed(4)}, {event.longitude?.toFixed(4)}</code>
-                      </div>
-                    )}
-                    
-                    {event.timezone && (
-                      <div className="detail-item">
-                        <span className="detail-label">Timezone:</span>
-                        <code className="detail-value">{event.timezone}</code>
                       </div>
                     )}
                     

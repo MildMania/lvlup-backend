@@ -111,24 +111,14 @@ model Event {
   // App info
   appVersion    String? // e.g., "0.0.3"
   appBuild      String? // e.g., "30087"
-  bundleId      String? // e.g., "com.mildmania.packperfect"
-  engineVersion String? // e.g., "unity 2022.3.62"
   sdkVersion    String? // e.g., "unity 1.0.0"
 
   // Network & Additional
   connectionType String? // e.g., "wifi", "wwan", "offline"
   sessionNum     Int? // Session number for this user
-  appSignature   String? // Android app signature
-  channelId      String? // e.g., "com.android.vending"
 
-  // Geographic location
-  country     String? // ISO country code, e.g., "US", "TR"
+  // Geographic location (kept minimal)
   countryCode String? // ISO 3166-1 alpha-2, e.g., "US"
-  region      String? // Region/State, e.g., "California", "Istanbul"
-  city        String? // City name, e.g., "San Francisco", "Istanbul"
-  latitude    Float? // Latitude coordinate
-  longitude   Float? // Longitude coordinate
-  timezone    String? // IANA timezone, e.g., "America/Los_Angeles"
 
   session Session? @relation(fields: [sessionId], references: [id])
   user    User     @relation(fields: [userId], references: [id], onDelete: Cascade)

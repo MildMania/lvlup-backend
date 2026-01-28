@@ -26,6 +26,7 @@ export interface CrashMetrics {
     affectedUsers: number;
     lastOccurrence: Date;
   }>;
+  totalCrashGroups: number; // For pagination
 }
 
 export interface CrashTimeline {
@@ -37,8 +38,14 @@ export interface CrashTimeline {
 }
 
 export class HealthMetricsService {
-  async getCrashMetrics(gameId: string, filters: HealthFilters): Promise<CrashMetrics> {
-    const { startDate, endDate, platform, country, appVersion } = filters;
+  async getCrashMetrics(
+    gameId: string, 
+    filters: HealthFilters & { 
+      crashesLimit?: number; 
+      crashesOffset?: number;
+    }
+  ): Promise<HealthMetrics> {
+    const { startDate, endDate, platform, country, appVersion, crashesLimit = 20, crashesOffset = 0 } = filters;
 
     // Build where clause for crash logs
     const crashWhere: any = {
@@ -170,9 +177,12 @@ export class HealthMetricsService {
     });
 
     // Convert to array and sort by count
-    const topCrashes = Array.from(crashGroups.values())
-      .sort((a, b) => b.count - a.count)
-      .slice(0, 10)
+    const sortedCrashGroups = Array.from(crashGroups.values())
+      .sort((a, b) => b.count - a.count);
+    
+    const totalCrashGroups = sortedCrashGroups.length;
+    const topCrashes = sortedCrashGroups
+      .slice(crashesOffset, crashesOffset + crashesLimit)
       .map(c => ({
         id: c.id,
         message: c.message,
@@ -198,6 +208,7 @@ export class HealthMetricsService {
         count: c._count,
       })),
       topCrashes,
+      totalCrashGroups, // For pagination
     };
   }
 
@@ -300,9 +311,9 @@ export class HealthMetricsService {
     gameId: string,
     message: string,
     exceptionType: string,
-    filters: HealthFilters
+    filters: HealthFilters & { limit?: number; offset?: number }
   ) {
-    const { startDate, endDate, platform, country, appVersion } = filters;
+    const { startDate, endDate, platform, country, appVersion, limit = 50, offset = 0 } = filters;
 
     const where: any = {
       gameId,
@@ -318,10 +329,23 @@ export class HealthMetricsService {
     if (country) where.country = country;
     if (appVersion) where.appVersion = appVersion;
 
-    return prisma.crashLog.findMany({
+    // Get total count for pagination
+    const totalCount = await prisma.crashLog.count({ where });
+
+    // Get paginated instances
+    const instances = await prisma.crashLog.findMany({
       where,
       orderBy: { timestamp: 'desc' },
+      take: limit,
+      skip: offset,
     });
+
+    return {
+      instances,
+      totalCount,
+      limit,
+      offset,
+    };
   }
 
   async getCrashLogs(

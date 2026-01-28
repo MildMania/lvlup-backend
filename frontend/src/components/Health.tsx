@@ -70,10 +70,7 @@ interface CrashLog {
   device?: string;
   deviceId?: string;
   appBuild?: string;
-  bundleId?: string;
-  engineVersion?: string;
   sdkVersion?: string;
-  country?: string;
   connectionType?: string;
   memoryUsage?: number;
   batteryLevel?: number;
@@ -869,12 +866,6 @@ const Health: React.FC<{ gameId: string }> = ({ gameId }) => {
                     <strong>App Build:</strong> {selectedCrash.appBuild || 'N/A'}
                   </div>
                   <div className="detail-row">
-                    <strong>Bundle ID:</strong> {selectedCrash.bundleId || 'N/A'}
-                  </div>
-                  <div className="detail-row">
-                    <strong>Engine Version:</strong> {selectedCrash.engineVersion || 'N/A'}
-                  </div>
-                  <div className="detail-row">
                     <strong>SDK Version:</strong> {selectedCrash.sdkVersion || 'N/A'}
                   </div>
                 </div>
@@ -885,9 +876,6 @@ const Health: React.FC<{ gameId: string }> = ({ gameId }) => {
                 <div className="detail-grid">
                   <div className="detail-row">
                     <strong>User ID:</strong> {selectedCrash.userId || 'Anonymous'}
-                  </div>
-                  <div className="detail-row">
-                    <strong>Country:</strong> {selectedCrash.country || 'N/A'}
                   </div>
                   <div className="detail-row">
                     <strong>Connection:</strong> {selectedCrash.connectionType || 'N/A'}
@@ -1082,12 +1070,6 @@ const Health: React.FC<{ gameId: string }> = ({ gameId }) => {
                               <strong>App Build:</strong> {instance.appBuild || 'N/A'}
                             </div>
                             <div className="detail-row">
-                              <strong>Bundle ID:</strong> {instance.bundleId || 'N/A'}
-                            </div>
-                            <div className="detail-row">
-                              <strong>Engine Version:</strong> {instance.engineVersion || 'N/A'}
-                            </div>
-                            <div className="detail-row">
                               <strong>SDK Version:</strong> {instance.sdkVersion || 'N/A'}
                             </div>
                           </div>
@@ -1098,9 +1080,6 @@ const Health: React.FC<{ gameId: string }> = ({ gameId }) => {
                           <div className="detail-grid">
                             <div className="detail-row">
                               <strong>User ID:</strong> {instance.userId || 'Anonymous'}
-                            </div>
-                            <div className="detail-row">
-                              <strong>Country:</strong> {instance.country || 'N/A'}
                             </div>
                             <div className="detail-row">
                               <strong>Connection:</strong> {instance.connectionType || 'N/A'}

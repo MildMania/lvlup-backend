@@ -271,24 +271,14 @@ export class AnalyticsService {
                     // App info
                     appVersion: eventData.appVersion ?? null,
                     appBuild: eventData.appBuild ?? null,
-                    bundleId: eventData.bundleId ?? null,
-                    engineVersion: eventData.engineVersion ?? null,
                     sdkVersion: eventData.sdkVersion ?? null,
                     
                     // Network & Additional
                     connectionType: eventData.connectionType ?? null,
                     sessionNum: eventData.sessionNum ?? null,
-                    appSignature: eventData.appSignature ?? null,
-                    channelId: eventData.channelId ?? null,
                     
-                    // Geographic location
-                    country: eventData.country ?? null,
+                    // Geographic location (minimal)
                     countryCode: eventData.countryCode ?? null,
-                    region: eventData.region ?? null,
-                    city: eventData.city ?? null,
-                    latitude: eventData.latitude ?? null,
-                    longitude: eventData.longitude ?? null,
-                    timezone: eventData.timezone ?? null,
                     
                     // Level funnel tracking (for AB testing level designs)
                     // Extracted from properties (new SDK format) or top-level (backward compatibility)
@@ -456,24 +446,14 @@ export class AnalyticsService {
                     // App info - prefer event-level, fallback to deviceInfo
                     appVersion: eventData.appVersion ?? deviceInfo.appVersion ?? null,
                     appBuild: eventData.appBuild ?? deviceInfo.appBuild ?? null,
-                    bundleId: eventData.bundleId ?? deviceInfo.bundleId ?? null,
-                    engineVersion: eventData.engineVersion ?? deviceInfo.engineVersion ?? null,
                     sdkVersion: eventData.sdkVersion ?? deviceInfo.sdkVersion ?? null,
                     
                     // Network & Additional - prefer event-level, fallback to deviceInfo
                     connectionType: eventData.connectionType ?? deviceInfo.connectionType ?? null,
                     sessionNum: eventData.sessionNum ?? deviceInfo.sessionNum ?? null,
-                    appSignature: eventData.appSignature ?? deviceInfo.appSignature ?? null,
-                    channelId: eventData.channelId ?? deviceInfo.channelId ?? null,
                     
-                    // Geographic location
-                    country: eventData.country ?? null,
+                    // Geographic location (minimal)
                     countryCode: eventData.countryCode ?? null,
-                    region: eventData.region ?? null,
-                    city: eventData.city ?? null,
-                    latitude: eventData.latitude ?? null,
-                    longitude: eventData.longitude ?? null,
-                    timezone: eventData.timezone ?? null,
                     
                     // Level funnel tracking (for AB testing level designs)
                     // Extracted from properties (new SDK format) or top-level (backward compatibility)
@@ -748,24 +728,14 @@ export class AnalyticsService {
                     // App info
                     appVersion: true,
                     appBuild: true,
-                    bundleId: true,
-                    engineVersion: true,
                     sdkVersion: true,
                     
                     // Network & Additional
                     connectionType: true,
                     sessionNum: true,
-                    appSignature: true,
-                    channelId: true,
                     
-                    // Geographic location
-                    country: true,
+                    // Geographic location (minimal)
                     countryCode: true,
-                    region: true,
-                    city: true,
-                    latitude: true,
-                    longitude: true,
-                    timezone: true,
                 },
                 orderBy: {
                     timestamp: sort === 'desc' ? 'desc' : 'asc' // timestamp is server time

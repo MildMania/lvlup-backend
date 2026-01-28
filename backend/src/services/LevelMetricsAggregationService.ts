@@ -221,12 +221,10 @@ export class LevelMetricsAggregationService {
           group.completionCount++;
         }
 
-        // Check for boosters - track unique users per group
-        if (props?.boosters && Array.isArray(props.boosters) && props.boosters.length > 0) {
-          if (!group.usersWithBoostersSet) {
-            group.usersWithBoostersSet = new Set<string>();
-          }
-          group.usersWithBoostersSet.add(event.userId);
+        // Check for boosters - it's a Dictionary object with booster types and counts
+        // If boosters dict exists and has any entries, count this event
+        if (props?.boosters && typeof props.boosters === 'object' && Object.keys(props.boosters).length > 0) {
+          group.usersWithBoosters++;
         }
       } else if (event.eventName === 'level_failed') {
         group.fails++;
@@ -241,22 +239,24 @@ export class LevelMetricsAggregationService {
           group.failCount++;
         }
 
-        // Check for purchase after failure - track unique users per group
-        if (props?.purchaseAfterFail || props?.madePurchaseAfterFail) {
-          if (!group.failsWithPurchaseSet) {
-            group.failsWithPurchaseSet = new Set<string>();
-          }
-          group.failsWithPurchaseSet.add(event.userId);
+        // Check for EGP (End Game Purchase) - it's an int count
+        // If egp > 0, count this event
+        if (props?.egp && typeof props.egp === 'number' && props.egp > 0) {
+          group.failsWithPurchase++;
+        }
+
+        // Check for boosters - also count on failure events
+        if (props?.boosters && typeof props.boosters === 'object' && Object.keys(props.boosters).length > 0) {
+          group.usersWithBoosters++;
         }
       }
     }
 
-    // Calculate unique user counts and convert Sets to counts
+    // Calculate unique user counts from Sets
     for (const group of groups.values()) {
       group.startedPlayers = group.startedUserIds.size;
       group.completedPlayers = group.completedUserIds.size;
-      group.usersWithBoosters = group.usersWithBoostersSet?.size || 0;
-      group.failsWithPurchase = group.failsWithPurchaseSet?.size || 0;
+      // usersWithBoosters and failsWithPurchase are already event counts, no need to convert
     }
 
     return groups;

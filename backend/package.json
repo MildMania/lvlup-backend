@@ -21,6 +21,7 @@
     "setup-auth": "ts-node scripts/setup-auth.ts",
     "postinstall": "prisma generate",
     "deploy": "npm run build",
+    "analyze:redundancy": "node dist/scripts/analyzeRedundancy.js",
     "env:local": "cd .. && ./switch-env.sh local",
     "env:prod": "cd .. && ./switch-env.sh production",
     "env:status": "cd .. && ./switch-env.sh status"

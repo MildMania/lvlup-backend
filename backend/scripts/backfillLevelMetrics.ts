@@ -1,6 +1,7 @@
 import { LevelMetricsAggregationService } from '../src/services/LevelMetricsAggregationService';
 import logger from '../src/utils/logger';
 import * as dotenv from 'dotenv';
+import prisma from '../src/prisma';
 
 dotenv.config();
 
@@ -8,16 +9,23 @@ dotenv.config();
  * Backfill script for Level Metrics Daily table
  * 
  * Usage:
- * 1. Locally:
+ * 1. Locally (all games):
  *    npx ts-node scripts/backfillLevelMetrics.ts
  * 
- * 2. On Railway via CLI:
- *    railway run npx ts-node scripts/backfillLevelMetrics.ts
+ * 2. Locally (specific game):
+ *    npx ts-node scripts/backfillLevelMetrics.ts cmkkteznd0076mn1m2dxl1ijd
  * 
- * 3. Edit the BACKFILL_DAYS variable below to control how many days to backfill
+ * 3. On Railway via CLI (all games):
+ *    railway run npx ts-node scripts/backfillLevelMetrics.ts
+ *
+ * 4. On Railway via CLI (specific game):
+ *    railway run npx ts-node scripts/backfillLevelMetrics.ts cmkkteznd0076mn1m2dxl1ijd
+ * 
+ * 5. Edit the BACKFILL_DAYS variable below to control how many days to backfill
  */
 
 const BACKFILL_DAYS = 30; // How many days back to backfill (adjust as needed)
+const SPECIFIC_GAME_ID = process.argv[2]; // Optional: game ID from command line
 
 async function backfill() {
   try {
@@ -25,7 +33,6 @@ async function backfill() {
     logger.info(`📅 Backfilling last ${BACKFILL_DAYS} days`);
 
     const service = new LevelMetricsAggregationService();
-    const prisma = require('../src/prisma').default;
 
     // Calculate date range
     const endDate = new Date();
@@ -41,7 +48,18 @@ async function backfill() {
     const games = await service.getGamesWithLevelEvents();
     logger.info(`🎮 Found ${games.length} games with level events`);
 
-    if (games.length === 0) {
+    // Filter to specific game if provided
+    let gamesToProcess = games;
+    if (SPECIFIC_GAME_ID) {
+      logger.info(`🎯 Filtering to specific game: ${SPECIFIC_GAME_ID}`);
+      gamesToProcess = games.filter(g => g === SPECIFIC_GAME_ID);
+      if (gamesToProcess.length === 0) {
+        logger.error(`❌ Game ${SPECIFIC_GAME_ID} not found or has no level events`);
+        process.exit(1);
+      }
+    }
+
+    if (gamesToProcess.length === 0) {
       logger.warn('⚠️  No games with level events found. Backfill complete.');
       process.exit(0);
     }
@@ -50,7 +68,7 @@ async function backfill() {
     let successCount = 0;
     let errorCount = 0;
 
-    for (const gameId of games) {
+    for (const gameId of gamesToProcess) {
       try {
         logger.info(`\n▶️  Processing game: ${gameId}`);
 
@@ -69,7 +87,7 @@ async function backfill() {
 
         const aggregatedRowCounts = new Map<string, number>();
         for (const count of existingCounts) {
-          const dateStr = count.date.toISOString().split('T')[0];
+          const dateStr = (count.date.toISOString().split('T')[0] || '');
           aggregatedRowCounts.set(dateStr, count._count);
         }
 
@@ -81,8 +99,8 @@ async function backfill() {
         let fullyCompleteCount = 0;
 
         while (currentDate <= endDate) {
-          const dateStr = currentDate.toISOString().split('T')[0];
-          const rowCount = aggregatedRowCounts.get(dateStr) || 0;
+          const dateStr = (currentDate.toISOString().split('T')[0] || '');
+          const rowCount = aggregatedRowCounts.get(dateStr) ?? 0;
 
           // Get expected row count for this date
           const eventCount = await (prisma as any).event.count({

@@ -81,6 +81,62 @@ CREATE TABLE "events" (
 );
 
 -- CreateTable
+CREATE TABLE "revenue" (
+    "id" TEXT NOT NULL PRIMARY KEY,
+    "gameId" TEXT NOT NULL,
+    "userId" TEXT NOT NULL,
+    "sessionId" TEXT,
+    "eventId" TEXT,
+    "revenueType" TEXT NOT NULL CHECK("revenueType" IN ('AD_IMPRESSION', 'IN_APP_PURCHASE')),
+    "revenue" REAL NOT NULL,
+    "currency" TEXT NOT NULL DEFAULT 'USD',
+    "timestamp" DATETIME NOT NULL,
+    "clientTs" INTEGER,
+    "serverReceivedAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "transactionTimestamp" INTEGER,
+    "adNetworkName" TEXT,
+    "adFormat" TEXT,
+    "adUnitId" TEXT,
+    "adUnitName" TEXT,
+    "adPlacement" TEXT,
+    "adCreativeId" TEXT,
+    "adImpressionId" TEXT,
+    "adNetworkPlacement" TEXT,
+    "productId" TEXT,
+    "productName" TEXT,
+    "productType" TEXT,
+    "transactionId" TEXT,
+    "orderId" TEXT,
+    "purchaseToken" TEXT,
+    "store" TEXT,
+    "isVerified" BOOLEAN NOT NULL DEFAULT false,
+    "verifiedAt" DATETIME,
+    "quantity" INTEGER DEFAULT 1,
+    "isSandbox" BOOLEAN NOT NULL DEFAULT false,
+    "isRestored" BOOLEAN NOT NULL DEFAULT false,
+    "subscriptionPeriod" TEXT,
+    "platform" TEXT,
+    "osVersion" TEXT,
+    "manufacturer" TEXT,
+    "device" TEXT,
+    "deviceId" TEXT,
+    "appVersion" TEXT,
+    "appBuild" TEXT,
+    "bundleId" TEXT,
+    "engineVersion" TEXT,
+    "sdkVersion" TEXT,
+    "country" TEXT,
+    "countryCode" TEXT,
+    "region" TEXT,
+    "city" TEXT,
+    "connectionType" TEXT,
+    "metadata" TEXT,
+    CONSTRAINT "revenue_userId_fkey" FOREIGN KEY ("userId") REFERENCES "users" ("id") ON DELETE CASCADE ON UPDATE CASCADE,
+    CONSTRAINT "revenue_gameId_fkey" FOREIGN KEY ("gameId") REFERENCES "games" ("id") ON DELETE CASCADE ON UPDATE CASCADE,
+    CONSTRAINT "revenue_sessionId_fkey" FOREIGN KEY ("sessionId") REFERENCES "sessions" ("id") ON DELETE SET NULL ON UPDATE CASCADE
+);
+
+-- CreateTable
 CREATE TABLE "remote_configs" (
     "id" TEXT NOT NULL PRIMARY KEY,
     "gameId" TEXT NOT NULL,
@@ -634,4 +690,16 @@ CREATE INDEX "deployments_gameId_environment_deployedAt_idx" ON "deployments"("g
 
 -- CreateIndex
 CREATE INDEX "deployments_gameId_environment_version_idx" ON "deployments"("gameId", "environment", "version");
+
+-- CreateIndex
+CREATE INDEX "revenue_gameId_revenueType_timestamp_idx" ON "revenue"("gameId", "revenueType", "timestamp");
+
+-- CreateIndex
+CREATE INDEX "revenue_userId_timestamp_idx" ON "revenue"("userId", "timestamp");
+
+-- CreateIndex
+CREATE INDEX "revenue_adImpressionId_idx" ON "revenue"("adImpressionId");
+
+-- CreateIndex
+CREATE INDEX "revenue_transactionId_idx" ON "revenue"("transactionId");
 

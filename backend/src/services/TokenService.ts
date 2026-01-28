@@ -22,8 +22,8 @@ export class TokenService {
     constructor() {
         this.accessSecret = process.env.JWT_ACCESS_SECRET || 'default-access-secret-change-me';
         this.refreshSecret = process.env.JWT_REFRESH_SECRET || 'default-refresh-secret-change-me';
-        this.accessExpires = process.env.JWT_ACCESS_EXPIRES || '1h'; // Increased from 15m to 1h
-        this.refreshExpires = process.env.JWT_REFRESH_EXPIRES || '7d';
+        this.accessExpires = process.env.JWT_ACCESS_EXPIRES || '8h'; // 8 hours - extended session duration
+        this.refreshExpires = process.env.JWT_REFRESH_EXPIRES || '30d'; // 30 days - stay logged in for a month
     }
 
     /**
@@ -47,7 +47,7 @@ export class TokenService {
 
         // Calculate expiration date for refresh token
         const expiresAt = new Date();
-        expiresAt.setDate(expiresAt.getDate() + 7); // 7 days
+        expiresAt.setDate(expiresAt.getDate() + 30); // 30 days
 
         // Store refresh token in database
         await prisma.refreshToken.create({

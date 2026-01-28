@@ -146,6 +146,19 @@ export class LevelFunnelService {
                 };
             }
 
+            // Performance optimization: Log query start
+            const queryStart = Date.now();
+            logger.info(`Starting level funnel query for game ${gameId} with filters:`, {
+                startDate: startDate?.toISOString(),
+                endDate: endDate?.toISOString(),
+                country,
+                platform,
+                version,
+                levelFunnel,
+                levelFunnelVersion,
+                levelLimit
+            });
+
             // Get all level events
             let events = await prisma.event.findMany({
                 where: whereClause,
@@ -162,6 +175,9 @@ export class LevelFunnelService {
                     timestamp: 'asc'
                 }
             });
+
+            const queryDuration = Date.now() - queryStart;
+            logger.info(`Level funnel query completed in ${queryDuration}ms, fetched ${events.length} events`);
 
             // Post-filter for exact funnel+version pairs when multiple selected
             if (levelFunnel && levelFunnelVersion) {
@@ -211,6 +227,7 @@ export class LevelFunnelService {
             const limitedLevelIds = levelIds.slice(0, levelLimit);
             logger.info(`Processing ${limitedLevelIds.length} levels out of ${levelIds.length} total (limit: ${levelLimit})`);
 
+            const metricsStart = Date.now();
             for (let i = 0; i < limitedLevelIds.length; i++) {
                 const levelId = limitedLevelIds[i]!; // Non-null assertion since we filtered
                 const nextLevelId: number | null = i < limitedLevelIds.length - 1 ? limitedLevelIds[i + 1]! : null;
@@ -224,6 +241,8 @@ export class LevelFunnelService {
                 
                 levelMetrics.push(metrics);
             }
+            const metricsDuration = Date.now() - metricsStart;
+            logger.info(`Metrics calculation completed in ${metricsDuration}ms for ${limitedLevelIds.length} levels`);
 
             // Calculate cumulative average time for each level
             let cumulativeTime = 0;
@@ -234,6 +253,9 @@ export class LevelFunnelService {
                     metric.cumulativeAvgTime = Math.round(cumulativeTime * 100) / 100;
                 }
             }
+
+            const totalDuration = Date.now() - queryStart;
+            logger.info(`Total level funnel processing completed in ${totalDuration}ms`);
 
             return levelMetrics;
         } catch (error) {

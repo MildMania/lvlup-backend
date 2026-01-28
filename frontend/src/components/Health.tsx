@@ -44,6 +44,7 @@ interface HealthMetrics {
     affectedUsers: number;
     lastOccurrence: string;
   }>;
+  totalCrashGroups: number;
 }
 
 interface CrashTimeline {
@@ -94,6 +95,14 @@ const Health: React.FC<{ gameId: string }> = ({ gameId }) => {
   const [currentInstanceIndex, setCurrentInstanceIndex] = useState(0);
   const [loadingInstances, setLoadingInstances] = useState(false);
   const [clickedErrorId, setClickedErrorId] = useState<string | null>(null);
+  const [totalInstancesCount, setTotalInstancesCount] = useState(0);
+  const [instancesPage, setInstancesPage] = useState(0);
+  const [instancesLimit] = useState(50);
+
+  // Pagination for crash list
+  const [crashesPage, setCrashesPage] = useState(0);
+  const [crashesLimit] = useState(20);
+  const [totalCrashGroups, setTotalCrashGroups] = useState(0);
 
   // Filters
   const [dateRange, setDateRange] = useState('7d');
@@ -201,7 +210,7 @@ const Health: React.FC<{ gameId: string }> = ({ gameId }) => {
 
   useEffect(() => {
     fetchHealthData();
-  }, [gameId, dateRange, platform, selectedCountries, selectedVersions, severity, crashType]);
+  }, [gameId, dateRange, platform, selectedCountries, selectedVersions, severity, crashType, crashesPage]);
 
   const fetchHealthData = async () => {
     setLoading(true);
@@ -210,6 +219,8 @@ const Health: React.FC<{ gameId: string }> = ({ gameId }) => {
       const params = new URLSearchParams({
         startDate: start.toISOString(),
         endDate: end.toISOString(),
+        crashesLimit: crashesLimit.toString(),
+        crashesOffset: (crashesPage * crashesLimit).toString(),
       });
 
       if (platform) params.append('platform', platform);
@@ -261,6 +272,7 @@ const Health: React.FC<{ gameId: string }> = ({ gameId }) => {
       });
 
       setMetrics(metricsData);
+      setTotalCrashGroups(metricsData.totalCrashGroups || 0);
       setTimeline(timelineData);
       setCrashLogs(logsData.logs || []);
     } catch (error) {
@@ -276,7 +288,9 @@ const Health: React.FC<{ gameId: string }> = ({ gameId }) => {
         crashesByType: [],
         crashesBySeverity: [],
         topCrashes: [],
+        totalCrashGroups: 0,
       });
+      setTotalCrashGroups(0);
       setTimeline([]);
       setCrashLogs([]);
     } finally {
@@ -284,7 +298,7 @@ const Health: React.FC<{ gameId: string }> = ({ gameId }) => {
     }
   };
 
-  const fetchErrorInstances = async (message: string, exceptionType: string) => {
+  const fetchErrorInstances = async (message: string, exceptionType: string, page: number = 0) => {
     setLoadingInstances(true);
     try {
       const { start, end } = getDateRange();
@@ -293,6 +307,8 @@ const Health: React.FC<{ gameId: string }> = ({ gameId }) => {
         exceptionType,
         startDate: start.toISOString(),
         endDate: end.toISOString(),
+        limit: instancesLimit.toString(),
+        offset: (page * instancesLimit).toString(),
       });
 
       if (platform) params.append('platform', platform);
@@ -322,11 +338,14 @@ const Health: React.FC<{ gameId: string }> = ({ gameId }) => {
 
       const data = await response.json();
       setErrorInstances(data.instances || []);
+      setTotalInstancesCount(data.totalCount || 0);
+      setInstancesPage(page);
       setCurrentInstanceIndex(0);
       setShowErrorInstances(true);
     } catch (error) {
       console.error('Error fetching error instances:', error);
       setErrorInstances([]);
+      setTotalInstancesCount(0);
     } finally {
       setLoadingInstances(false);
       setClickedErrorId(null);
@@ -335,6 +354,7 @@ const Health: React.FC<{ gameId: string }> = ({ gameId }) => {
 
   const handleTopErrorClick = (error: HealthMetrics['topCrashes'][0]) => {
     setClickedErrorId(error.id);
+    setInstancesPage(0);
     fetchErrorInstances(error.message, error.exceptionType);
   };
 
@@ -768,6 +788,30 @@ const Health: React.FC<{ gameId: string }> = ({ gameId }) => {
             </tbody>
           </table>
         </div>
+        
+        {/* Pagination for crashes list */}
+        {totalCrashGroups > crashesLimit && (
+          <div className="pagination-controls">
+            <button 
+              onClick={() => setCrashesPage(Math.max(0, crashesPage - 1))}
+              disabled={crashesPage === 0}
+              className="pagination-button"
+            >
+              Previous
+            </button>
+            <span className="pagination-info">
+              Page {crashesPage + 1} of {Math.ceil(totalCrashGroups / crashesLimit)} 
+              ({totalCrashGroups} total errors)
+            </span>
+            <button 
+              onClick={() => setCrashesPage(crashesPage + 1)}
+              disabled={(crashesPage + 1) * crashesLimit >= totalCrashGroups}
+              className="pagination-button"
+            >
+              Next
+            </button>
+          </div>
+        )}
       </div>
 
       <div className="crash-logs-section">
@@ -972,13 +1016,53 @@ const Health: React.FC<{ gameId: string }> = ({ gameId }) => {
               <div>
                 <h2>Error Instances</h2>
                 {errorInstances.length > 0 && (
-                  <p className="instance-counter">
-                    Instance {currentInstanceIndex + 1} of {errorInstances.length}
-                  </p>
+                  <>
+                    <p className="instance-counter">
+                      Instance {currentInstanceIndex + 1} of {errorInstances.length} (on this page)
+                    </p>
+                    <p className="instance-counter">
+                      Total instances: {totalInstancesCount}
+                    </p>
+                  </>
                 )}
               </div>
               <button onClick={closeErrorInstancesModal}>×</button>
             </div>
+            
+            {/* Page-level pagination */}
+            {totalInstancesCount > instancesLimit && (
+              <div className="pagination-controls" style={{ marginBottom: '20px' }}>
+                <button 
+                  onClick={() => {
+                    const newPage = Math.max(0, instancesPage - 1);
+                    const currentError = metrics?.topCrashes.find(c => c.id === clickedErrorId);
+                    if (currentError) {
+                      fetchErrorInstances(currentError.message, currentError.exceptionType, newPage);
+                    }
+                  }}
+                  disabled={instancesPage === 0 || loadingInstances}
+                  className="pagination-button"
+                >
+                  ← Previous Page
+                </button>
+                <span className="pagination-info">
+                  Page {instancesPage + 1} of {Math.ceil(totalInstancesCount / instancesLimit)}
+                </span>
+                <button 
+                  onClick={() => {
+                    const newPage = instancesPage + 1;
+                    const currentError = metrics?.topCrashes.find(c => c.id === clickedErrorId);
+                    if (currentError) {
+                      fetchErrorInstances(currentError.message, currentError.exceptionType, newPage);
+                    }
+                  }}
+                  disabled={(instancesPage + 1) * instancesLimit >= totalInstancesCount || loadingInstances}
+                  className="pagination-button"
+                >
+                  Next Page →
+                </button>
+              </div>
+            )}
             
             {loadingInstances ? (
               <div className="modal-body">

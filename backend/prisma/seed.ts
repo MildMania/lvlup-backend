@@ -222,6 +222,161 @@ async function seedLevelFunnelData(games: any[], daysAgoFn: (days: number) => Da
     console.log('✅ Seeded level funnel data');
 }
 
+// Seed revenue data (Ad Impressions + In-App Purchases)
+async function seedRevenueData(games: any[], daysAgoFn: (days: number) => Date) {
+    console.log('💰 Seeding revenue data...');
+
+    let totalRevenue = 0;
+    let totalAdEvents = 0;
+    let totalIapEvents = 0;
+
+    for (const game of games) {
+        console.log(`\n💵 Adding revenue for ${game.name}...`);
+
+        // Get users for this game
+        const gameUsers = await prisma.user.findMany({ 
+            where: { gameId: game.id },
+            include: { sessions: true }
+        });
+
+        if (gameUsers.length === 0) {
+            console.log(`  ⚠️  No users found for ${game.name}, skipping`);
+            continue;
+        }
+
+        let gameRevenue = 0;
+        let gameAdEvents = 0;
+        let gameIapEvents = 0;
+
+        for (const user of gameUsers) {
+            // Get or create sessions for this user
+            let userSessions = user.sessions;
+
+            if (userSessions.length === 0) {
+                // Create at least one session
+                const sessionDate = daysAgoFn(Math.floor(Math.random() * 30));
+                const session = await prisma.session.create({
+                    data: {
+                        gameId: game.id,
+                        userId: user.id,
+                        startTime: sessionDate,
+                        endTime: new Date(sessionDate.getTime() + 10 * 60 * 1000),
+                        duration: 600,
+                        platform: user.platform,
+                        countryCode: user.country
+                    }
+                });
+                userSessions = [session];
+            }
+
+            // Generate revenue for each session
+            for (const session of userSessions.slice(0, 10)) { // Limit to 10 sessions per user
+                const sessionDate = new Date(session.startTime);
+
+                // Ad Impressions (90% of sessions have ads)
+                const seesAds = Math.random() < 0.9;
+                if (seesAds) {
+                    const adCount = Math.floor(Math.random() * 5) + 1; // 1-5 ads per session
+
+                    for (let adNum = 0; adNum < adCount; adNum++) {
+                        const isRewarded = Math.random() < 0.3; // 30% rewarded ads
+                        const adRevenue = isRewarded
+                            ? Math.random() * 0.5 + 0.5 // $0.50-$1.00 for rewarded
+                            : Math.random() * 0.05 + 0.01; // $0.01-$0.06 for interstitial/banner
+
+                        await prisma.revenue.create({
+                            data: {
+                                gameId: game.id,
+                                userId: user.id,
+                                sessionId: session.id,
+                                revenueType: 'AD_IMPRESSION',
+                                revenue: adRevenue,
+                                currency: 'USD',
+                                timestamp: new Date(sessionDate.getTime() + adNum * 2 * 60 * 1000),
+                                adNetworkName: ['MAX', 'AdMob', 'IronSource', 'Unity Ads'][Math.floor(Math.random() * 4)],
+                                adFormat: isRewarded ? 'REWARDED' : ['INTER', 'BANNER', 'MREC'][Math.floor(Math.random() * 3)],
+                                adPlacement: ['level_complete', 'game_start', 'in_game', 'menu'][Math.floor(Math.random() * 4)],
+                                adImpressionId: `ad_${user.id}_${session.id}_${adNum}_${Date.now()}`,
+                                platform: user.platform,
+                                appVersion: user.version,
+                                country: user.country,
+                                countryCode: user.country
+                            }
+                        });
+
+                        gameRevenue += adRevenue;
+                        gameAdEvents++;
+                    }
+                }
+
+                // In-App Purchases (10% of sessions have IAP)
+                const makesPurchase = Math.random() < 0.1;
+                if (makesPurchase) {
+                    const purchaseTier = Math.random();
+                    let iapRevenue: number;
+                    let productId: string;
+                    let productName: string;
+
+                    if (purchaseTier < 0.5) {
+                        // 50% - Small pack
+                        iapRevenue = Math.random() * 2 + 0.99;
+                        productId = 'com.game.coins_small';
+                        productName = '100 Coins';
+                    } else if (purchaseTier < 0.8) {
+                        // 30% - Medium pack
+                        iapRevenue = Math.random() * 5 + 4.99;
+                        productId = 'com.game.coins_medium';
+                        productName = '500 Coins';
+                    } else {
+                        // 20% - Large pack
+                        iapRevenue = Math.random() * 30 + 19.99;
+                        productId = 'com.game.coins_large';
+                        productName = '2000 Coins';
+                    }
+
+                    await prisma.revenue.create({
+                        data: {
+                            gameId: game.id,
+                            userId: user.id,
+                            sessionId: session.id,
+                            revenueType: 'IN_APP_PURCHASE',
+                            revenue: iapRevenue,
+                            currency: 'USD',
+                            timestamp: sessionDate,
+                            productId: productId,
+                            productName: productName,
+                            productType: 'CONSUMABLE',
+                            transactionId: `txn_${user.id}_${session.id}_${Date.now()}`,
+                            store: user.platform === 'iOS' ? 'APPLE_APP_STORE' : user.platform === 'Android' ? 'GOOGLE_PLAY' : 'WEB_STORE',
+                            isVerified: true,
+                            quantity: 1,
+                            isSandbox: false,
+                            platform: user.platform,
+                            appVersion: user.version,
+                            country: user.country,
+                            countryCode: user.country
+                        }
+                    });
+
+                    gameRevenue += iapRevenue;
+                    gameIapEvents++;
+                }
+            }
+        }
+
+        totalRevenue += gameRevenue;
+        totalAdEvents += gameAdEvents;
+        totalIapEvents += gameIapEvents;
+
+        console.log(`  ✅ ${game.name}: $${gameRevenue.toFixed(2)} (${gameAdEvents} ads, ${gameIapEvents} IAP)`);
+    }
+
+    console.log(`\n💰 Revenue seeding complete!`);
+    console.log(`  Total Revenue: $${totalRevenue.toFixed(2)}`);
+    console.log(`  Ad Events: ${totalAdEvents}`);
+    console.log(`  IAP Events: ${totalIapEvents}`);
+}
+
 async function main() {
     console.log('🌱 Starting database seeding...');
 
@@ -282,8 +437,9 @@ async function main() {
 
     // If games already existed, skip the full seed and just add level events
     if (existingGames.length > 0) {
-        console.log('⏭️  Skipping full seed, adding only level funnel data...');
+        console.log('⏭️  Skipping full seed, adding level funnel and revenue data...');
         await seedLevelFunnelData(games, daysAgo);
+        await seedRevenueData(games, daysAgo);
         
         console.log('\n🌱 Database seeding completed successfully!');
         return;
@@ -662,6 +818,9 @@ async function main() {
     }
 
     console.log('✅ Created A/B tests and assignments');
+
+    // Seed revenue data for all games
+    await seedRevenueData(games, daysAgo);
 
     // Print summary statistics
     const stats = {

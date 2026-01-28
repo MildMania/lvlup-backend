@@ -7,7 +7,7 @@ export class HealthMetricsController {
   async getHealthMetrics(req: Request, res: Response) {
     try {
       const { gameId } = req.params;
-      const { startDate, endDate, platform, country, appVersion } = req.query;
+      const { startDate, endDate, platform, country, appVersion, crashesLimit, crashesOffset } = req.query;
 
       if (!gameId) {
         return res.status(400).json({ error: 'gameId is required' });
@@ -23,6 +23,8 @@ export class HealthMetricsController {
         ...(platform && { platform: platform as string }),
         ...(country && { country: country as string }),
         ...(appVersion && { appVersion: appVersion as string }),
+        ...(crashesLimit && { crashesLimit: parseInt(crashesLimit as string) }),
+        ...(crashesOffset && { crashesOffset: parseInt(crashesOffset as string) }),
       };
 
       const metrics = await healthService.getCrashMetrics(gameId, filters);
@@ -129,7 +131,7 @@ export class HealthMetricsController {
   async getErrorInstances(req: Request, res: Response) {
     try {
       const { gameId } = req.params;
-      const { message, exceptionType, startDate, endDate, platform, country, appVersion } = req.query;
+      const { message, exceptionType, startDate, endDate, platform, country, appVersion, limit, offset } = req.query;
 
       if (!gameId) {
         return res.status(400).json({ error: 'gameId is required' });
@@ -149,16 +151,18 @@ export class HealthMetricsController {
         ...(platform && { platform: platform as string }),
         ...(country && { country: country as string }),
         ...(appVersion && { appVersion: appVersion as string }),
+        limit: limit ? parseInt(limit as string) : 50,
+        offset: offset ? parseInt(offset as string) : 0,
       };
 
-      const instances = await healthService.getErrorInstances(
+      const result = await healthService.getErrorInstances(
         gameId,
         message as string,
         exceptionType as string,
         filters
       );
 
-      res.json({ instances });
+      res.json(result);
     } catch (error) {
       console.error('Error fetching error instances:', error);
       res.status(500).json({ error: 'Failed to fetch error instances' });

@@ -33,6 +33,7 @@ model Game {
   sessions          Session[]
   users             User[]
   gameAccesses      GameAccess[]
+  revenueEvents     Revenue[]
 
   @@map("games")
 }
@@ -52,6 +53,7 @@ model User {
   events            Event[]
   playerCheckpoints PlayerCheckpoint[]
   sessions          Session[]
+  revenueEvents     Revenue[]
   game              Game               @relation(fields: [gameId], references: [id], onDelete: Cascade)
 
   @@unique([gameId, externalId])
@@ -70,6 +72,7 @@ model Session {
   version       String?
   countryCode   String? // ISO country code (e.g., "MX", "US", "TR")
   events        Event[]
+  revenueEvents Revenue[]
   user          User      @relation(fields: [userId], references: [id], onDelete: Cascade)
   game          Game      @relation(fields: [gameId], references: [id], onDelete: Cascade)
 
@@ -128,6 +131,73 @@ model Event {
   @@index([userId, timestamp])
   @@index([gameId, appVersion, timestamp])
   @@map("events")
+}
+
+// ============================================
+// REVENUE & MONETIZATION TRACKING
+// ============================================
+
+model Revenue {
+  id        String   @id @default(cuid())
+  gameId    String
+  userId    String
+  sessionId String?
+  eventId   String? // Optional link to corresponding event in events table
+  
+  // Revenue Type & Core Metrics
+  revenueType RevenueType // "AD_IMPRESSION" or "IN_APP_PURCHASE"
+  revenue     Float // Revenue amount (use Float for SQLite, Decimal for PostgreSQL in production)
+  currency    String      @default("USD") // ISO 4217 currency code
+  
+  // Timing (with client/server timestamp tracking like events)
+  timestamp           DateTime
+  clientTs            BigInt? // Client-side Unix timestamp (milliseconds)
+  serverReceivedAt    DateTime  @default(now())
+  transactionTimestamp BigInt? // Original transaction timestamp from store/ad network
+  
+  // === AD IMPRESSION FIELDS (populated when revenueType = AD_IMPRESSION) ===
+  adNetworkName   String? // e.g., "MAX", "AdMob", "IronSource", "Unity Ads"
+  adFormat        String? // e.g., "BANNER", "INTER", "REWARDED", "MREC", "APPOPEN"
+  adPlacement     String? // Ad placement identifier
+  adImpressionId  String? // Unique impression identifier from ad network
+  
+  // === IN-APP PURCHASE FIELDS (populated when revenueType = IN_APP_PURCHASE) ===
+  productId       String? // Store product identifier (e.g., "com.game.coins_100")
+  productType     String? // "CONSUMABLE", "NON_CONSUMABLE", "SUBSCRIPTION"
+  transactionId   String? // Unique transaction ID from store (Apple/Google)
+  store           String? // "APPLE_APP_STORE", "GOOGLE_PLAY", "AMAZON", etc.
+  isVerified      Boolean @default(false) // Receipt validation status
+  quantity        Int?    @default(1) // Number of items purchased
+  
+  // Device & Platform Context (copied from event metadata)
+  platform     String? // e.g., "android", "ios", "webgl"
+  osVersion    String?
+  manufacturer String?
+  device       String?
+  deviceId     String?
+  
+  // App Context
+  appVersion    String?
+  appBuild      String?
+  
+  // Geographic Context
+  countryCode String? // ISO 3166-1 alpha-2
+  
+  // Network Context
+  connectionType String?
+  
+  // Relations
+  user    User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  game    Game     @relation(fields: [gameId], references: [id], onDelete: Cascade)
+  session Session? @relation(fields: [sessionId], references: [id])
+  
+  // Essential indexes only (minimized for storage efficiency)
+  @@index([gameId, revenueType, timestamp]) // Covers most revenue queries + time-series
+  @@index([userId, timestamp]) // User revenue history & LTV
+  @@index([adImpressionId]) // Ad deduplication
+  @@index([transactionId]) // IAP deduplication & receipt validation
+  
+  @@map("revenue")
 }
 
 model RemoteConfig {
@@ -727,3 +797,9 @@ enum TestStatus {
   PAUSED
   COMPLETED
 }
+
+enum RevenueType {
+  AD_IMPRESSION
+  IN_APP_PURCHASE
+}
+

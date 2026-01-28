@@ -28,6 +28,12 @@ router.post('/events', (req, res) => analyticsController.trackEvent(req, res));
 router.post('/events/batch', (req, res) => analyticsController.trackBatchEvents(req, res));
 
 /**
+ * POST /analytics/revenue - Track revenue data (ad impressions, IAPs)
+ * @body {Object} - Revenue data with userId, sessionId, revenueData array
+ */
+router.post('/revenue', (req, res) => analyticsController.trackRevenue(req, res));
+
+/**
  * GET /analytics/events - Get events for a game
  * @query {number} limit - Maximum number of events to return (default: 100)
  * @query {number} offset - Number of events to skip (default: 0)
@@ -96,5 +102,22 @@ router.get('/metrics/active-users', (req, res) => analyticsMetricsController.get
  * @query {string|string[]} version - Optional version or versions to filter by
  */
 router.get('/metrics/playtime', (req, res) => analyticsMetricsController.getPlaytimeMetrics(req, res));
+
+/**
+ * GET /analytics/metrics/monetization-cohorts - Get monetization cohort analysis
+ * @query {string} startDate - Optional start date (ISO format)
+ * @query {string} endDate - Optional end date (ISO format)
+ * @query {string} cohortPeriod - Optional cohort period: 'day', 'week', 'month' (default: 'week')
+ * @query {number} maxDays - Optional maximum days to track (default: 30)
+ * @query {string|string[]} country - Optional country or countries to filter by
+ * @query {string|string[]} platform - Optional platform or platforms to filter by
+ * @query {string|string[]} version - Optional version or versions to filter by
+ */
+router.get('/metrics/monetization-cohorts', (req, res) => analyticsController.getMonetizationCohorts(req, res));
+
+/**
+ * GET /analytics/metrics/revenue-summary - Get total revenue summary (all-time)
+ */
+router.get('/metrics/revenue-summary', (req, res) => analyticsController.getRevenueSummary(req, res));
 
 export default router;

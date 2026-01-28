@@ -1,15 +1,19 @@
 import { PrismaClient } from '@prisma/client';
 import { EventData, BatchEventData, UserProfile, SessionData, AnalyticsData } from '../types/api';
+import { RevenueType } from '../types/revenue';
 import logger from '../utils/logger';
 import { v4 as uuidv4 } from 'uuid';
 import { cache, generateCacheKey } from '../utils/simpleCache';
 import prisma from '../prisma';
+import { RevenueService } from './RevenueService';
 
 export class AnalyticsService {
     private prisma: PrismaClient;
+    private revenueService: RevenueService;
 
     constructor(prismaClient?: PrismaClient) {
         this.prisma = prismaClient || prisma;
+        this.revenueService = new RevenueService(prismaClient);
     }
 
     /**
@@ -284,10 +288,82 @@ export class AnalyticsService {
             });
 
             logger.debug(`Event ${eventData.eventName} tracked for user ${userId} with full metadata`);
+            
+            // Dual-write pattern: Create revenue record for monetization events
+            if (eventData.eventName === 'ad_impression' || eventData.eventName === 'iap_purchase') {
+                try {
+                    await this.trackRevenueFromEvent(gameId, userId, sessionId, eventData, event.id);
+                } catch (revenueError) {
+                    // Don't fail the event tracking if revenue tracking fails
+                    logger.error(`Failed to create revenue record for ${eventData.eventName}:`, revenueError);
+                }
+            }
+            
             return event;
         } catch (error) {
             logger.error('Error tracking event:', error);
             throw error;
+        }
+    }
+
+    /**
+     * Extract revenue data from event and create revenue record (dual-write pattern)
+     */
+    private async trackRevenueFromEvent(
+        gameId: string,
+        userId: string,
+        sessionId: string | null,
+        eventData: EventData,
+        eventId: string
+    ) {
+        const props = eventData.properties || {};
+        
+        if (eventData.eventName === 'ad_impression') {
+            // Extract ad impression revenue data
+            const revenue = (props as any).revenue || 0;
+            if (revenue <= 0) return; // Skip if no revenue
+            
+            const revenueData: any = {
+                revenueType: RevenueType.AD_IMPRESSION,
+                revenue,
+                currency: (props as any).revenueCurrency || 'USD',
+                timestamp: eventData.timestamp,
+                clientTs: eventData.clientTs,
+                transactionTimestamp: (props as any).impressionTimestamp,
+                adNetworkName: (props as any).adNetworkName || 'Unknown',
+                adFormat: (props as any).adFormat || 'Unknown',
+                adUnitId: (props as any).adUnitId,
+                adPlacement: (props as any).placement,
+                adImpressionId: (props as any).impressionId,
+                platform: eventData.platform,
+                appVersion: eventData.appVersion,
+                countryCode: eventData.countryCode,
+            };
+            
+            await this.revenueService.trackRevenue(gameId, userId, sessionId, revenueData, eventData);
+            
+        } else if (eventData.eventName === 'iap_purchase') {
+            // Extract in-app purchase revenue data
+            const revenue = (props as any).revenue || (props as any).price || 0;
+            if (revenue <= 0) return; // Skip if no revenue
+            
+            const revenueData: any = {
+                revenueType: RevenueType.IN_APP_PURCHASE,
+                revenue,
+                currency: (props as any).currency || 'USD',
+                timestamp: eventData.timestamp,
+                clientTs: eventData.clientTs,
+                transactionTimestamp: (props as any).transactionTimestamp || (props as any).purchaseTimestamp,
+                productId: (props as any).productId || 'Unknown',
+                transactionId: (props as any).transactionId || (props as any).orderId,
+                store: (props as any).store || 'Unknown',
+                isVerified: (props as any).isVerified || false,
+                platform: eventData.platform,
+                appVersion: eventData.appVersion,
+                countryCode: eventData.countryCode,
+            };
+            
+            await this.revenueService.trackRevenue(gameId, userId, sessionId, revenueData, eventData);
         }
     }
 
@@ -304,7 +380,7 @@ export class AnalyticsService {
                 ...((batchData.deviceInfo?.appVersion || batchData.deviceInfo?.version) && {
                     version: batchData.deviceInfo.appVersion || batchData.deviceInfo.version
                 }),
-                ...(firstEvent?.country && { country: firstEvent.country }),
+                ...(firstEvent?.countryCode && { country: firstEvent.countryCode }),
             };
 
             const user = await this.getOrCreateUser(gameId, userProfile);
@@ -612,6 +688,7 @@ export class AnalyticsService {
 
     async getEvents(gameId: string, limit: number = 100, offset: number = 0, sort: string = 'desc') {
         try {
+            // Fetch regular events
             const events = await this.prisma.event.findMany({
                 where: {
                     gameId
@@ -622,41 +699,121 @@ export class AnalyticsService {
                     userId: true,
                     sessionId: true,
                     properties: true,
-                    timestamp: true, // Event timestamp (validated client time or server time)
-                    
-                    // Event metadata
+                    timestamp: true,
                     eventUuid: true,
-                    clientTs: true, // Original client timestamp (for reference)
-                    serverReceivedAt: true, // When server received the event
-                    
-                    // Device & Platform info
+                    clientTs: true,
+                    serverReceivedAt: true,
                     platform: true,
                     osVersion: true,
                     manufacturer: true,
                     device: true,
                     deviceId: true,
-                    
-                    // App info
                     appVersion: true,
                     appBuild: true,
                     sdkVersion: true,
-                    
-                    // Network & Additional
                     connectionType: true,
                     sessionNum: true,
-                    
-                    // Geographic location (minimal)
                     countryCode: true,
                 },
                 orderBy: {
-                    timestamp: sort === 'desc' ? 'desc' : 'asc' // timestamp is server time
+                    timestamp: sort === 'desc' ? 'desc' : 'asc'
                 },
-                take: limit,
-                skip: offset
+                take: limit
             });
 
+            // Fetch revenue events
+            const revenueEvents = await this.prisma.revenue.findMany({
+                where: {
+                    gameId
+                },
+                select: {
+                    id: true,
+                    userId: true,
+                    sessionId: true,
+                    revenueType: true,
+                    revenue: true,
+                    currency: true,
+                    timestamp: true,
+                    clientTs: true,
+                    serverReceivedAt: true,
+                    platform: true,
+                    osVersion: true,
+                    manufacturer: true,
+                    device: true,
+                    deviceId: true,
+                    appVersion: true,
+                    appBuild: true,
+                    connectionType: true,
+                    countryCode: true,
+                    // Ad fields
+                    adNetworkName: true,
+                    adFormat: true,
+                    adPlacement: true,
+                    adImpressionId: true,
+                    // IAP fields
+                    productId: true,
+                    transactionId: true,
+                    store: true,
+                    isVerified: true,
+                },
+                orderBy: {
+                    timestamp: sort === 'desc' ? 'desc' : 'asc'
+                },
+                take: limit
+            });
+
+            // Transform revenue events to match event format
+            const transformedRevenueEvents = revenueEvents.map(rev => ({
+                id: rev.id,
+                eventName: rev.revenueType === 'AD_IMPRESSION' ? 'ad_impression' : 'in_app_purchase',
+                userId: rev.userId,
+                sessionId: rev.sessionId,
+                properties: {
+                    revenue: rev.revenue,
+                    currency: rev.currency,
+                    ...(rev.revenueType === 'AD_IMPRESSION' ? {
+                        adNetworkName: rev.adNetworkName,
+                        adFormat: rev.adFormat,
+                        adPlacement: rev.adPlacement,
+                        adImpressionId: rev.adImpressionId
+                    } : {
+                        productId: rev.productId,
+                        transactionId: rev.transactionId,
+                        store: rev.store,
+                        isVerified: rev.isVerified
+                    })
+                },
+                timestamp: rev.timestamp,
+                eventUuid: null,
+                clientTs: rev.clientTs,
+                serverReceivedAt: rev.serverReceivedAt,
+                platform: rev.platform,
+                osVersion: rev.osVersion,
+                manufacturer: rev.manufacturer,
+                device: rev.device,
+                deviceId: rev.deviceId,
+                appVersion: rev.appVersion,
+                appBuild: rev.appBuild,
+                sdkVersion: null,
+                connectionType: rev.connectionType,
+                sessionNum: null,
+                countryCode: rev.countryCode,
+                isRevenueEvent: true // Flag to identify revenue events in frontend
+            }));
+
+            // Merge and sort by timestamp
+            const allEvents = [...events.map(e => ({ ...e, isRevenueEvent: false })), ...transformedRevenueEvents];
+            allEvents.sort((a, b) => {
+                const aTime = new Date(a.timestamp).getTime();
+                const bTime = new Date(b.timestamp).getTime();
+                return sort === 'desc' ? bTime - aTime : aTime - bTime;
+            });
+
+            // Apply limit and offset after merging
+            const paginatedEvents = allEvents.slice(offset, offset + limit);
+
             // Convert BigInt to string for JSON serialization
-            const serializedEvents = events.map(event => ({
+            const serializedEvents = paginatedEvents.map(event => ({
                 ...event,
                 clientTs: event.clientTs ? event.clientTs.toString() : null
             }));

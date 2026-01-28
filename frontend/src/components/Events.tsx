@@ -37,6 +37,8 @@ interface Event {
   // Level funnel tracking
   levelFunnel?: string;
   levelFunnelVersion?: number;
+  // Revenue event flag
+  isRevenueEvent?: boolean;
 }
 
 interface EventsProps {
@@ -337,12 +339,20 @@ const Events: React.FC<EventsProps> = ({ gameInfo, isCollapsed = false }) => {
           </div>
         ) : (
           <div className="events-list">
-            {filteredEvents.map((event) => (
-              <div key={event.id} className="event-card">
+            {filteredEvents.map((event) => {
+              const isLevelEvent = ['level_start', 'level_complete', 'level_fail'].includes(event.eventName);
+              return (
+              <div key={event.id} className={`event-card ${event.isRevenueEvent ? 'revenue-event' : ''} ${isLevelEvent ? 'level-event' : ''}`}>
                 <div className="event-header">
                   <div className="event-name-badge">
                     <Activity size={14} />
                     <span className="event-name">{event.eventName}</span>
+                    {event.isRevenueEvent && (
+                      <span className="revenue-badge">💰 Revenue</span>
+                    )}
+                    {isLevelEvent && (
+                      <span className="level-badge">🎮 Level</span>
+                    )}
                   </div>
                   <span className="event-time">{formatTime(event.timestamp)}</span>
                 </div>
@@ -353,6 +363,88 @@ const Events: React.FC<EventsProps> = ({ gameInfo, isCollapsed = false }) => {
                     <span className="detail-label">User ID:</span>
                     <code className="detail-value">{event.userId}</code>
                   </div>
+                  
+                  {/* Level-specific info */}
+                  {isLevelEvent && event.properties && (
+                    <>
+                      {event.properties.level !== undefined && (
+                        <div className="event-detail-item level-info">
+                          <span className="detail-label">Level:</span>
+                          <code className="detail-value level-number">{event.properties.level}</code>
+                        </div>
+                      )}
+                      {event.properties.attempt !== undefined && (
+                        <div className="event-detail-item">
+                          <span className="detail-label">Attempt:</span>
+                          <code className="detail-value">{event.properties.attempt}</code>
+                        </div>
+                      )}
+                      {event.properties.duration !== undefined && (
+                        <div className="event-detail-item">
+                          <span className="detail-label">Duration:</span>
+                          <code className="detail-value">{event.properties.duration}s</code>
+                        </div>
+                      )}
+                    </>
+                  )}
+                  
+                  {/* Revenue-specific info */}
+                  {event.isRevenueEvent && event.properties && (
+                    <>
+                      <div className="event-detail-item revenue-amount">
+                        <span className="detail-label">Revenue:</span>
+                        <code className="detail-value revenue-value">
+                          ${event.properties.revenue?.toFixed(4)} {event.properties.currency || 'USD'}
+                        </code>
+                      </div>
+                      
+                      {event.eventName === 'ad_impression' && (
+                        <>
+                          {event.properties.adNetworkName && (
+                            <div className="event-detail-item">
+                              <span className="detail-label">Ad Network:</span>
+                              <code className="detail-value">{event.properties.adNetworkName}</code>
+                            </div>
+                          )}
+                          {event.properties.adFormat && (
+                            <div className="event-detail-item">
+                              <span className="detail-label">Ad Format:</span>
+                              <code className="detail-value">{event.properties.adFormat}</code>
+                            </div>
+                          )}
+                          {event.properties.adPlacement && (
+                            <div className="event-detail-item">
+                              <span className="detail-label">Placement:</span>
+                              <code className="detail-value">{event.properties.adPlacement}</code>
+                            </div>
+                          )}
+                        </>
+                      )}
+                      
+                      {event.eventName === 'in_app_purchase' && (
+                        <>
+                          {event.properties.productId && (
+                            <div className="event-detail-item">
+                              <span className="detail-label">Product ID:</span>
+                              <code className="detail-value">{event.properties.productId}</code>
+                            </div>
+                          )}
+                          {event.properties.store && (
+                            <div className="event-detail-item">
+                              <span className="detail-label">Store:</span>
+                              <code className="detail-value">{event.properties.store}</code>
+                            </div>
+                          )}
+                          {event.properties.isVerified !== undefined && (
+                            <div className="event-detail-item">
+                              <span className="detail-label">Verified:</span>
+                              <code className="detail-value">{event.properties.isVerified ? '✓ Yes' : '✗ No'}</code>
+                            </div>
+                          )}
+                        </>
+                      )}
+                    </>
+                  )}
                   
                   {event.platform && (
                     <div className="event-detail-item">
@@ -518,7 +610,8 @@ const Events: React.FC<EventsProps> = ({ gameInfo, isCollapsed = false }) => {
                   </details>
                 )}
               </div>
-            ))}
+            );
+            })}
           </div>
         )}
       </div>

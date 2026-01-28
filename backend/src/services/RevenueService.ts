@@ -36,22 +36,11 @@ export class RevenueService {
                 clientTs: revenueData.clientTs ? BigInt(revenueData.clientTs) : null,
                 transactionTimestamp: revenueData.transactionTimestamp ? BigInt(revenueData.transactionTimestamp) : null,
                 
-                // Context from event metadata
+                // Minimal context (most context available via Session join)
                 platform: revenueData.platform || eventMetadata?.platform || null,
-                osVersion: eventMetadata?.osVersion || null,
-                manufacturer: eventMetadata?.manufacturer || null,
-                device: eventMetadata?.device || null,
-                deviceId: eventMetadata?.deviceId || null,
                 appVersion: revenueData.appVersion || eventMetadata?.appVersion || null,
                 appBuild: eventMetadata?.appBuild || null,
-                bundleId: eventMetadata?.bundleId || null,
-                engineVersion: eventMetadata?.engineVersion || null,
-                sdkVersion: eventMetadata?.sdkVersion || null,
-                country: revenueData.country || eventMetadata?.country || null,
                 countryCode: revenueData.countryCode || eventMetadata?.countryCode || null,
-                region: eventMetadata?.region || null,
-                city: eventMetadata?.city || null,
-                connectionType: eventMetadata?.connectionType || null,
             };
 
             // Add type-specific fields
@@ -59,32 +48,17 @@ export class RevenueService {
                 Object.assign(revenueRecord, {
                     adNetworkName: revenueData.adNetworkName,
                     adFormat: revenueData.adFormat,
-                    adUnitId: revenueData.adUnitId || null,
-                    adUnitName: revenueData.adUnitName || null,
                     adPlacement: revenueData.adPlacement || null,
-                    adCreativeId: revenueData.adCreativeId || null,
                     adImpressionId: revenueData.adImpressionId || null,
-                    adNetworkPlacement: revenueData.adNetworkPlacement || null,
-                    metadata: revenueData.metadata || null,
                 });
                 
                 logger.info(`Ad impression tracked: ${revenueData.adNetworkName} ${revenueData.adFormat} - $${revenueData.revenue}`);
             } else if (revenueData.revenueType === RevenueType.IN_APP_PURCHASE) {
                 Object.assign(revenueRecord, {
                     productId: revenueData.productId,
-                    productName: revenueData.productName || null,
-                    productType: revenueData.productType || null,
                     transactionId: revenueData.transactionId,
-                    orderId: revenueData.orderId || null,
-                    purchaseToken: revenueData.purchaseToken || null,
                     store: revenueData.store,
                     isVerified: revenueData.isVerified || false,
-                    verifiedAt: revenueData.isVerified ? new Date() : null,
-                    quantity: revenueData.quantity || 1,
-                    isSandbox: revenueData.isSandbox || false,
-                    isRestored: revenueData.isRestored || false,
-                    subscriptionPeriod: revenueData.subscriptionPeriod || null,
-                    metadata: revenueData.metadata || null,
                 });
                 
                 logger.info(`IAP tracked: ${revenueData.productId} - $${revenueData.revenue} (${revenueData.store})`);
@@ -175,11 +149,11 @@ export class RevenueService {
 
             // Get revenue by country (top 10)
             const byCountry = await this.prisma.revenue.groupBy({
-                by: ['country'],
+                by: ['countryCode'],
                 where: {
                     gameId,
                     timestamp: { gte: startDate, lte: endDate },
-                    country: { not: null }
+                    countryCode: { not: null }
                 },
                 _sum: { revenue: true },
                 orderBy: { _sum: { revenue: 'desc' } },
@@ -207,7 +181,7 @@ export class RevenueService {
                     purchases: item._count
                 })),
                 byCountry: byCountry.map(item => ({
-                    country: item.country || 'Unknown',
+                    country: item.countryCode || 'Unknown',
                     revenue: Number(item._sum.revenue || 0)
                 }))
             };

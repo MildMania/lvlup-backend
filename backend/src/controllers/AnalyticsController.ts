@@ -1,13 +1,16 @@
 import { Request, Response } from 'express';
 import { AnalyticsService } from '../services/AnalyticsService';
 import { MonetizationCohortService } from '../services/MonetizationCohortService';
+import { RevenueService } from '../services/RevenueService';
 import { AuthenticatedRequest } from '../middleware/auth';
 import { ApiResponse, BatchEventData, EventData, SessionData, UserProfile } from '../types/api';
 import { requireGameId } from '../utils/gameIdHelper';
 import logger from '../utils/logger';
+import prisma from '../prisma';
 
 const analyticsService = new AnalyticsService();
 const monetizationCohortService = new MonetizationCohortService();
+const revenueService = new RevenueService();
 
 export class AnalyticsController {
     // Track a single event
@@ -54,7 +57,7 @@ export class AnalyticsController {
                 deviceId: req.body.deviceId || eventData.deviceId,
                 platform: req.body.platform || eventData.platform,
                 version: req.body.version || eventData.appVersion,
-                country: req.body.country || eventData.country,
+                country: req.body.countryCode,
                 language: req.body.language
             };
 
@@ -388,13 +391,102 @@ export class AnalyticsController {
         }
     }
 
+    // Get revenue summary (total revenue stats)
+    async getRevenueSummary(req: AuthenticatedRequest, res: Response<ApiResponse>) {
+        try {
+            const gameId = requireGameId(req);
+
+            // Get total revenue by type
+            const revenueByType = await prisma.revenue.groupBy({
+                by: ['revenueType'],
+                where: { gameId },
+                _sum: { revenue: true },
+                _count: true
+            });
+
+            // Get total revenue count by user
+            const userRevenueCount = await prisma.revenue.groupBy({
+                by: ['userId'],
+                where: { gameId },
+                _sum: { revenue: true }
+            });
+
+            // Calculate totals
+            let totalRevenue = 0;
+            let adRevenue = 0;
+            let iapRevenue = 0;
+            let adImpressionCount = 0;
+            let iapCount = 0;
+
+            revenueByType.forEach((item: any) => {
+                const revenue = Number(item._sum.revenue || 0);
+                totalRevenue += revenue;
+                
+                if (item.revenueType === 'AD_IMPRESSION') {
+                    adRevenue = revenue;
+                    adImpressionCount = item._count;
+                } else if (item.revenueType === 'IN_APP_PURCHASE') {
+                    iapRevenue = revenue;
+                    iapCount = item._count;
+                }
+            });
+
+            // Get paying users count
+            const payingUsers = await prisma.revenue.findMany({
+                where: {
+                    gameId,
+                    revenueType: 'IN_APP_PURCHASE'
+                },
+                distinct: ['userId'],
+                select: { userId: true }
+            });
+
+            // Get total users
+            const totalUsers = await prisma.user.count({ where: { gameId } });
+
+            const summary = {
+                totalRevenue: Math.round(totalRevenue * 100) / 100,
+                adRevenue: Math.round(adRevenue * 100) / 100,
+                iapRevenue: Math.round(iapRevenue * 100) / 100,
+                adImpressionCount,
+                iapCount,
+                payingUsersCount: payingUsers.length,
+                totalUsers,
+                conversionRate: totalUsers > 0 ? (payingUsers.length / totalUsers) * 100 : 0,
+                arpu: totalUsers > 0 ? totalRevenue / totalUsers : 0,
+                arppu: payingUsers.length > 0 ? iapRevenue / payingUsers.length : 0
+            };
+
+            res.status(200).json({
+                success: true,
+                data: summary
+            });
+        } catch (error) {
+            logger.error('Error in getRevenueSummary controller:', error);
+            res.status(500).json({
+                success: false,
+                error: 'Failed to get revenue summary'
+            });
+        }
+    }
+
     // Get monetization cohort analysis
     async getMonetizationCohorts(req: AuthenticatedRequest, res: Response<ApiResponse>) {
         try {
             const gameId = requireGameId(req);
             const startDate = req.query.startDate ? new Date(req.query.startDate as string) : new Date(Date.now() - 90 * 24 * 60 * 60 * 1000);
-            const endDate = req.query.endDate ? new Date(req.query.endDate as string) : new Date();
-            const cohortPeriod = (req.query.cohortPeriod as 'day' | 'week' | 'month') || 'week';
+            
+            // Parse endDate and set to end of day (23:59:59.999) to include the entire day
+            let endDate: Date;
+            if (req.query.endDate) {
+                endDate = new Date(req.query.endDate as string);
+                endDate.setHours(23, 59, 59, 999);
+            } else {
+                endDate = new Date();
+                endDate.setHours(23, 59, 59, 999);
+            }
+            
+            const cohortPeriod = (req.query.cohortPeriod as 'day' | 'week' | 'month') || 'day'; // Changed from 'week' to 'day'
             const maxDays = parseInt(req.query.maxDays as string) || 30;
 
             // Parse filters (same as engagement metrics)
@@ -430,6 +522,72 @@ export class AnalyticsController {
             res.status(500).json({
                 success: false,
                 error: 'Failed to get monetization cohorts'
+            });
+        }
+    }
+
+    // Track revenue (batch of revenue events from SDK)
+    async trackRevenue(req: AuthenticatedRequest, res: Response<ApiResponse>) {
+        try {
+            const gameId = requireGameId(req);
+            const { userId, sessionId, revenueData } = req.body;
+
+            // Validate required fields
+            if (!userId) {
+                return res.status(400).json({
+                    success: false,
+                    error: 'User ID is required'
+                });
+            }
+
+            if (!revenueData || !Array.isArray(revenueData)) {
+                return res.status(400).json({
+                    success: false,
+                    error: 'Revenue data array is required'
+                });
+            }
+
+            // Get or create user first
+            const userProfile: UserProfile = {
+                externalId: userId,
+                deviceId: revenueData[0]?.deviceId,
+                platform: revenueData[0]?.platform,
+                version: revenueData[0]?.appVersion,
+                country: revenueData[0]?.countryCode
+            };
+
+            const user = await analyticsService.getOrCreateUser(gameId, userProfile);
+
+            // Track each revenue item
+            const results = [];
+            for (const revenue of revenueData) {
+                try {
+                    const tracked = await revenueService.trackRevenue(
+                        gameId,
+                        user.id,
+                        sessionId || null,
+                        revenue,
+                        revenue // Pass the revenue object itself as eventMetadata
+                    );
+                    results.push(tracked);
+                } catch (error) {
+                    logger.error(`Failed to track revenue item:`, error);
+                    // Continue with next item instead of failing entire batch
+                }
+            }
+
+            res.status(200).json({
+                success: true,
+                data: {
+                    tracked: results.length,
+                    total: revenueData.length
+                }
+            });
+        } catch (error) {
+            logger.error('Error in trackRevenue controller:', error);
+            res.status(500).json({
+                success: false,
+                error: 'Failed to track revenue'
             });
         }
     }

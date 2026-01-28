@@ -91,17 +91,27 @@ export class MonetizationCohortService {
 
             for (const cohortDate of cohortDates) {
                 const userIds = cohorts[cohortDate];
-                const cohortStartDate = new Date(cohortDate);
+                if (!userIds || userIds.length === 0) continue;
+                
+                // Parse cohort date properly with timezone consideration
+                const cohortStartDate = new Date(cohortDate + 'T00:00:00.000Z');
+
+                logger.info(`Processing cohort ${cohortDate} with ${userIds.length} users`);
 
                 const metrics: MonetizationCohortData['metrics'] = {};
 
                 // Calculate metrics for each day offset (Day 0, Day 1, Day 7, etc.)
                 for (let dayOffset = 0; dayOffset <= maxDays; dayOffset++) {
+                    // Calculate period boundaries correctly
                     const periodStart = new Date(cohortStartDate);
-                    periodStart.setDate(periodStart.getDate() + dayOffset);
+                    periodStart.setUTCDate(periodStart.getUTCDate() + dayOffset);
+                    periodStart.setUTCHours(0, 0, 0, 0);
                     
                     const periodEnd = new Date(periodStart);
-                    periodEnd.setDate(periodEnd.getDate() + 1);
+                    periodEnd.setUTCDate(periodEnd.getUTCDate() + 1);
+                    periodEnd.setUTCHours(0, 0, 0, 0);
+
+                    logger.info(`Day ${dayOffset}: ${periodStart.toISOString()} to ${periodEnd.toISOString()}`);
 
                     // Get returning users (users who had sessions on this day)
                     const returningUsers = await this.prisma.session.groupBy({
@@ -229,19 +239,20 @@ export class MonetizationCohortService {
      */
     private getCohortDate(date: Date, period: 'day' | 'week' | 'month'): string {
         const d = new Date(date);
-        d.setHours(0, 0, 0, 0);
+        // Use UTC to avoid timezone issues
+        d.setUTCHours(0, 0, 0, 0);
 
         if (period === 'day') {
             return d.toISOString().split('T')[0] || '';
         } else if (period === 'week') {
-            // Get Monday of the week
-            const day = d.getDay();
-            const diff = d.getDate() - day + (day === 0 ? -6 : 1);
-            d.setDate(diff);
+            // Get Monday of the week (in UTC)
+            const day = d.getUTCDay();
+            const diff = d.getUTCDate() - day + (day === 0 ? -6 : 1);
+            d.setUTCDate(diff);
             return d.toISOString().split('T')[0] || '';
         } else {
             // First day of month
-            d.setDate(1);
+            d.setUTCDate(1);
             return d.toISOString().split('T')[0] || '';
         }
     }

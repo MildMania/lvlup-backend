@@ -158,27 +158,16 @@ model Revenue {
   // === AD IMPRESSION FIELDS (populated when revenueType = AD_IMPRESSION) ===
   adNetworkName   String? // e.g., "MAX", "AdMob", "IronSource", "Unity Ads"
   adFormat        String? // e.g., "BANNER", "INTER", "REWARDED", "MREC", "APPOPEN"
-  adUnitId        String? // Ad unit identifier
-  adUnitName      String? // Human-readable ad unit name
   adPlacement     String? // Ad placement identifier
-  adCreativeId    String? // Creative identifier
   adImpressionId  String? // Unique impression identifier from ad network
-  adNetworkPlacement String? // Ad network's placement name
   
   // === IN-APP PURCHASE FIELDS (populated when revenueType = IN_APP_PURCHASE) ===
   productId       String? // Store product identifier (e.g., "com.game.coins_100")
-  productName     String? // Human-readable product name
   productType     String? // "CONSUMABLE", "NON_CONSUMABLE", "SUBSCRIPTION"
   transactionId   String? // Unique transaction ID from store (Apple/Google)
-  orderId         String? // Order ID (especially for Google Play)
-  purchaseToken   String? // Purchase token for verification
   store           String? // "APPLE_APP_STORE", "GOOGLE_PLAY", "AMAZON", etc.
   isVerified      Boolean @default(false) // Receipt validation status
-  verifiedAt      DateTime? // When receipt was verified
   quantity        Int?    @default(1) // Number of items purchased
-  isSandbox       Boolean @default(false) // Test/sandbox purchase
-  isRestored      Boolean @default(false) // Restored purchase
-  subscriptionPeriod String? // For subscriptions: "P1M", "P1Y", etc.
   
   // Device & Platform Context (copied from event metadata)
   platform     String? // e.g., "android", "ios", "webgl"
@@ -190,21 +179,12 @@ model Revenue {
   // App Context
   appVersion    String?
   appBuild      String?
-  bundleId      String?
-  engineVersion String?
-  sdkVersion    String?
   
   // Geographic Context
-  country     String? // ISO country code
   countryCode String? // ISO 3166-1 alpha-2
-  region      String?
-  city        String?
   
   // Network Context
   connectionType String?
-  
-  // Additional Data
-  metadata Json? // Flexible field for additional network-specific or custom data
   
   // Relations
   user    User     @relation(fields: [userId], references: [id], onDelete: Cascade)

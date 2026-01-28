@@ -50,24 +50,14 @@ export interface EventData {
     // App info
     appVersion?: string;    // e.g., "0.0.3"
     appBuild?: string;      // e.g., "30087"
-    bundleId?: string;      // e.g., "com.mildmania.packperfect"
-    engineVersion?: string; // e.g., "unity 2022.3.62"
     sdkVersion?: string;    // e.g., "unity 1.0.0"
     
     // Network & Additional
     connectionType?: string; // e.g., "wifi", "wwan", "offline"
     sessionNum?: number;     // Session number for this user
-    appSignature?: string;   // Android app signature
-    channelId?: string;      // e.g., "com.android.vending"
     
-    // Geographic location
-    country?: string;        // ISO country code, e.g., "US", "TR"
+    // Geographic location (minimal)
     countryCode?: string;    // ISO 3166-1 alpha-2, e.g., "US"
-    region?: string;         // Region/State, e.g., "California", "Istanbul"
-    city?: string;           // City name, e.g., "San Francisco", "Istanbul"
-    latitude?: number;       // Latitude coordinate
-    longitude?: number;      // Longitude coordinate
-    timezone?: string;       // IANA timezone, e.g., "America/Los_Angeles"
     
     // Level funnel tracking (for AB testing level designs)
     levelFunnel?: string;    // e.g., "live_0.0.1", "test_variant_a"

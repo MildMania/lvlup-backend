@@ -666,6 +666,7 @@ const HealthTab: React.FC<{ gameInfo: any }> = ({ gameInfo }) => {
 // Monetization Tab Component
 const MonetizationTab: React.FC<{ gameInfo: any }> = ({ gameInfo }) => {
   const [cohortData, setCohortData] = useState<any[]>([]);
+  const [revenueSummary, setRevenueSummary] = useState<any>(null);
   const [loading, setLoading] = useState(false);
   const [selectedMetric, setSelectedMetric] = useState<'totalRevenue' | 'iapRevenue' | 'adRevenue' | 'arpu' | 'arpuIap' | 'arppuIap' | 'conversionRate'>('totalRevenue');
   const [showDaySelector, setShowDaySelector] = useState(false);
@@ -673,7 +674,7 @@ const MonetizationTab: React.FC<{ gameInfo: any }> = ({ gameInfo }) => {
   const [showCountrySelector, setShowCountrySelector] = useState(false);
   const [showVersionSelector, setShowVersionSelector] = useState(false);
   const [filters, setFilters] = useState({
-    startDate: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
+    startDate: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
     endDate: new Date().toISOString().split('T')[0]
   });
   const [selectedPlatforms, setSelectedPlatforms] = useState<string[]>([]);
@@ -744,6 +745,17 @@ const MonetizationTab: React.FC<{ gameInfo: any }> = ({ gameInfo }) => {
     }
   };
 
+  const fetchRevenueSummary = async () => {
+    try {
+      const response = await apiClient.get(`/analytics/metrics/revenue-summary?gameId=${gameInfo.id}`);
+      if (response.data.success) {
+        setRevenueSummary(response.data.data);
+      }
+    } catch (error) {
+      console.error('Error fetching revenue summary:', error);
+    }
+  };
+
   // Fetch filter options on mount
   useEffect(() => {
     const fetchFilterOptions = async () => {
@@ -760,6 +772,7 @@ const MonetizationTab: React.FC<{ gameInfo: any }> = ({ gameInfo }) => {
     };
 
     fetchFilterOptions();
+    fetchRevenueSummary();
   }, [gameInfo.id]);
 
   useEffect(() => {
@@ -900,6 +913,106 @@ const MonetizationTab: React.FC<{ gameInfo: any }> = ({ gameInfo }) => {
     <div className="tab-content">
       <h2>Monetization Analytics</h2>
       <p>Cohort revenue analysis and monetization metrics</p>
+
+      {/* Revenue Summary Cards */}
+      {revenueSummary && (
+        <div style={{ marginBottom: '30px' }}>
+          <h3 style={{ marginBottom: '15px', fontSize: '18px', fontWeight: '600' }}>All-Time Revenue Summary</h3>
+          <div style={{ 
+            display: 'grid', 
+            gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', 
+            gap: '15px',
+            marginBottom: '20px'
+          }}>
+            <div style={{ 
+              background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)', 
+              padding: '20px', 
+              borderRadius: '12px',
+              color: 'white',
+              boxShadow: '0 4px 6px rgba(0,0,0,0.1)'
+            }}>
+              <div style={{ fontSize: '14px', opacity: 0.9, marginBottom: '8px' }}>Total Revenue</div>
+              <div style={{ fontSize: '32px', fontWeight: '700' }}>${revenueSummary.totalRevenue.toFixed(2)}</div>
+              <div style={{ fontSize: '12px', opacity: 0.8, marginTop: '8px' }}>
+                {revenueSummary.adImpressionCount + revenueSummary.iapCount} events
+              </div>
+            </div>
+
+            <div style={{ 
+              background: 'linear-gradient(135deg, #f093fb 0%, #f5576c 100%)', 
+              padding: '20px', 
+              borderRadius: '12px',
+              color: 'white',
+              boxShadow: '0 4px 6px rgba(0,0,0,0.1)'
+            }}>
+              <div style={{ fontSize: '14px', opacity: 0.9, marginBottom: '8px' }}>IAP Revenue</div>
+              <div style={{ fontSize: '32px', fontWeight: '700' }}>${revenueSummary.iapRevenue.toFixed(2)}</div>
+              <div style={{ fontSize: '12px', opacity: 0.8, marginTop: '8px' }}>
+                {revenueSummary.iapCount} purchases
+              </div>
+            </div>
+
+            <div style={{ 
+              background: 'linear-gradient(135deg, #4facfe 0%, #00f2fe 100%)', 
+              padding: '20px', 
+              borderRadius: '12px',
+              color: 'white',
+              boxShadow: '0 4px 6px rgba(0,0,0,0.1)'
+            }}>
+              <div style={{ fontSize: '14px', opacity: 0.9, marginBottom: '8px' }}>Ad Revenue</div>
+              <div style={{ fontSize: '32px', fontWeight: '700' }}>${revenueSummary.adRevenue.toFixed(2)}</div>
+              <div style={{ fontSize: '12px', opacity: 0.8, marginTop: '8px' }}>
+                {revenueSummary.adImpressionCount} impressions
+              </div>
+            </div>
+
+            <div style={{ 
+              background: 'linear-gradient(135deg, #fa709a 0%, #fee140 100%)', 
+              padding: '20px', 
+              borderRadius: '12px',
+              color: 'white',
+              boxShadow: '0 4px 6px rgba(0,0,0,0.1)'
+            }}>
+              <div style={{ fontSize: '14px', opacity: 0.9, marginBottom: '8px' }}>ARPU</div>
+              <div style={{ fontSize: '32px', fontWeight: '700' }}>${revenueSummary.arpu.toFixed(4)}</div>
+              <div style={{ fontSize: '12px', opacity: 0.8, marginTop: '8px' }}>
+                {revenueSummary.totalUsers} users
+              </div>
+            </div>
+
+            <div style={{ 
+              background: 'linear-gradient(135deg, #30cfd0 0%, #330867 100%)', 
+              padding: '20px', 
+              borderRadius: '12px',
+              color: 'white',
+              boxShadow: '0 4px 6px rgba(0,0,0,0.1)'
+            }}>
+              <div style={{ fontSize: '14px', opacity: 0.9, marginBottom: '8px' }}>Conversion Rate</div>
+              <div style={{ fontSize: '32px', fontWeight: '700' }}>{revenueSummary.conversionRate.toFixed(2)}%</div>
+              <div style={{ fontSize: '12px', opacity: 0.8, marginTop: '8px' }}>
+                {revenueSummary.payingUsersCount} paying users
+              </div>
+            </div>
+
+            <div style={{ 
+              background: 'linear-gradient(135deg, #a8edea 0%, #fed6e3 100%)', 
+              padding: '20px', 
+              borderRadius: '12px',
+              color: '#333',
+              boxShadow: '0 4px 6px rgba(0,0,0,0.1)'
+            }}>
+              <div style={{ fontSize: '14px', opacity: 0.8, marginBottom: '8px' }}>ARPPU (IAP)</div>
+              <div style={{ fontSize: '32px', fontWeight: '700' }}>${revenueSummary.arppu.toFixed(2)}</div>
+              <div style={{ fontSize: '12px', opacity: 0.7, marginTop: '8px' }}>
+                Per paying user
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Cohort Analysis Section */}
+      <h3 style={{ marginTop: '30px', marginBottom: '15px', fontSize: '18px', fontWeight: '600' }}>Cohort Analysis</h3>
 
       {/* Metric Selector */}
       <div className="analytics-filters" style={{ marginBottom: '20px' }}>

@@ -21,8 +21,7 @@ export interface BaseRevenueData {
     // Context (optional - will be populated from event metadata if not provided)
     platform?: string;
     appVersion?: string;
-    country?: string;
-    countryCode?: string;
+    countryCode?: string; // ISO 3166-1 alpha-2 (e.g., "US", "TR")
 }
 
 // Ad Impression specific data
@@ -35,11 +34,8 @@ export interface AdImpressionData extends BaseRevenueData {
     
     // Optional ad fields
     adUnitId?: string;
-    adUnitName?: string;
     adPlacement?: string;
-    adCreativeId?: string;
     adImpressionId?: string; // For deduplication
-    adNetworkPlacement?: string;
     
     // Additional data
     metadata?: Record<string, any>;
@@ -55,15 +51,7 @@ export interface InAppPurchaseData extends BaseRevenueData {
     transactionId: string; // Unique transaction ID for deduplication
     
     // Optional IAP fields
-    productName?: string;
-    productType?: string; // "CONSUMABLE", "NON_CONSUMABLE", "SUBSCRIPTION"
-    orderId?: string;
-    purchaseToken?: string;
-    quantity?: number;
-    isSandbox?: boolean;
-    isRestored?: boolean;
     isVerified?: boolean;
-    subscriptionPeriod?: string; // "P1M", "P1Y"
     
     // Additional data
     metadata?: Record<string, any>;

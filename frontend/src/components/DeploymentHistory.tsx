@@ -99,8 +99,6 @@ const DeploymentHistory: React.FC<Props> = ({ gameId, environment, onClose, onRo
       if (showNotification) {
         showNotification('error', 'Failed to load diff');
       }
-    } finally {
-      setLoadingDiff(false);
     }
   };
 

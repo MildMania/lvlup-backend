@@ -10,7 +10,7 @@
     "dev": "ts-node-dev --respawn --transpile-only src/index.ts",
     "dev:local": "npm run env:local && npm run dev",
     "dev:prod": "npm run env:prod && npm run dev",
-    "start": "npx prisma db push --skip-generate && node dist/index.js",
+    "start": "npx prisma db push --skip-generate --accept-data-loss && node dist/index.js",
     "start:ts": "ts-node src/index.ts",
     "build": "prisma generate && tsc",
     "generate": "prisma generate",

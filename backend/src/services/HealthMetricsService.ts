@@ -44,7 +44,7 @@ export class HealthMetricsService {
       crashesLimit?: number; 
       crashesOffset?: number;
     }
-  ): Promise<HealthMetrics> {
+  ): Promise<CrashMetrics> {
     const { startDate, endDate, platform, country, appVersion, crashesLimit = 20, crashesOffset = 0 } = filters;
 
     // Build where clause for crash logs

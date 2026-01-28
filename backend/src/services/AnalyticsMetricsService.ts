@@ -55,6 +55,7 @@ export class AnalyticsMetricsService {
                 return cached;
             }
 
+            const startTime = Date.now(); // Performance tracking
             logger.debug(`Cache miss for retention: ${cacheKey}, calculating...`);
 
             // Build user filters
@@ -109,8 +110,11 @@ export class AnalyticsMetricsService {
                 ? filters.retentionDays.sort((a, b) => a - b)  // Sort ascending
                 : [1, 3, 7, 14, 30];
 
-            // OPTIMIZED: Batch query approach instead of N+1 queries
-            // Process all retention days in parallel for better performance
+            // MEMORY OPTIMIZATION (CRITICAL):
+            // Process retention days with efficient batching to prevent PostgreSQL shared memory exhaustion.
+            // Previously, with 5k+ users, we were building OR conditions with thousands of clauses,
+            // causing "could not resize shared memory segment" errors.
+            // Solution: Process users in batches of 500 to keep query complexity manageable.
             const retentionPromises = retentionDays.map(async (day) => {
                 let retainedCount = 0;
                 let eligibleUsersCount = 0;
@@ -129,40 +133,50 @@ export class AnalyticsMetricsService {
                     return { day, count: 0, percentage: 0 };
                 }
 
-                // Build batch query to check all users at once
-                // Instead of querying each user individually, use a single query with OR conditions
-                const userRetentionConditions = eligibleUsers.map(user => {
-                    const registrationDate = new Date(user.createdAt);
-                    const userDayN = new Date(registrationDate);
-                    userDayN.setDate(userDayN.getDate() + day);
-                    userDayN.setHours(0, 0, 0, 0);
+                // MEMORY EFFICIENT: Process users in batches of 500 to avoid PostgreSQL memory issues
+                // This prevents building massive OR conditions that exhaust shared memory
+                const BATCH_SIZE = 500;
+                const retainedUserIds = new Set<string>();
 
-                    const userDayNEnd = new Date(userDayN);
-                    userDayNEnd.setHours(23, 59, 59, 999);
+                for (let i = 0; i < eligibleUsers.length; i += BATCH_SIZE) {
+                    const batchUsers = eligibleUsers.slice(i, i + BATCH_SIZE);
+                    
+                    // Build smaller batch query
+                    const userRetentionConditions = batchUsers.map(user => {
+                        const registrationDate = new Date(user.createdAt);
+                        const userDayN = new Date(registrationDate);
+                        userDayN.setDate(userDayN.getDate() + day);
+                        userDayN.setHours(0, 0, 0, 0);
 
-                    return {
-                        userId: user.id,
-                        timestamp: {
-                            gte: userDayN,
-                            lte: userDayNEnd
-                        }
-                    };
-                });
+                        const userDayNEnd = new Date(userDayN);
+                        userDayNEnd.setHours(23, 59, 59, 999);
 
-                // Single query to get all retained users for this day
-                // This replaces 1000+ individual queries with 1 query per retention day
-                const retainedUsers = await this.prisma.event.findMany({
-                    where: {
-                        gameId: gameId,
-                        OR: userRetentionConditions
-                    },
-                    select: {
-                        userId: true
-                    },
-                    distinct: ['userId']
-                });
+                        return {
+                            userId: user.id,
+                            timestamp: {
+                                gte: userDayN,
+                                lte: userDayNEnd
+                            }
+                        };
+                    });
 
-                retainedCount = retainedUsers.length;
+                    // Query this batch of users
+                    const batchRetainedUsers = await this.prisma.event.findMany({
+                        where: {
+                            gameId: gameId,
+                            OR: userRetentionConditions
+                        },
+                        select: {
+                            userId: true
+                        },
+                        distinct: ['userId']
+                    });
+
+                    // Add to our set of retained users
+                    batchRetainedUsers.forEach(user => retainedUserIds.add(user.userId));
+                }
+
+                retainedCount = retainedUserIds.size;
 
                 // Calculate percentage based on eligible users for this specific retention day
                 const percentage = eligibleUsersCount > 0 ? (retainedCount / eligibleUsersCount) * 100 : 0;
@@ -178,10 +192,11 @@ export class AnalyticsMetricsService {
             const retentionData = await Promise.all(retentionPromises);
             const sortedData = retentionData.sort((a, b) => a.day - b.day);
 
-            // Cache for 10 minutes (600 seconds)
-            cache.set(cacheKey, sortedData, 600);
+            // Cache for 30 minutes (1800 seconds) - retention doesn't need real-time updates
+            cache.set(cacheKey, sortedData, 1800);
 
-            logger.info(`Calculated retention metrics for game ${gameId} (optimized batch query)`);
+            const duration = Date.now() - startTime;
+            logger.info(`Calculated retention metrics for game ${gameId} in ${duration}ms (${newUsers.length} users, batch size: 500)`);
             return sortedData;
         } catch (error) {
             logger.error('Error calculating retention:', error);

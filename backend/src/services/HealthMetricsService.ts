@@ -384,10 +384,7 @@ export class HealthMetricsService {
     deviceId?: string;
     appVersion?: string;
     appBuild?: string;
-    bundleId?: string;
-    engineVersion?: string;
     sdkVersion?: string;
-    country?: string;
     connectionType?: string;
     memoryUsage?: number;
     batteryLevel?: number;
@@ -412,10 +409,7 @@ export class HealthMetricsService {
         deviceId: data.deviceId || null,
         appVersion: data.appVersion || null,
         appBuild: data.appBuild || null,
-        bundleId: data.bundleId || null,
-        engineVersion: data.engineVersion || null,
         sdkVersion: data.sdkVersion || null,
-        country: data.country || null,
         connectionType: data.connectionType || null,
         memoryUsage: data.memoryUsage || null,
         batteryLevel: data.batteryLevel || null,

@@ -90,16 +90,10 @@ export interface DeviceInfo {
     // App info
     appVersion?: string;     // e.g., "0.0.3"
     appBuild?: string;       // e.g., "30087"
-    bundleId?: string;       // e.g., "com.mildmania.packperfect"
-    engineVersion?: string;  // e.g., "unity 2022.3.62"
     sdkVersion?: string;     // e.g., "unity 1.0.0"
     
     // Network
     connectionType?: string; // e.g., "wifi", "wwan", "offline"
-    
-    // Additional metadata
-    appSignature?: string;   // Android app signature
-    channelId?: string;      // e.g., "com.android.vending"
     
     // Legacy compatibility
     version?: string;

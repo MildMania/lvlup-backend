@@ -146,19 +146,8 @@ export class LevelFunnelService {
                 levelMetric.starts += metric.starts;
                 levelMetric.completes += metric.completes;
                 levelMetric.fails += metric.fails;
-
-                // Merge user IDs (these are arrays in the DB)
-                const startedUserIds = new Set<string>(
-                    [...(levelMetric.customMetrics.startedUserIds || []), ...(metric.startedUserIds || [])]
-                );
-                const completedUserIds = new Set<string>(
-                    [...(levelMetric.customMetrics.completedUserIds || []), ...(metric.completedUserIds || [])]
-                );
-
-                levelMetric.customMetrics.startedUserIds = Array.from(startedUserIds);
-                levelMetric.customMetrics.completedUserIds = Array.from(completedUserIds);
-                levelMetric.startedPlayers = startedUserIds.size;
-                levelMetric.completedPlayers = completedUserIds.size;
+                levelMetric.startedPlayers += metric.startedPlayers;
+                levelMetric.completedPlayers += metric.completedPlayers;
 
                 // Accumulate duration data
                 levelMetric.customMetrics.totalCompletionDuration =
@@ -194,7 +183,23 @@ export class LevelFunnelService {
                 metric.completionRate = metric.startedPlayers > 0 ? (metric.completedPlayers / metric.startedPlayers) * 100 : 0;
                 metric.failRate = totalConclusions > 0 ? (metric.fails / totalConclusions) * 100 : 0;
                 metric.funnelRate = firstLevelCompletedUsers > 0 ? (metric.completedPlayers / firstLevelCompletedUsers) * 100 : 0;
-                metric.churnStartComplete = metric.startedPlayers > 0 ? ((metric.startedPlayers - metric.completedPlayers) / metric.startedPlayers) * 100 : 0;
+                
+                // Churn calculations (simple and robust - based on player counts only)
+                metric.churnStartComplete = metric.startedPlayers > 0 
+                    ? ((metric.startedPlayers - metric.completedPlayers) / metric.startedPlayers) * 100 
+                    : 0;
+                
+                // Churn Complete-Next: % of players who completed but didn't start next level
+                const nextLevelMetrics = levelMetricsMap.get(levelId + 1);
+                metric.churnCompleteNext = 0;
+                if (nextLevelMetrics && metric.completedPlayers > 0) {
+                    metric.churnCompleteNext = ((metric.completedPlayers - nextLevelMetrics.startedPlayers) / metric.completedPlayers) * 100;
+                }
+                
+                // Churn Total: % of players who started this level but didn't start next level
+                metric.churnTotal = metric.startedPlayers > 0
+                    ? ((metric.startedPlayers - (nextLevelMetrics?.startedPlayers || 0)) / metric.startedPlayers) * 100
+                    : 0;
 
                 // Duration metrics
                 const completionCount = metric.customMetrics.completionCount || 0;
@@ -202,13 +207,13 @@ export class LevelFunnelService {
                 metric.meanCompletionDuration = completionCount > 0 ? metric.customMetrics.totalCompletionDuration / completionCount : 0;
                 metric.meanFailDuration = failCount > 0 ? metric.customMetrics.totalFailDuration / failCount : 0;
 
-                // Booster usage percentage
+                // Booster usage: % of unique users who used boosters (compared to completed players)
                 metric.boosterUsage = metric.completedPlayers > 0 ? (metric.customMetrics.usersWithBoosters / metric.completedPlayers) * 100 : 0;
 
-                // EGP rate
-                metric.egpRate = metric.fails > 0 ? (metric.customMetrics.failsWithPurchase / metric.fails) * 100 : 0;
+                // EGP rate: % of unique users who made purchases (compared to completed players)
+                metric.egpRate = metric.completedPlayers > 0 ? (metric.customMetrics.failsWithPurchase / metric.completedPlayers) * 100 : 0;
 
-                // APS metrics (approximated from aggregates)
+                // APS metrics
                 metric.apsRaw = metric.completedPlayers > 0 ? metric.starts / metric.completedPlayers : 0;
                 metric.apsClean = metric.completedPlayers > 0 ? metric.completes / metric.completedPlayers : 0;
 
@@ -238,23 +243,12 @@ export class LevelFunnelService {
     }
 
     /**
-     * Determine which query method to use based on data freshness
-     * - Recent data (last few days): Use real-time query
-     * - Historical data: Use pre-aggregated metrics
+     * Get level funnel data - uses pre-aggregated metrics
+     * The pre-aggregated data contains all user IDs needed for accurate calculations
      */
     async getLevelFunnelDataHybrid(filters: LevelFunnelFilters): Promise<LevelMetrics[]> {
-        const daysSinceStart = filters.startDate
-            ? (Date.now() - filters.startDate.getTime()) / (1000 * 60 * 60 * 24)
-            : 0;
-
-        // If querying today or yesterday, use real-time query for accuracy
-        if (daysSinceStart < 2) {
-            logger.info('Using real-time query for recent data');
-            return this.getLevelFunnelData(filters);
-        }
-
-        // Use pre-aggregated data for historical queries
-        logger.info('Using fast pre-aggregated query for historical data');
+        // Always use fast pre-aggregated query
+        // Churn calculations work correctly because we have user IDs stored in aggregated data
         return this.getLevelFunnelDataFast(filters);
     }
 

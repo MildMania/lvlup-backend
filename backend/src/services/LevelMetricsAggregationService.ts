@@ -111,9 +111,9 @@ export class LevelMetricsAggregationService {
             failsWithPurchase: metrics.failsWithPurchase,
             updatedAt: new Date()
           }
-        });
+          });
 
-        upsertCount++;
+          upsertCount++;
         } catch (upsertError) {
           logger.warn(`Failed to upsert metric group: ${upsertError}`);
         }
@@ -148,6 +148,8 @@ export class LevelMetricsAggregationService {
       fails: number;
       startedUserIds: Set<string>;
       completedUserIds: Set<string>;
+      usersWithBoostersSet?: Set<string>; // For tracking unique users with boosters
+      failsWithPurchaseSet?: Set<string>; // For tracking unique users with purchases
       totalCompletionDuration: number;
       totalFailDuration: number;
       completionCount: number;
@@ -180,17 +182,19 @@ export class LevelMetricsAggregationService {
           platform: event.platform,
           countryCode: event.countryCode,
           appVersion: event.appVersion,
-          startedPlayers: 0,
-          completedPlayers: 0,
           starts: 0,
           completes: 0,
           fails: 0,
           startedUserIds: new Set<string>(),
           completedUserIds: new Set<string>(),
+          usersWithBoostersSet: new Set<string>(),
+          failsWithPurchaseSet: new Set<string>(),
           totalCompletionDuration: 0,
           totalFailDuration: 0,
           completionCount: 0,
           failCount: 0,
+          startedPlayers: 0,
+          completedPlayers: 0,
           usersWithBoosters: 0,
           failsWithPurchase: 0
         });
@@ -217,9 +221,12 @@ export class LevelMetricsAggregationService {
           group.completionCount++;
         }
 
-        // Check for boosters
+        // Check for boosters - track unique users per group
         if (props?.boosters && Array.isArray(props.boosters) && props.boosters.length > 0) {
-          group.usersWithBoosters++;
+          if (!group.usersWithBoostersSet) {
+            group.usersWithBoostersSet = new Set<string>();
+          }
+          group.usersWithBoostersSet.add(event.userId);
         }
       } else if (event.eventName === 'level_failed') {
         group.fails++;
@@ -234,17 +241,22 @@ export class LevelMetricsAggregationService {
           group.failCount++;
         }
 
-        // Check for purchase after failure
+        // Check for purchase after failure - track unique users per group
         if (props?.purchaseAfterFail || props?.madePurchaseAfterFail) {
-          group.failsWithPurchase++;
+          if (!group.failsWithPurchaseSet) {
+            group.failsWithPurchaseSet = new Set<string>();
+          }
+          group.failsWithPurchaseSet.add(event.userId);
         }
       }
     }
 
-    // Calculate unique user counts
+    // Calculate unique user counts and convert Sets to counts
     for (const group of groups.values()) {
       group.startedPlayers = group.startedUserIds.size;
       group.completedPlayers = group.completedUserIds.size;
+      group.usersWithBoosters = group.usersWithBoostersSet?.size || 0;
+      group.failsWithPurchase = group.failsWithPurchaseSet?.size || 0;
     }
 
     return groups;

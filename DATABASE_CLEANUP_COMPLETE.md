@@ -155,11 +155,34 @@ After migration:
 
 ## SDK Compatibility
 
-### Backward Compatible
-The SDK can still send these fields, they will just be ignored:
-- Existing SDK versions continue working
-- No SDK updates required
-- Fields are simply not stored
+### ✅ Fully Backward Compatible - No Breaking Changes
+
+**Existing SDK requests will continue working without any changes:**
+
+1. **SDK sends removed fields** → Backend receives them → **Silently ignores them** → No error
+2. **SDK doesn't send removed fields** → Backend handles as NULL → No error
+3. **SDK sends only required fields** → Works as before → No error
+
+**Why it's safe:**
+- All fields are optional (`field?: type`)
+- Backend uses null coalescing (`field ?? null`)
+- Prisma only inserts fields defined in schema
+- Extra fields in request body are ignored
+- No validation checks for removed fields
+
+**Example:**
+```typescript
+// SDK sends (old version):
+{ eventName: "test", latitude: 37.7, bundleId: "com.app" }
+
+// Backend receives all fields but only saves:
+{ eventName: "test" } // latitude and bundleId ignored, no error
+```
+
+**No SDK updates required:**
+- Existing SDK versions work unchanged
+- Fields are simply not stored in database
+- No errors, warnings, or breaking changes
 
 ### Future SDK Updates
 Consider removing these fields from SDK to reduce payload size:

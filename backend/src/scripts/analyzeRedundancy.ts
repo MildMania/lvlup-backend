@@ -28,20 +28,13 @@ export async function analyzeEventFieldUsage(): Promise<FieldUsageStats[]> {
 
     // Fields to analyze (potentially redundant or rarely used)
     const fieldsToCheck = [
-        'country',        // Duplicate of countryCode
         'manufacturer',   // Device manufacturer
         'device',         // Device model
         'osVersion',      // OS version
-        'latitude',       // Geographic coordinate
-        'longitude',      // Geographic coordinate
-        'city',           // City name
-        'region',         // State/region
-        'timezone',       // Timezone
-        'connectionType', // Network type
-        'appSignature',   // Android signature
-        'channelId',      // Distribution channel
         'deviceId',       // Device identifier (also in User)
         'platform',       // Platform (also in User/Session)
+        'connectionType', // Network type
+        'sessionNum',     // Session number
     ];
 
     const stats: FieldUsageStats[] = [];
@@ -96,33 +89,17 @@ export async function checkDuplicateStorage() {
         duplicates: []
     };
 
-    // Check country vs countryCode duplication
-    const eventsWithBothCountry = await prisma.event.count({
-        where: {
-            AND: [
-                { country: { not: null } },
-                { countryCode: { not: null } }
-            ]
-        }
-    });
-
+    // Check countryCode usage (country field already removed)
     const totalEventsWithCountry = await prisma.event.count({
         where: {
-            OR: [
-                { country: { not: null } },
-                { countryCode: { not: null } }
-            ]
+            countryCode: { not: null }
         }
     });
 
     results.duplicates.push({
-        issue: 'country vs countryCode',
-        eventsWithBoth: eventsWithBothCountry,
+        issue: 'countryCode usage',
         totalEventsWithCountryData: totalEventsWithCountry,
-        duplicationRate: totalEventsWithCountry > 0 
-            ? Math.round((eventsWithBothCountry / totalEventsWithCountry) * 100) 
-            : 0,
-        recommendation: 'Drop Event.country, keep Event.countryCode'
+        note: 'country field already removed, only countryCode remains'
     });
 
     // Check User vs Event platform/deviceId duplication
@@ -206,9 +183,13 @@ async function runFullAnalysis() {
         });
 
         console.log('\n🗑️  Safe to drop (redundant):');
-        redundantFields.forEach(f => {
-            console.log(`   - ${f} (duplicate of countryCode)`);
-        });
+        if (redundantFields.length === 0) {
+            console.log('   (None - redundant fields already removed)');
+        } else {
+            redundantFields.forEach(f => {
+                console.log(`   - ${f}`);
+            });
+        }
 
         // 4. Estimate total savings
         const allFieldsToDrop = [

@@ -357,7 +357,6 @@ export class AnalyticsService {
                     // App info - prefer event-level, fallback to deviceInfo
                     appVersion: eventData.appVersion ?? deviceInfo.appVersion ?? null,
                     appBuild: eventData.appBuild ?? deviceInfo.appBuild ?? null,
-                    bundleId: eventData.bundleId ?? deviceInfo.bundleId ?? null,
                     sdkVersion: eventData.sdkVersion ?? deviceInfo.sdkVersion ?? null,
                     
                     // Network & Additional - prefer event-level, fallback to deviceInfo
@@ -640,14 +639,11 @@ export class AnalyticsService {
                     // App info
                     appVersion: true,
                     appBuild: true,
-                    bundleId: true,
-                    engineVersion: true,
                     sdkVersion: true,
                     
                     // Network & Additional
                     connectionType: true,
                     sessionNum: true,
-                    appSignature: true,
                     
                     // Geographic location (minimal)
                     countryCode: true,

@@ -22,6 +22,7 @@
     "postinstall": "prisma generate",
     "deploy": "npm run build",
     "analyze:redundancy": "node dist/scripts/analyzeRedundancy.js",
+    "backfill:level-metrics": "ts-node src/scripts/backfillLevelMetrics.ts",
     "env:local": "cd .. && ./switch-env.sh local",
     "env:prod": "cd .. && ./switch-env.sh production",
     "env:status": "cd .. && ./switch-env.sh status"
@@ -41,6 +42,7 @@
     "helmet": "^8.1.0",
     "jsonwebtoken": "^9.0.3",
     "morgan": "^1.10.1",
+    "node-cron": "^4.2.1",
     "openai": "^6.3.0",
     "pg": "^8.17.1",
     "prisma": "^6.16.2",
@@ -62,6 +64,7 @@
     "@types/jsonwebtoken": "^9.0.10",
     "@types/morgan": "^1.9.10",
     "@types/node": "^24.5.2",
+    "@types/node-cron": "^3.0.11",
     "@types/qrcode": "^1.5.6",
     "@types/semver": "^7.7.1",
     "@types/speakeasy": "^2.0.10",

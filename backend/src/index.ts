@@ -8,6 +8,7 @@ import apiRoutes from './routes';
 import logger from './utils/logger';
 import { sessionHeartbeatService } from './services/SessionHeartbeatService';
 import dataRetentionService from './services/DataRetentionService';
+import { startLevelMetricsAggregationJob } from './jobs/levelMetricsAggregation';
 
 // Load environment variables
 dotenv.config();
@@ -179,6 +180,10 @@ app.listen(PORT, '0.0.0.0', () => {
     // Start data retention service
     dataRetentionService.start();
     logger.info('Data retention service started');
+    
+    // Start level metrics aggregation cron job
+    startLevelMetricsAggregationJob();
+    logger.info('Level metrics aggregation cron job started');
 });
 
 // Graceful shutdown

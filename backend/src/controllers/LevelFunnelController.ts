@@ -7,6 +7,9 @@ export class LevelFunnelController {
     /**
      * Get level funnel data
      * GET /api/analytics/level-funnel
+     * Query params:
+     * - useFast=true (default): Use pre-aggregated data (fast)
+     * - useFast=false: Use raw events (legacy, for validation)
      */
     async getLevelFunnel(req: Request, res: Response<ApiResponse>) {
         try {
@@ -20,7 +23,8 @@ export class LevelFunnelController {
                 abTestId,
                 levelFunnel,
                 levelFunnelVersion,
-                levelLimit
+                levelLimit,
+                useFast
             } = req.query;
 
             if (!gameId) {
@@ -68,7 +72,11 @@ export class LevelFunnelController {
                 });
             }
 
-            const levels = await levelFunnelService.getLevelFunnelData(filters);
+            // Use fast query by default (unless explicitly disabled)
+            const shouldUseFast = useFast === undefined || useFast === 'true';
+            const levels = shouldUseFast 
+                ? await levelFunnelService.getLevelFunnelDataFast(filters)
+                : await levelFunnelService.getLevelFunnelData(filters);
 
             res.json({
                 success: true,
@@ -85,7 +93,8 @@ export class LevelFunnelController {
                         version: filters.version
                     },
                     totalPlayers: levels[0]?.startedPlayers || 0,
-                    totalLevels: levels.length
+                    totalLevels: levels.length,
+                    queryMethod: shouldUseFast ? 'fast' : 'legacy'
                 }
             });
         } catch (error) {

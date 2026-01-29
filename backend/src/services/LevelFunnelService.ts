@@ -31,8 +31,9 @@ interface LevelMetrics {
     churnTotal: number; // Total churn rate
     churnStartComplete: number;
     churnCompleteNext: number;
-    apsRaw: number; // All starts from completing users (includes orphaned starts)
-    apsClean: number; // Only starts with matching conclusions (filters out orphaned starts)
+    aps: number; // Attempts per success: starts / completes
+    apsRaw?: number; // Backward compatibility: same as aps (deprecated, use aps instead)
+    apsClean?: number; // Backward compatibility: always 0 (deprecated)
     meanCompletionDuration: number;
     meanFailDuration: number;
     cumulativeAvgTime: number; // Cumulative average time from level 1 to current level
@@ -43,7 +44,547 @@ interface LevelMetrics {
 
 export class LevelFunnelService {
     /**
-     * Get level funnel data with all metrics
+     * Get level funnel data with all metrics (FAST VERSION using pre-aggregated data)
+     * Uses historical aggregated data + today's raw events for real-time updates
+     */
+    async getLevelFunnelDataFast(filters: LevelFunnelFilters): Promise<LevelMetrics[]> {
+        try {
+            const { gameId, startDate, endDate, country, platform, version, levelFunnel, levelFunnelVersion, levelLimit = 100 } = filters;
+
+            logger.info(`Starting FAST level funnel query for game ${gameId}`);
+            const queryStart = Date.now();
+
+            // Determine date ranges
+            const now = new Date();
+            const today = new Date(now);
+            today.setHours(0, 0, 0, 0);
+            
+            const start = startDate || new Date(0);
+            const end = endDate || new Date();
+
+            // Query pre-aggregated data (yesterday and before)
+            const yesterday = new Date(today);
+            yesterday.setDate(yesterday.getDate() - 1);
+
+            let historicalMetrics: any[] = [];
+            if (start < today) {
+                const historicalEnd = end < today ? end : yesterday;
+                historicalMetrics = await this.queryAggregatedMetrics(gameId, start, historicalEnd, {
+                    country,
+                    platform,
+                    version,
+                    levelFunnel,
+                    levelFunnelVersion
+                });
+            }
+
+            // Query raw events for today ONLY if today is within the selected date range
+            let todayMetrics: any[] = [];
+            if (end >= today && start <= today) {
+                todayMetrics = await this.queryTodayRawEvents(gameId, today, {
+                    country,
+                    platform,
+                    version,
+                    levelFunnel,
+                    levelFunnelVersion
+                });
+            }
+
+            // Merge historical + today data
+            const mergedMetrics = this.mergeHistoricalAndTodayMetrics(historicalMetrics, todayMetrics);
+
+            // Calculate derived metrics
+            const levelMetrics = this.calculateDerivedMetrics(mergedMetrics, levelLimit);
+
+            const totalDuration = Date.now() - queryStart;
+            logger.info(`FAST level funnel query completed in ${totalDuration}ms (${levelMetrics.length} levels)`);
+
+            return levelMetrics;
+        } catch (error) {
+            logger.error('Error in getLevelFunnelDataFast:', error);
+            throw error;
+        }
+    }
+
+    /**
+     * Query pre-aggregated metrics from LevelMetricsDaily
+     */
+    private async queryAggregatedMetrics(
+        gameId: string,
+        startDate: Date,
+        endDate: Date,
+        filters: {
+            country?: string;
+            platform?: string;
+            version?: string;
+            levelFunnel?: string;
+            levelFunnelVersion?: number;
+        }
+    ): Promise<any[]> {
+        const whereClause: any = {
+            gameId,
+            date: {
+                gte: startDate,
+                lte: endDate
+            }
+        };
+
+        // Apply filters
+        if (filters.country) {
+            const countries = filters.country.split(',').map(c => c.trim()).filter(c => c);
+            if (countries.length > 1) {
+                whereClause.countryCode = { in: countries };
+            } else if (countries.length === 1) {
+                whereClause.countryCode = countries[0];
+            }
+        }
+
+        if (filters.platform) {
+            const platforms = filters.platform.split(',').map(p => p.trim()).filter(p => p);
+            if (platforms.length > 1) {
+                whereClause.platform = { in: platforms };
+            } else if (platforms.length === 1) {
+                whereClause.platform = platforms[0];
+            }
+        }
+
+        if (filters.version) {
+            const versions = filters.version.split(',').map(v => v.trim()).filter(v => v);
+            if (versions.length > 1) {
+                whereClause.appVersion = { in: versions };
+            } else if (versions.length === 1) {
+                whereClause.appVersion = versions[0];
+            }
+        }
+
+        if (filters.levelFunnel && filters.levelFunnelVersion) {
+            const funnels = filters.levelFunnel.split(',').map(f => f.trim()).filter(f => f);
+            const versions = filters.levelFunnelVersion.toString().split(',').map(v => parseInt(v.trim())).filter(v => !isNaN(v));
+            
+            if (funnels.length === 1 && versions.length === 1) {
+                whereClause.levelFunnel = funnels[0];
+                whereClause.levelFunnelVersion = versions[0];
+            } else if (funnels.length > 0 && versions.length > 0) {
+                const allFunnels = [...new Set(funnels)];
+                const allVersions = [...new Set(versions)];
+                whereClause.levelFunnel = { in: allFunnels };
+                whereClause.levelFunnelVersion = { in: allVersions };
+            }
+        } else if (filters.levelFunnel) {
+            const funnels = filters.levelFunnel.split(',').map(f => f.trim()).filter(f => f);
+            if (funnels.length > 1) {
+                whereClause.levelFunnel = { in: funnels };
+            } else if (funnels.length === 1) {
+                whereClause.levelFunnel = funnels[0];
+            }
+        } else if (filters.levelFunnelVersion) {
+            const versions = filters.levelFunnelVersion.toString().split(',').map(v => parseInt(v.trim())).filter(v => !isNaN(v));
+            if (versions.length > 1) {
+                whereClause.levelFunnelVersion = { in: versions };
+            } else if (versions.length === 1) {
+                whereClause.levelFunnelVersion = versions[0];
+            }
+        }
+
+        const aggregatedData = await prisma.levelMetricsDaily.findMany({
+            where: whereClause,
+            select: {
+                levelId: true,
+                starts: true,
+                completes: true,
+                fails: true,
+                startedPlayers: true,
+                completedPlayers: true,
+                boosterUsers: true,
+                totalBoosterUsage: true,
+                egpUsers: true,
+                totalEgpUsage: true,
+                totalCompletionDuration: true,
+                completionCount: true,
+                totalFailDuration: true,
+                failCount: true
+            }
+        });
+
+        // Group by levelId and sum metrics
+        const grouped = new Map<number, any>();
+        for (const row of aggregatedData) {
+            if (!grouped.has(row.levelId)) {
+                grouped.set(row.levelId, {
+                    levelId: row.levelId,
+                    starts: 0,
+                    completes: 0,
+                    fails: 0,
+                    startedPlayers: 0,
+                    completedPlayers: 0,
+                    boosterUsers: 0,
+                    totalBoosterUsage: 0,
+                    egpUsers: 0,
+                    totalEgpUsage: 0,
+                    totalCompletionDuration: BigInt(0),
+                    completionCount: 0,
+                    totalFailDuration: BigInt(0),
+                    failCount: 0
+                });
+            }
+
+            const group = grouped.get(row.levelId)!;
+            group.starts += row.starts;
+            group.completes += row.completes;
+            group.fails += row.fails;
+            group.startedPlayers += row.startedPlayers;
+            group.completedPlayers += row.completedPlayers;
+            group.boosterUsers += row.boosterUsers;
+            group.totalBoosterUsage += row.totalBoosterUsage;
+            group.egpUsers += row.egpUsers;
+            group.totalEgpUsage += row.totalEgpUsage;
+            group.totalCompletionDuration += BigInt(row.totalCompletionDuration);
+            group.completionCount += row.completionCount;
+            group.totalFailDuration += BigInt(row.totalFailDuration);
+            group.failCount += row.failCount;
+        }
+
+        return Array.from(grouped.values());
+    }
+
+    /**
+     * Query today's raw events and aggregate them in memory
+     */
+    private async queryTodayRawEvents(
+        gameId: string,
+        today: Date,
+        filters: {
+            country?: string;
+            platform?: string;
+            version?: string;
+            levelFunnel?: string;
+            levelFunnelVersion?: number;
+        }
+    ): Promise<any[]> {
+        const whereClause: any = {
+            gameId,
+            eventName: { in: ['level_start', 'level_complete', 'level_failed'] },
+            timestamp: { gte: today }
+        };
+
+        // Apply same filters as main query
+        if (filters.country) {
+            const countries = filters.country.split(',').map(c => c.trim()).filter(c => c);
+            if (countries.length > 1) {
+                whereClause.countryCode = { in: countries };
+            } else if (countries.length === 1) {
+                whereClause.countryCode = countries[0];
+            }
+        }
+
+        if (filters.platform) {
+            const platforms = filters.platform.split(',').map(p => p.trim()).filter(p => p);
+            if (platforms.length > 1) {
+                whereClause.platform = { in: platforms };
+            } else if (platforms.length === 1) {
+                whereClause.platform = platforms[0];
+            }
+        }
+
+        if (filters.version) {
+            const versions = filters.version.split(',').map(v => v.trim()).filter(v => v);
+            if (versions.length > 1) {
+                whereClause.appVersion = { in: versions };
+            } else if (versions.length === 1) {
+                whereClause.appVersion = versions[0];
+            }
+        }
+
+        if (filters.levelFunnel && filters.levelFunnelVersion) {
+            const funnels = filters.levelFunnel.split(',').map(f => f.trim()).filter(f => f);
+            const versions = filters.levelFunnelVersion.toString().split(',').map(v => parseInt(v.trim())).filter(v => !isNaN(v));
+            
+            if (funnels.length === 1 && versions.length === 1) {
+                whereClause.levelFunnel = funnels[0];
+                whereClause.levelFunnelVersion = versions[0];
+            } else if (funnels.length > 0 && versions.length > 0) {
+                const allFunnels = [...new Set(funnels)];
+                const allVersions = [...new Set(versions)];
+                whereClause.levelFunnel = { in: allFunnels };
+                whereClause.levelFunnelVersion = { in: allVersions };
+            }
+        } else if (filters.levelFunnel) {
+            const funnels = filters.levelFunnel.split(',').map(f => f.trim()).filter(f => f);
+            if (funnels.length > 1) {
+                whereClause.levelFunnel = { in: funnels };
+            } else if (funnels.length === 1) {
+                whereClause.levelFunnel = funnels[0];
+            }
+        } else if (filters.levelFunnelVersion) {
+            const versions = filters.levelFunnelVersion.toString().split(',').map(v => parseInt(v.trim())).filter(v => !isNaN(v));
+            if (versions.length > 1) {
+                whereClause.levelFunnelVersion = { in: versions };
+            } else if (versions.length === 1) {
+                whereClause.levelFunnelVersion = versions[0];
+            }
+        }
+
+        const events = await prisma.event.findMany({
+            where: whereClause,
+            select: {
+                userId: true,
+                eventName: true,
+                properties: true,
+                timestamp: true
+            },
+            orderBy: { timestamp: 'asc' }
+        });
+
+        // Group by level and aggregate (same logic as original)
+        return this.aggregateRawEventsInMemory(events);
+    }
+
+    /**
+     * Aggregate raw events in memory (used for today's data)
+     */
+    private aggregateRawEventsInMemory(events: any[]): any[] {
+        const levelGroups = this.groupEventsByLevel(events);
+        const result: any[] = [];
+
+        for (const [levelId, levelEvents] of levelGroups.entries()) {
+            const startEvents = levelEvents.filter(e => e.eventName === 'level_start');
+            const completeEvents = levelEvents.filter(e => e.eventName === 'level_complete');
+            const failEvents = levelEvents.filter(e => e.eventName === 'level_failed');
+
+            const startedUserIds = new Set(startEvents.map(e => e.userId));
+            const completedUserIds = new Set(completeEvents.map(e => e.userId));
+
+            // Booster usage (unique users and total count)
+            const usersWithBoosters = new Set<string>();
+            let totalBoosterUsage = 0;
+            [...completeEvents, ...failEvents].forEach(e => {
+                const props = e.properties as any;
+                if (props?.boosters && typeof props.boosters === 'object' && Object.keys(props.boosters).length > 0) {
+                    usersWithBoosters.add(e.userId);
+                    // Sum total booster count
+                    const boosterCount = Object.values(props.boosters).reduce((sum: number, val: any) => {
+                        return sum + (typeof val === 'number' ? val : 0);
+                    }, 0);
+                    totalBoosterUsage += boosterCount;
+                }
+            });
+
+            // EGP usage (unique users and total count)
+            const usersWithEGP = new Set<string>();
+            let totalEgpUsage = 0;
+            [...completeEvents, ...failEvents].forEach(e => {
+                const props = e.properties as any;
+                const egpValue = props?.egp ?? props?.endGamePurchase;
+                if ((typeof egpValue === 'number' && egpValue > 0) || egpValue === true) {
+                    usersWithEGP.add(e.userId);
+                    totalEgpUsage += typeof egpValue === 'number' ? egpValue : 1;
+                }
+            });
+
+            // Duration calculations
+            const completionDurations = this.calculateDurations(startEvents, completeEvents);
+            const failDurations = this.calculateDurations(startEvents, failEvents);
+
+            result.push({
+                levelId,
+                starts: startEvents.length,
+                completes: completeEvents.length,
+                fails: failEvents.length,
+                startedPlayers: startedUserIds.size,
+                completedPlayers: completedUserIds.size,
+                boosterUsers: usersWithBoosters.size,
+                totalBoosterUsage: totalBoosterUsage,
+                egpUsers: usersWithEGP.size,
+                totalEgpUsage: totalEgpUsage,
+                totalCompletionDuration: BigInt(Math.floor(completionDurations.reduce((sum, d) => sum + d, 0))),
+                completionCount: completionDurations.length,
+                totalFailDuration: BigInt(Math.floor(failDurations.reduce((sum, d) => sum + d, 0))),
+                failCount: failDurations.length
+            });
+        }
+
+        return result;
+    }
+
+    /**
+     * Merge historical aggregated data with today's raw event data
+     */
+    private mergeHistoricalAndTodayMetrics(historical: any[], today: any[]): Map<number, any> {
+        const merged = new Map<number, any>();
+
+        // Add historical data
+        for (const hist of historical) {
+            merged.set(hist.levelId, {
+                levelId: hist.levelId,
+                starts: hist.starts,
+                completes: hist.completes,
+                fails: hist.fails,
+                startedPlayers: hist.startedPlayers,
+                completedPlayers: hist.completedPlayers,
+                boosterUsers: hist.boosterUsers,
+                totalBoosterUsage: hist.totalBoosterUsage,
+                egpUsers: hist.egpUsers,
+                totalEgpUsage: hist.totalEgpUsage,
+                totalCompletionDuration: hist.totalCompletionDuration,
+                completionCount: hist.completionCount,
+                totalFailDuration: hist.totalFailDuration,
+                failCount: hist.failCount
+            });
+        }
+
+        // Merge today's data
+        for (const todayData of today) {
+            if (!merged.has(todayData.levelId)) {
+                merged.set(todayData.levelId, {
+                    levelId: todayData.levelId,
+                    starts: 0,
+                    completes: 0,
+                    fails: 0,
+                    startedPlayers: 0,
+                    completedPlayers: 0,
+                    boosterUsers: 0,
+                    totalBoosterUsage: 0,
+                    egpUsers: 0,
+                    totalEgpUsage: 0,
+                    totalCompletionDuration: BigInt(0),
+                    completionCount: 0,
+                    totalFailDuration: BigInt(0),
+                    failCount: 0
+                });
+            }
+
+            const group = merged.get(todayData.levelId)!;
+            group.starts += todayData.starts;
+            group.completes += todayData.completes;
+            group.fails += todayData.fails;
+            group.startedPlayers += todayData.startedPlayers;
+            group.completedPlayers += todayData.completedPlayers;
+            group.boosterUsers += todayData.boosterUsers;
+            group.totalBoosterUsage += todayData.totalBoosterUsage;
+            group.egpUsers += todayData.egpUsers;
+            group.totalEgpUsage += todayData.totalEgpUsage;
+            group.totalCompletionDuration += todayData.totalCompletionDuration;
+            group.completionCount += todayData.completionCount;
+            group.totalFailDuration += todayData.totalFailDuration;
+            group.failCount += todayData.failCount;
+        }
+
+        return merged;
+    }
+
+    /**
+     * Calculate derived metrics from merged aggregated data
+     * Matches exact logic from calculateLevelMetrics()
+     */
+    private calculateDerivedMetrics(mergedData: Map<number, any>, levelLimit: number): LevelMetrics[] {
+        const levelMetrics: LevelMetrics[] = [];
+        
+        // Sort levels
+        const levelIds = Array.from(mergedData.keys()).sort((a, b) => a - b);
+
+        // Get first level started users for funnel rate
+        let firstLevelStartedUsers = 0;
+        if (levelIds.length > 0 && levelIds[0] !== undefined) {
+            const firstLevel = mergedData.get(levelIds[0]);
+            if (firstLevel) {
+                firstLevelStartedUsers = firstLevel.startedPlayers;
+            }
+        }
+
+        // Apply level limit
+        const limitedLevelIds = levelIds.slice(0, levelLimit);
+
+        for (let i = 0; i < limitedLevelIds.length; i++) {
+            const levelId = limitedLevelIds[i]!;
+            const data = mergedData.get(levelId)!;
+            const nextLevelId = i < limitedLevelIds.length - 1 ? limitedLevelIds[i + 1] : null;
+            const nextLevelData = nextLevelId ? mergedData.get(nextLevelId) : undefined;
+
+            // Defensive: Use 0 if player counts are undefined (old aggregated data)
+            const startedPlayers = data.startedPlayers || 0;
+            const completedPlayers = data.completedPlayers || 0;
+            const totalConclusions = data.completes + data.fails;
+
+            // Derived metrics (matching exact formulas from LevelFunnelService)
+            const winRate = totalConclusions > 0 ? (data.completes / totalConclusions) * 100 : 0;
+            const completionRate = startedPlayers > 0 ? (completedPlayers / startedPlayers) * 100 : 0;
+            const failRate = totalConclusions > 0 ? (data.fails / totalConclusions) * 100 : 0;
+            const funnelRate = firstLevelStartedUsers > 0 ? (completedPlayers / firstLevelStartedUsers) * 100 : 0;
+
+            // APS calculation
+            const aps = data.completes > 0 ? data.starts / data.completes : 0;
+
+            // Duration averages
+            const meanCompletionDuration = data.completionCount > 0
+                ? Number(data.totalCompletionDuration) / data.completionCount
+                : 0;
+            const meanFailDuration = data.failCount > 0
+                ? Number(data.totalFailDuration) / data.failCount
+                : 0;
+
+            // Booster and EGP rates
+            // Defensive: Use 0 if counts are undefined (old aggregated data)
+            const boosterUsers = data.boosterUsers || 0;
+            const egpUsers = data.egpUsers || 0;
+            const boosterUsage = startedPlayers > 0 ? (boosterUsers / startedPlayers) * 100 : 0;
+            const egpRate = startedPlayers > 0 ? (egpUsers / startedPlayers) * 100 : 0;
+
+            // Churn calculations
+            const churnStartComplete = startedPlayers > 0
+                ? ((startedPlayers - completedPlayers) / startedPlayers) * 100
+                : 0;
+
+            let churnCompleteNext = 0;
+            if (nextLevelData) {
+                const nextLevelStarters = nextLevelData.startedPlayers || 0;
+                churnCompleteNext = completedPlayers > 0
+                    ? ((completedPlayers - nextLevelStarters) / completedPlayers) * 100
+                    : 0;
+            }
+
+            const churnTotal = startedPlayers > 0
+                ? ((startedPlayers - completedPlayers + (nextLevelData ? completedPlayers - (nextLevelData.startedPlayers || 0) : 0)) / startedPlayers) * 100
+                : 0;
+
+            levelMetrics.push({
+                levelId,
+                startedPlayers,
+                completedPlayers,
+                starts: data.starts,
+                completes: data.completes,
+                fails: data.fails,
+                winRate: Math.round(winRate * 100) / 100,
+                completionRate: Math.round(completionRate * 100) / 100,
+                failRate: Math.round(failRate * 100) / 100,
+                funnelRate: Math.round(funnelRate * 100) / 100,
+                churnTotal: Math.round(churnTotal * 100) / 100,
+                churnStartComplete: Math.round(churnStartComplete * 100) / 100,
+                churnCompleteNext: Math.round(churnCompleteNext * 100) / 100,
+                aps: Math.round(aps * 100) / 100,
+                apsRaw: Math.round(aps * 100) / 100, // Backward compatibility: same as aps
+                apsClean: 0, // Backward compatibility: deprecated field
+                meanCompletionDuration: Math.round(meanCompletionDuration * 100) / 100,
+                meanFailDuration: Math.round(meanFailDuration * 100) / 100,
+                cumulativeAvgTime: 0,
+                boosterUsage: Math.round(boosterUsage * 100) / 100,
+                egpRate: Math.round(egpRate * 100) / 100,
+                customMetrics: {}
+            });
+        }
+
+        // Calculate cumulative average time
+        let cumulativeTime = 0;
+        for (const metric of levelMetrics) {
+            cumulativeTime += metric.meanCompletionDuration;
+            metric.cumulativeAvgTime = Math.round(cumulativeTime * 100) / 100;
+        }
+
+        return levelMetrics;
+    }
+
+    /**
+     * Get level funnel data with all metrics (LEGACY VERSION using raw events)
+     * Kept for validation and debugging
      */
     async getLevelFunnelData(filters: LevelFunnelFilters): Promise<LevelMetrics[]> {
         try {
@@ -363,22 +904,9 @@ export class LevelFunnelService {
             ? ((usersWhoDidntComplete + usersWhoCompletedButDidntContinue) / usersWhoStarted.size) * 100
             : 0;
 
-        // APS (Attempts Per Success): Two different calculations
-        
-        // 1. Raw APS: All starts from completing users (includes orphaned starts from crashes, etc.)
-        const allStartsFromCompletedUsers = startEvents.filter(e => usersWhoCompleted.has(e.userId)).length;
-        const apsRaw = usersWhoCompleted.size > 0
-            ? allStartsFromCompletedUsers / usersWhoCompleted.size
-            : 0;
-        
-        // 2. Clean APS: Only starts that have a corresponding conclusion (complete or fail)
-        // This filters out orphaned start events from crashes, network issues, etc.
-        const matchedStarts = this.matchStartsWithConclusions(startEvents, [...completeEvents, ...failEvents]);
-        const matchedStartsFromCompletedUsers = matchedStarts.filter(match => 
-            usersWhoCompleted.has(match.userId)
-        ).length;
-        const apsClean = usersWhoCompleted.size > 0
-            ? matchedStartsFromCompletedUsers / usersWhoCompleted.size
+        // APS (Attempts Per Success): starts per complete event
+        const aps = totalCompletes > 0
+            ? totalStarts / totalCompletes
             : 0;
 
         // Mean Completion Duration
@@ -450,8 +978,9 @@ export class LevelFunnelService {
             churnTotal: Math.round(churnTotal * 100) / 100,
             churnStartComplete: Math.round(churnStartComplete * 100) / 100,
             churnCompleteNext: Math.round(churnCompleteNext * 100) / 100,
-            apsRaw: Math.round(apsRaw * 100) / 100,
-            apsClean: Math.round(apsClean * 100) / 100,
+            aps: Math.round(aps * 100) / 100,
+            apsRaw: Math.round(aps * 100) / 100, // Backward compatibility: same as aps
+            apsClean: 0, // Backward compatibility: deprecated field
             meanCompletionDuration: Math.round(meanCompletionDuration * 100) / 100,
             meanFailDuration: Math.round(meanFailDuration * 100) / 100,
             cumulativeAvgTime: 0, // Will be calculated after all levels are processed
@@ -461,37 +990,6 @@ export class LevelFunnelService {
         };
     }
 
-    /**
-     * Match start events with their corresponding conclusion events (complete or fail)
-     * Returns only starts that have a matching conclusion
-     */
-    private matchStartsWithConclusions(startEvents: any[], conclusionEvents: any[]): any[] {
-        const matchedStarts: any[] = [];
-        
-        // Group starts by user
-        const userStarts = new Map<string, any[]>();
-        for (const startEvent of startEvents) {
-            if (!userStarts.has(startEvent.userId)) {
-                userStarts.set(startEvent.userId, []);
-            }
-            userStarts.get(startEvent.userId)!.push(startEvent);
-        }
-        
-        // For each conclusion, find the closest preceding start
-        for (const conclusion of conclusionEvents) {
-            const starts = userStarts.get(conclusion.userId);
-            if (starts && starts.length > 0) {
-                // Find the most recent start before this conclusion
-                const validStarts = starts.filter(s => s.timestamp <= conclusion.timestamp);
-                if (validStarts.length > 0) {
-                    const closestStart = validStarts[validStarts.length - 1];
-                    matchedStarts.push(closestStart);
-                }
-            }
-        }
-        
-        return matchedStarts;
-    }
 
     /**
      * Calculate durations between start and end events for the same user

@@ -34,6 +34,7 @@ model Game {
   users             User[]
   gameAccesses      GameAccess[]
   revenueEvents     Revenue[]
+  levelMetricsDaily LevelMetricsDaily[]
 
   @@map("games")
 }
@@ -803,3 +804,59 @@ enum RevenueType {
   IN_APP_PURCHASE
 }
 
+// ============================================
+// PRE-AGGREGATED ANALYTICS
+// ============================================
+
+model LevelMetricsDaily {
+  id        String   @id @default(cuid())
+  gameId    String
+  date      DateTime // Daily aggregation (date only, time set to 00:00:00)
+  levelId   Int
+  
+  // Filter dimensions (indexed for fast queries)
+  levelFunnel        String  @default("")
+  levelFunnelVersion Int     @default(0)
+  platform           String  @default("") // iOS, Android, etc.
+  countryCode        String  @default("") // US, TR, etc.
+  appVersion         String  @default("") // 0.1, 0.2, etc.
+  
+  // Core event counts (NOT user counts)
+  starts             Int @default(0)
+  completes          Int @default(0)
+  fails              Int @default(0)
+  
+  // Daily unique player counts
+  startedPlayers     Int @default(0)
+  completedPlayers   Int @default(0)
+  
+  // Booster & EGP metrics
+  boosterUsers       Int @default(0) // Count of unique users who used boosters
+  totalBoosterUsage  Int @default(0) // Total number of boosters used (sum across all events)
+  egpUsers           Int @default(0) // Count of unique users who used EGP
+  totalEgpUsage      Int @default(0) // Total number of EGP purchases (sum across all events)
+  
+  // Duration metrics (for calculating averages)
+  totalCompletionDuration BigInt @default(0) // Sum of completion durations in seconds
+  completionCount         Int    @default(0) // Number of matched start->complete pairs
+  
+  totalFailDuration       BigInt @default(0) // Sum of fail durations in seconds
+  failCount               Int    @default(0) // Number of matched start->fail pairs
+  
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  
+  game Game @relation(fields: [gameId], references: [id], onDelete: Cascade)
+  
+  // Composite indexes for fast filtering
+  @@index([gameId, date])
+  @@index([gameId, date, levelId])
+  @@index([gameId, levelFunnel, levelFunnelVersion, date])
+  @@index([platform])
+  @@index([countryCode])
+  @@index([appVersion])
+  
+  // Unique constraint to prevent duplicates (empty strings for nulls)
+  @@unique([gameId, date, levelId, levelFunnel, levelFunnelVersion, platform, countryCode, appVersion], name: "unique_daily_metrics")
+  @@map("level_metrics_daily")
+}

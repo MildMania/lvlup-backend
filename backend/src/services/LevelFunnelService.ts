@@ -213,8 +213,8 @@ export class LevelFunnelService {
                     starts: 0,
                     completes: 0,
                     fails: 0,
-                    startedUserIds: new Set<string>(),
-                    completedUserIds: new Set<string>(),
+                    startedPlayers: 0,
+                    completedPlayers: 0,
                     boosterUsers: 0,
                     totalBoosterUsage: 0,
                     egpUsers: 0,
@@ -230,6 +230,8 @@ export class LevelFunnelService {
             group.starts += row.starts;
             group.completes += row.completes;
             group.fails += row.fails;
+            group.startedPlayers += row.startedPlayers;
+            group.completedPlayers += row.completedPlayers;
             group.boosterUsers += row.boosterUsers;
             group.totalBoosterUsage += row.totalBoosterUsage;
             group.egpUsers += row.egpUsers;
@@ -238,11 +240,6 @@ export class LevelFunnelService {
             group.completionCount += row.completionCount;
             group.totalFailDuration += BigInt(row.totalFailDuration);
             group.failCount += row.failCount;
-
-            // Note: We can't track unique users across days from aggregated data
-            // This is a known limitation - daily unique counts are summed
-            group.startedUserIds.add(`day_${row.levelId}_started_${group.starts}`);
-            group.completedUserIds.add(`day_${row.levelId}_completed_${group.completes}`);
         }
 
         return Array.from(grouped.values());
@@ -391,8 +388,8 @@ export class LevelFunnelService {
                 starts: startEvents.length,
                 completes: completeEvents.length,
                 fails: failEvents.length,
-                startedUserIds,
-                completedUserIds,
+                startedPlayers: startedUserIds.size,
+                completedPlayers: completedUserIds.size,
                 boosterUsers: usersWithBoosters.size,
                 totalBoosterUsage: totalBoosterUsage,
                 egpUsers: usersWithEGP.size,
@@ -420,8 +417,8 @@ export class LevelFunnelService {
                 starts: hist.starts,
                 completes: hist.completes,
                 fails: hist.fails,
-                startedUserIds: hist.startedUserIds,
-                completedUserIds: hist.completedUserIds,
+                startedPlayers: hist.startedPlayers,
+                completedPlayers: hist.completedPlayers,
                 boosterUsers: hist.boosterUsers,
                 totalBoosterUsage: hist.totalBoosterUsage,
                 egpUsers: hist.egpUsers,
@@ -441,8 +438,8 @@ export class LevelFunnelService {
                     starts: 0,
                     completes: 0,
                     fails: 0,
-                    startedUserIds: new Set<string>(),
-                    completedUserIds: new Set<string>(),
+                    startedPlayers: 0,
+                    completedPlayers: 0,
                     boosterUsers: 0,
                     totalBoosterUsage: 0,
                     egpUsers: 0,
@@ -458,6 +455,8 @@ export class LevelFunnelService {
             group.starts += todayData.starts;
             group.completes += todayData.completes;
             group.fails += todayData.fails;
+            group.startedPlayers += todayData.startedPlayers;
+            group.completedPlayers += todayData.completedPlayers;
             group.boosterUsers += todayData.boosterUsers;
             group.totalBoosterUsage += todayData.totalBoosterUsage;
             group.egpUsers += todayData.egpUsers;
@@ -466,14 +465,6 @@ export class LevelFunnelService {
             group.completionCount += todayData.completionCount;
             group.totalFailDuration += todayData.totalFailDuration;
             group.failCount += todayData.failCount;
-
-            // Merge user sets
-            for (const userId of todayData.startedUserIds) {
-                group.startedUserIds.add(userId);
-            }
-            for (const userId of todayData.completedUserIds) {
-                group.completedUserIds.add(userId);
-            }
         }
 
         return merged;
@@ -494,7 +485,7 @@ export class LevelFunnelService {
         if (levelIds.length > 0 && levelIds[0] !== undefined) {
             const firstLevel = mergedData.get(levelIds[0]);
             if (firstLevel) {
-                firstLevelStartedUsers = firstLevel.startedUserIds.size;
+                firstLevelStartedUsers = firstLevel.startedPlayers;
             }
         }
 
@@ -507,8 +498,8 @@ export class LevelFunnelService {
             const nextLevelId = i < limitedLevelIds.length - 1 ? limitedLevelIds[i + 1] : null;
             const nextLevelData = nextLevelId ? mergedData.get(nextLevelId) : undefined;
 
-            const startedPlayers = data.startedUserIds.size;
-            const completedPlayers = data.completedUserIds.size;
+            const startedPlayers = data.startedPlayers;
+            const completedPlayers = data.completedPlayers;
             const totalConclusions = data.completes + data.fails;
 
             // Derived metrics (matching exact formulas from LevelFunnelService)
@@ -518,8 +509,8 @@ export class LevelFunnelService {
             const funnelRate = firstLevelStartedUsers > 0 ? (completedPlayers / firstLevelStartedUsers) * 100 : 0;
 
             // APS calculations
-            // apsRaw: All starts per completing player
-            const apsRaw = completedPlayers > 0 ? data.starts / completedPlayers : 0;
+            // apsRaw: Start attempts per complete event
+            const apsRaw = data.completes > 0 ? data.starts / data.completes : 0;
             
             // apsClean: Obsolete for now (not calculated)
             const apsClean = 0;
@@ -546,14 +537,14 @@ export class LevelFunnelService {
 
             let churnCompleteNext = 0;
             if (nextLevelData) {
-                const nextLevelStarters = nextLevelData.startedUserIds.size;
+                const nextLevelStarters = nextLevelData.startedPlayers;
                 churnCompleteNext = completedPlayers > 0
                     ? ((completedPlayers - nextLevelStarters) / completedPlayers) * 100
                     : 0;
             }
 
             const churnTotal = startedPlayers > 0
-                ? ((startedPlayers - completedPlayers + (nextLevelData ? completedPlayers - nextLevelData.startedUserIds.size : 0)) / startedPlayers) * 100
+                ? ((startedPlayers - completedPlayers + (nextLevelData ? completedPlayers - nextLevelData.startedPlayers : 0)) / startedPlayers) * 100
                 : 0;
 
             levelMetrics.push({
@@ -915,10 +906,10 @@ export class LevelFunnelService {
 
         // APS (Attempts Per Success)
         
-        // Raw APS: All starts from completing users
-        const allStartsFromCompletedUsers = startEvents.filter(e => usersWhoCompleted.has(e.userId)).length;
-        const apsRaw = usersWhoCompleted.size > 0
-            ? allStartsFromCompletedUsers / usersWhoCompleted.size
+        // Raw APS: Start attempts per complete event
+        // How many starts per complete event (conclusion)
+        const apsRaw = totalCompletes > 0
+            ? totalStarts / totalCompletes
             : 0;
         
         // Clean APS: Obsolete for now (not calculated)

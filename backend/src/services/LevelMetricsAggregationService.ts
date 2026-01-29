@@ -177,14 +177,18 @@ export class LevelMetricsAggregationService {
     // Build index of start events by user for duration calculation
     const startEventsByUser = new Map<string, any[]>();
     
+    // Track first-seen dimensions per user per level to avoid cross-dimension duplication
+    // Key: userId:levelId, Value: dimension key
+    const userFirstDimensions = new Map<string, string>();
+    
     for (const event of events) {
       const props = event.properties as any;
       const levelId = props?.levelId;
 
       if (levelId === undefined || levelId === null) continue;
 
-      // Create dimension key
-      const key = this.createDimensionKey(
+      // Create dimension key for this event
+      const eventDimensionKey = this.createDimensionKey(
         levelId,
         event.levelFunnel,
         event.levelFunnelVersion,
@@ -192,6 +196,16 @@ export class LevelMetricsAggregationService {
         event.countryCode,
         event.appVersion
       );
+
+      // Canonicalize dimensions: Use first-seen dimensions for this user+level
+      const userLevelKey = `${event.userId}:${levelId}`;
+      if (!userFirstDimensions.has(userLevelKey)) {
+        // First time seeing this user for this level - record their dimensions
+        userFirstDimensions.set(userLevelKey, eventDimensionKey);
+      }
+      
+      // Get the canonical dimension key for this user+level (their first-seen dimensions)
+      const key = userFirstDimensions.get(userLevelKey)!;
 
       // Initialize group if not exists
       if (!groups.has(key)) {
@@ -302,6 +316,15 @@ export class LevelMetricsAggregationService {
           return sum + (typeof val === 'number' ? val : 0);
         }, 0);
         group.totalBoosterUsage += boosterCount;
+      }
+
+      // Check for EGP on complete events too (user may have revived and completed)
+      const egpValue = props?.egp ?? props?.endGamePurchase;
+      if ((typeof egpValue === 'number' && egpValue > 0) || egpValue === true) {
+        group.usersWithEGP.add(event.userId);
+        // Sum total EGP usage
+        const egpCount = typeof egpValue === 'number' ? egpValue : 1;
+        group.totalEgpUsage += egpCount;
       }
     } 
     else if (event.eventName === 'level_failed') {

@@ -54,18 +54,22 @@ async function backfillLevelMetrics() {
         }
       }
     } else if (args.length === 0) {
-      // All games, last 30 days
-      logger.info('Backfilling metrics for all games (last 30 days)');
+      // All games, last 30 days (excluding today)
+      logger.info('Backfilling metrics for all games (last 30 days, excluding today)');
       
       const games = await service.getGamesWithLevelEvents();
       logger.info(`Found ${games.length} games with level events`);
 
-      const endDate = new Date();
-      endDate.setHours(23, 59, 59, 999);
+      // End date is yesterday (not today - today is handled by real-time queries)
+      const yesterday = new Date();
+      yesterday.setDate(yesterday.getDate() - 1);
+      yesterday.setHours(23, 59, 59, 999);
       
-      const startDate = new Date();
-      startDate.setDate(startDate.getDate() - 30);
+      const startDate = new Date(yesterday);
+      startDate.setDate(startDate.getDate() - 29); // 30 days total including yesterday
       startDate.setHours(0, 0, 0, 0);
+
+      logger.info(`Date range: ${startDate.toISOString().split('T')[0]} to ${yesterday.toISOString().split('T')[0]} (today excluded)`);
 
       let totalSucceeded = 0;
       let totalFailed = 0;
@@ -74,7 +78,7 @@ async function backfillLevelMetrics() {
       for (const gameId of games) {
         logger.info(`Processing game: ${gameId}`);
         try {
-          await service.backfillHistorical(gameId, startDate, endDate);
+          await service.backfillHistorical(gameId, startDate, yesterday);
           totalSucceeded++;
         } catch (error: any) {
           totalFailed++;

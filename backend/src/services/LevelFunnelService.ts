@@ -31,8 +31,7 @@ interface LevelMetrics {
     churnTotal: number; // Total churn rate
     churnStartComplete: number;
     churnCompleteNext: number;
-    apsRaw: number; // All starts from completing users (includes orphaned starts)
-    apsClean: number; // Only starts with matching conclusions (filters out orphaned starts)
+    aps: number; // Attempts per success: starts / completes
     meanCompletionDuration: number;
     meanFailDuration: number;
     cumulativeAvgTime: number; // Cumulative average time from level 1 to current level
@@ -54,7 +53,8 @@ export class LevelFunnelService {
             const queryStart = Date.now();
 
             // Determine date ranges
-            const today = new Date();
+            const now = new Date();
+            const today = new Date(now);
             today.setHours(0, 0, 0, 0);
             
             const start = startDate || new Date(0);
@@ -76,9 +76,9 @@ export class LevelFunnelService {
                 });
             }
 
-            // Query raw events for today
+            // Query raw events for today ONLY if today is within the selected date range
             let todayMetrics: any[] = [];
-            if (end >= today) {
+            if (end >= today && start <= today) {
                 todayMetrics = await this.queryTodayRawEvents(gameId, today, {
                     country,
                     platform,
@@ -508,12 +508,8 @@ export class LevelFunnelService {
             const failRate = totalConclusions > 0 ? (data.fails / totalConclusions) * 100 : 0;
             const funnelRate = firstLevelStartedUsers > 0 ? (completedPlayers / firstLevelStartedUsers) * 100 : 0;
 
-            // APS calculations
-            // apsRaw: Start attempts per complete event
-            const apsRaw = data.completes > 0 ? data.starts / data.completes : 0;
-            
-            // apsClean: Obsolete for now (not calculated)
-            const apsClean = 0;
+            // APS calculation
+            const aps = data.completes > 0 ? data.starts / data.completes : 0;
 
             // Duration averages
             const meanCompletionDuration = data.completionCount > 0
@@ -561,8 +557,7 @@ export class LevelFunnelService {
                 churnTotal: Math.round(churnTotal * 100) / 100,
                 churnStartComplete: Math.round(churnStartComplete * 100) / 100,
                 churnCompleteNext: Math.round(churnCompleteNext * 100) / 100,
-                apsRaw: Math.round(apsRaw * 100) / 100,
-                apsClean: Math.round(apsClean * 100) / 100,
+                aps: Math.round(aps * 100) / 100,
                 meanCompletionDuration: Math.round(meanCompletionDuration * 100) / 100,
                 meanFailDuration: Math.round(meanFailDuration * 100) / 100,
                 cumulativeAvgTime: 0,
@@ -904,16 +899,10 @@ export class LevelFunnelService {
             ? ((usersWhoDidntComplete + usersWhoCompletedButDidntContinue) / usersWhoStarted.size) * 100
             : 0;
 
-        // APS (Attempts Per Success)
-        
-        // Raw APS: Start attempts per complete event
-        // How many starts per complete event (conclusion)
-        const apsRaw = totalCompletes > 0
+        // APS (Attempts Per Success): starts per complete event
+        const aps = totalCompletes > 0
             ? totalStarts / totalCompletes
             : 0;
-        
-        // Clean APS: Obsolete for now (not calculated)
-        const apsClean = 0;
 
         // Mean Completion Duration
         const completionDurations = this.calculateDurations(startEvents, completeEvents);
@@ -984,8 +973,7 @@ export class LevelFunnelService {
             churnTotal: Math.round(churnTotal * 100) / 100,
             churnStartComplete: Math.round(churnStartComplete * 100) / 100,
             churnCompleteNext: Math.round(churnCompleteNext * 100) / 100,
-            apsRaw: Math.round(apsRaw * 100) / 100,
-            apsClean: Math.round(apsClean * 100) / 100,
+            aps: Math.round(aps * 100) / 100,
             meanCompletionDuration: Math.round(meanCompletionDuration * 100) / 100,
             meanFailDuration: Math.round(meanFailDuration * 100) / 100,
             cumulativeAvgTime: 0, // Will be calculated after all levels are processed

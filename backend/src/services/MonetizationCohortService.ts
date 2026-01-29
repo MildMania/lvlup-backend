@@ -88,63 +88,21 @@ export class MonetizationCohortService {
             const cohortDates = Object.keys(cohorts).sort();
 
             const cohortData: MonetizationCohortData[] = [];
-            
-            // Early exit if no cohorts
-            if (cohortDates.length === 0) {
-                return cohortData;
-            }
 
-            // Get all user IDs upfront
-            const allUserIds = Object.values(cohorts).flat();
-            
-            // Batch fetch all sessions for all users in date range (MUCH faster than individual queries)
-            const allSessions = await this.prisma.session.findMany({
-                where: {
-                    gameId,
-                    userId: { in: allUserIds },
-                    startTime: {
-                        gte: startDate,
-                        lte: new Date(new Date(endDate).getTime() + maxDays * 24 * 60 * 60 * 1000)
-                    }
-                },
-                select: {
-                    userId: true,
-                    startTime: true
-                }
-            });
-
-            // Batch fetch all revenue events for all users in date range (MUCH faster)
-            const allRevenue = await this.prisma.revenue.findMany({
-                where: {
-                    gameId,
-                    userId: { in: allUserIds },
-                    timestamp: {
-                        gte: startDate,
-                        lte: new Date(new Date(endDate).getTime() + maxDays * 24 * 60 * 60 * 1000)
-                    }
-                },
-                select: {
-                    userId: true,
-                    timestamp: true,
-                    revenue: true,
-                    revenueType: true
-                }
-            });
-
-            logger.info(`Fetched ${allSessions.length} sessions and ${allRevenue.length} revenue events`);
-
-            const now = new Date();
-
-            // Process each cohort (now using in-memory data, no more DB queries!)
             for (const cohortDate of cohortDates) {
                 const userIds = cohorts[cohortDate];
                 if (!userIds || userIds.length === 0) continue;
                 
+                // Parse cohort date properly with timezone consideration
                 const cohortStartDate = new Date(cohortDate + 'T00:00:00.000Z');
+
+                logger.info(`Processing cohort ${cohortDate} with ${userIds.length} users`);
+
                 const metrics: MonetizationCohortData['metrics'] = {};
 
-                // Process each day offset
+                // Calculate metrics for each day offset (Day 0, Day 1, Day 7, etc.)
                 for (let dayOffset = 0; dayOffset <= maxDays; dayOffset++) {
+                    // Calculate period boundaries correctly
                     const periodStart = new Date(cohortStartDate);
                     periodStart.setUTCDate(periodStart.getUTCDate() + dayOffset);
                     periodStart.setUTCHours(0, 0, 0, 0);
@@ -153,8 +111,10 @@ export class MonetizationCohortService {
                     periodEnd.setUTCDate(periodEnd.getUTCDate() + 1);
                     periodEnd.setUTCHours(0, 0, 0, 0);
 
-                    // Check if day has been reached
+                    // Check if this day has been reached yet (not in the future)
+                    const now = new Date();
                     if (periodStart > now) {
+                        // Day hasn't been reached yet - mark as N/A with -1
                         metrics[`day${dayOffset}`] = {
                             returningUsers: -1,
                             iapRevenue: -1,
@@ -169,18 +129,23 @@ export class MonetizationCohortService {
                         continue;
                     }
 
-                    // Filter sessions in-memory (super fast!)
-                    const returningUserIds = new Set(
-                        allSessions
-                            .filter(s => 
-                                userIds.includes(s.userId) &&
-                                s.startTime >= periodStart &&
-                                s.startTime < periodEnd
-                            )
-                            .map(s => s.userId)
-                    );
+                    logger.info(`Day ${dayOffset}: ${periodStart.toISOString()} to ${periodEnd.toISOString()}`);
 
-                    const returningUserCount = returningUserIds.size;
+                    // Get returning users (users who had sessions on this day)
+                    const returningUsers = await this.prisma.session.groupBy({
+                        by: ['userId'],
+                        where: {
+                            gameId,
+                            userId: { in: userIds },
+                            startTime: {
+                                gte: periodStart,
+                                lt: periodEnd
+                            }
+                        }
+                    });
+
+                    const returningUserIds = returningUsers.map(u => u.userId);
+                    const returningUserCount = returningUserIds.length;
 
                     if (returningUserCount === 0) {
                         metrics[`day${dayOffset}`] = {
@@ -197,34 +162,46 @@ export class MonetizationCohortService {
                         continue;
                     }
 
-                    // Filter revenue in-memory (super fast!)
+                    // Get revenue data for this day
+                    const revenueData = await this.prisma.revenue.groupBy({
+                        by: ['userId', 'revenueType'],
+                        where: {
+                            gameId,
+                            userId: { in: returningUserIds },
+                            timestamp: {
+                                gte: periodStart,
+                                lt: periodEnd
+                            }
+                        },
+                        _sum: {
+                            revenue: true
+                        }
+                    });
+
+                    // Calculate metrics
                     let iapRevenue = 0;
                     let adRevenue = 0;
                     const iapPayingUserIds = new Set<string>();
 
-                    allRevenue
-                        .filter(r =>
-                            returningUserIds.has(r.userId) &&
-                            r.timestamp >= periodStart &&
-                            r.timestamp < periodEnd
-                        )
-                        .forEach(item => {
-                            const revenue = Number(item.revenue || 0);
-                            
-                            if (item.revenueType === 'IN_APP_PURCHASE') {
-                                iapRevenue += revenue;
-                                iapPayingUserIds.add(item.userId);
-                            } else if (item.revenueType === 'AD_IMPRESSION') {
-                                adRevenue += revenue;
-                            }
-                        });
+                    revenueData.forEach(item => {
+                        const revenue = Number(item._sum.revenue || 0);
+                        
+                        if (item.revenueType === 'IN_APP_PURCHASE') {
+                            iapRevenue += revenue;
+                            iapPayingUserIds.add(item.userId);
+                        } else if (item.revenueType === 'AD_IMPRESSION') {
+                            adRevenue += revenue;
+                        }
+                    });
 
                     const totalRevenue = iapRevenue + adRevenue;
                     const iapPayingUsers = iapPayingUserIds.size;
-                    const arpuIap = iapRevenue / returningUserCount;
-                    const arppuIap = iapPayingUsers > 0 ? iapRevenue / iapPayingUsers : 0;
-                    const arpu = totalRevenue / returningUserCount;
-                    const conversionRate = (iapPayingUsers / returningUserCount) * 100;
+
+                    // Calculate averages
+                    const arpuIap = iapRevenue / returningUserCount; // IAP revenue per returning user
+                    const arppuIap = iapPayingUsers > 0 ? iapRevenue / iapPayingUsers : 0; // IAP revenue per paying user
+                    const arpu = totalRevenue / returningUserCount; // Total revenue per returning user (Ad + IAP)
+                    const conversionRate = (iapPayingUsers / returningUserCount) * 100; // % of users who made IAP
 
                     metrics[`day${dayOffset}`] = {
                         returningUsers: returningUserCount,
@@ -241,7 +218,7 @@ export class MonetizationCohortService {
 
                 cohortData.push({
                     cohortDate,
-                    cohortSize: userIds.length,
+                    cohortSize: userIds?.length || 0,
                     metrics
                 });
             }

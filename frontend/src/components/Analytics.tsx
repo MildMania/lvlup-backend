@@ -675,7 +675,7 @@ const MonetizationTab: React.FC<{ gameInfo: any }> = ({ gameInfo }) => {
   const [showCountrySelector, setShowCountrySelector] = useState(false);
   const [showVersionSelector, setShowVersionSelector] = useState(false);
   const [filters, setFilters] = useState({
-    startDate: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
+    startDate: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
     endDate: new Date().toISOString().split('T')[0]
   });
   const [selectedPlatforms, setSelectedPlatforms] = useState<string[]>([]);

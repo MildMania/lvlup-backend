@@ -111,6 +111,24 @@ export class MonetizationCohortService {
                     periodEnd.setUTCDate(periodEnd.getUTCDate() + 1);
                     periodEnd.setUTCHours(0, 0, 0, 0);
 
+                    // Check if this day has been reached yet (not in the future)
+                    const now = new Date();
+                    if (periodStart > now) {
+                        // Day hasn't been reached yet - mark as N/A with -1
+                        metrics[`day${dayOffset}`] = {
+                            returningUsers: -1,
+                            iapRevenue: -1,
+                            adRevenue: -1,
+                            totalRevenue: -1,
+                            iapPayingUsers: -1,
+                            arpuIap: -1,
+                            arppuIap: -1,
+                            arpu: -1,
+                            conversionRate: -1
+                        };
+                        continue;
+                    }
+
                     logger.info(`Day ${dayOffset}: ${periodStart.toISOString()} to ${periodEnd.toISOString()}`);
 
                     // Get returning users (users who had sessions on this day)

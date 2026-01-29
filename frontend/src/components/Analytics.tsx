@@ -792,15 +792,53 @@ const MonetizationTab: React.FC<{ gameInfo: any }> = ({ gameInfo }) => {
     fetchMonetizationCohorts();
   }, [gameInfo.id, filters, selectedDays, selectedPlatforms, selectedCountries, selectedVersions, selectedMetric, revenueSummaryLoaded]);
 
+  const getMetricValue = (metrics: any, day: number) => {
+    const dayKey = `day${day}`;
+    if (!metrics || !metrics[dayKey]) return undefined;
+
+    const data = metrics[dayKey];
+    
+    switch (selectedMetric) {
+      case 'iapRevenue':
+        return data.iapRevenue;
+      case 'adRevenue':
+        return data.adRevenue;
+      case 'totalRevenue':
+        return data.totalRevenue;
+      case 'arpuIap':
+        return data.arpuIap;
+      case 'arppuIap':
+        return data.arppuIap;
+      case 'arpu':
+        return data.arpu;
+      case 'conversionRate':
+        return data.conversionRate;
+      default:
+        return undefined;
+    }
+  };
+
+  const getUserCount = (metrics: any, day: number) => {
+    const dayKey = `day${day}`;
+    if (!metrics || !metrics[dayKey]) return undefined;
+    return metrics[dayKey].returningUsers;
+  };
+
+  const getPayingUserCount = (metrics: any, day: number) => {
+    const dayKey = `day${day}`;
+    if (!metrics || !metrics[dayKey]) return undefined;
+    return metrics[dayKey].iapPayingUsers;
+  };
+
   // Memoize per-day sorted values to avoid recomputing percentiles on every render
   const perDaySortedValues = React.useMemo(() => {
     const map: Record<number, number[]> = {};
     if (!cohortData || cohortData.length === 0) return map;
-    const days = selectedDays.length > 0 ? selectedDays : [0];
-    days.forEach((day) => {
+    
+    selectedDays.forEach((day) => {
       const values = cohortData
         .map((cohort: any) => getMetricValue(cohort.metrics, day))
-        .filter((v: any) => v !== undefined && v !== null && v >= 0 && v > 0)
+        .filter((v: any) => v !== undefined && v !== null && v >= 0)
         .sort((a: number, b: number) => a - b);
       map[day] = values;
     });
@@ -862,43 +900,7 @@ const MonetizationTab: React.FC<{ gameInfo: any }> = ({ gameInfo }) => {
     });
   };
 
-  const getMetricValue = (metrics: any, day: number) => {
-    const dayKey = `day${day}`;
-    if (!metrics[dayKey]) return undefined;
-
-    const data = metrics[dayKey];
-    
-    switch (selectedMetric) {
-      case 'iapRevenue':
-        return data.iapRevenue;
-      case 'adRevenue':
-        return data.adRevenue;
-      case 'totalRevenue':
-        return data.totalRevenue;
-      case 'arpuIap':
-        return data.arpuIap;
-      case 'arppuIap':
-        return data.iapPayingUsers > 0 ? data.arppuIap : undefined;
-      case 'arpu':
-        return data.arpu;
-      case 'conversionRate':
-        return data.conversionRate;
-      default:
-        return undefined;
-    }
-  };
-
-  const getUserCount = (metrics: any, day: number) => {
-    const dayKey = `day${day}`;
-    if (!metrics[dayKey]) return undefined;
-    return metrics[dayKey].returningUsers;
-  };
-
-  const getPayingUserCount = (metrics: any, day: number) => {
-    const dayKey = `day${day}`;
-    if (!metrics[dayKey]) return undefined;
-    return metrics[dayKey].iapPayingUsers;
-  };
+  // ...existing code...
 
   // Calculate color for metric values based on percentile within each day
   const getMetricColor = (day: number, value: number | undefined) => {
@@ -906,12 +908,12 @@ const MonetizationTab: React.FC<{ gameInfo: any }> = ({ gameInfo }) => {
     if (value === 0) return 'metric-very-low';
 
     const sortedValues = perDaySortedValues[day] || [];
-    if (!sortedValues || sortedValues.length === 0) return '';
+    if (sortedValues.length === 0) return 'metric-very-low';
 
     const idx = sortedValues.indexOf(value);
     const valueIndex = idx >= 0 ? idx : sortedValues.findIndex((v: number) => v >= value);
     const effectiveIndex = valueIndex >= 0 ? valueIndex : sortedValues.length - 1;
-    const percentile = (effectiveIndex / (sortedValues.length - 1)) * 100;
+    const percentile = sortedValues.length > 1 ? (effectiveIndex / (sortedValues.length - 1)) * 100 : 50;
 
     if (percentile >= 90) return 'metric-top';
     if (percentile >= 75) return 'metric-high';
@@ -922,8 +924,17 @@ const MonetizationTab: React.FC<{ gameInfo: any }> = ({ gameInfo }) => {
   };
 
   const formatMetricValue = (value: number | undefined) => {
-    if (value === undefined || value === null) return 'N/A';
+    // Explicitly handle all non-valid values
+    if (value === undefined || value === null || isNaN(value)) return 'N/A';
     if (value < 0) return 'N/A';
+    if (value === 0) {
+      // For monetization, 0 values might be legitimate (no revenue), so format them
+      if (selectedMetric === 'conversionRate') {
+        return `${value.toFixed(2)}%`;
+      } else {
+        return `$${value.toFixed(2)}`;
+      }
+    }
     
     if (selectedMetric === 'conversionRate') {
       return `${value.toFixed(2)}%`;
@@ -1248,9 +1259,14 @@ const MonetizationTab: React.FC<{ gameInfo: any }> = ({ gameInfo }) => {
                       const value = getMetricValue(cohort.metrics, day);
                       const userCount = getUserCount(cohort.metrics, day);
                       const payingUsers = getPayingUserCount(cohort.metrics, day);
+                      // Match Engagement tab: isNotAvailable checks for negative values (backend marker for unreached days)
                       const isNotAvailable = value === undefined || value === null || value < 0;
-                      const formattedValue = formatMetricValue(value);
-                      const colorClass = getMetricColor(day, value);
+                      const formattedValue = isNotAvailable 
+                        ? 'N/A' 
+                        : selectedMetric === 'conversionRate'
+                        ? `${value.toFixed(2)}%`
+                        : `$${value.toFixed(2)}`;
+                      const colorClass = isNotAvailable ? 'not-available' : getMetricColor(day, value);
                       
                       return (
                         <td key={day} className={`retention-cell ${colorClass}`}>

@@ -162,8 +162,11 @@ export class LevelMetricsAggregationService {
     fails: number;
     startedPlayers: number;
     completedPlayers: number;
-    boosterUsed: number;
-    egpUsed: number;
+    startsFromCompletingUsers: number;
+    boosterUsers: number;
+    totalBoosterUsage: number;
+    egpUsers: number;
+    totalEgpUsage: number;
     totalCompletionDuration: bigint;
     completionCount: number;
     totalFailDuration: bigint;

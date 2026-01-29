@@ -130,7 +130,6 @@ model Event {
 
   @@index([userId, timestamp])
   @@index([gameId, appVersion, timestamp])
-  @@index([gameId, eventName, timestamp(sort: Desc), userId], name: "idx_events_hybrid_queries")
   @@map("events")
 }
 

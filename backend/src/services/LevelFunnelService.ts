@@ -32,6 +32,8 @@ interface LevelMetrics {
     churnStartComplete: number;
     churnCompleteNext: number;
     aps: number; // Attempts per success: starts / completes
+    apsRaw?: number; // Backward compatibility: same as aps (deprecated, use aps instead)
+    apsClean?: number; // Backward compatibility: always 0 (deprecated)
     meanCompletionDuration: number;
     meanFailDuration: number;
     cumulativeAvgTime: number; // Cumulative average time from level 1 to current level
@@ -559,6 +561,8 @@ export class LevelFunnelService {
                 churnStartComplete: Math.round(churnStartComplete * 100) / 100,
                 churnCompleteNext: Math.round(churnCompleteNext * 100) / 100,
                 aps: Math.round(aps * 100) / 100,
+                apsRaw: Math.round(aps * 100) / 100, // Backward compatibility: same as aps
+                apsClean: 0, // Backward compatibility: deprecated field
                 meanCompletionDuration: Math.round(meanCompletionDuration * 100) / 100,
                 meanFailDuration: Math.round(meanFailDuration * 100) / 100,
                 cumulativeAvgTime: 0,
@@ -975,6 +979,8 @@ export class LevelFunnelService {
             churnStartComplete: Math.round(churnStartComplete * 100) / 100,
             churnCompleteNext: Math.round(churnCompleteNext * 100) / 100,
             aps: Math.round(aps * 100) / 100,
+            apsRaw: Math.round(aps * 100) / 100, // Backward compatibility: same as aps
+            apsClean: 0, // Backward compatibility: deprecated field
             meanCompletionDuration: Math.round(meanCompletionDuration * 100) / 100,
             meanFailDuration: Math.round(meanFailDuration * 100) / 100,
             cumulativeAvgTime: 0, // Will be calculated after all levels are processed

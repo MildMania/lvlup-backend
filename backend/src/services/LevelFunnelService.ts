@@ -498,8 +498,9 @@ export class LevelFunnelService {
             const nextLevelId = i < limitedLevelIds.length - 1 ? limitedLevelIds[i + 1] : null;
             const nextLevelData = nextLevelId ? mergedData.get(nextLevelId) : undefined;
 
-            const startedPlayers = data.startedPlayers;
-            const completedPlayers = data.completedPlayers;
+            // Defensive: Use 0 if player counts are undefined (old aggregated data)
+            const startedPlayers = data.startedPlayers || 0;
+            const completedPlayers = data.completedPlayers || 0;
             const totalConclusions = data.completes + data.fails;
 
             // Derived metrics (matching exact formulas from LevelFunnelService)
@@ -520,11 +521,11 @@ export class LevelFunnelService {
                 : 0;
 
             // Booster and EGP rates
-            // uniquePlayers = all users who interacted with this level (started, completed, or failed)
-            // In practice, this equals startedPlayers since you can't complete/fail without starting
-            const uniquePlayers = startedPlayers;
-            const boosterUsage = uniquePlayers > 0 ? (data.boosterUsers / uniquePlayers) * 100 : 0;
-            const egpRate = uniquePlayers > 0 ? (data.egpUsers / uniquePlayers) * 100 : 0;
+            // Defensive: Use 0 if counts are undefined (old aggregated data)
+            const boosterUsers = data.boosterUsers || 0;
+            const egpUsers = data.egpUsers || 0;
+            const boosterUsage = startedPlayers > 0 ? (boosterUsers / startedPlayers) * 100 : 0;
+            const egpRate = startedPlayers > 0 ? (egpUsers / startedPlayers) * 100 : 0;
 
             // Churn calculations
             const churnStartComplete = startedPlayers > 0
@@ -533,14 +534,14 @@ export class LevelFunnelService {
 
             let churnCompleteNext = 0;
             if (nextLevelData) {
-                const nextLevelStarters = nextLevelData.startedPlayers;
+                const nextLevelStarters = nextLevelData.startedPlayers || 0;
                 churnCompleteNext = completedPlayers > 0
                     ? ((completedPlayers - nextLevelStarters) / completedPlayers) * 100
                     : 0;
             }
 
             const churnTotal = startedPlayers > 0
-                ? ((startedPlayers - completedPlayers + (nextLevelData ? completedPlayers - nextLevelData.startedPlayers : 0)) / startedPlayers) * 100
+                ? ((startedPlayers - completedPlayers + (nextLevelData ? completedPlayers - (nextLevelData.startedPlayers || 0) : 0)) / startedPlayers) * 100
                 : 0;
 
             levelMetrics.push({

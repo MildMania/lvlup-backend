@@ -193,8 +193,10 @@ export class LevelFunnelService {
                 fails: true,
                 startedPlayers: true,
                 completedPlayers: true,
-                boosterUsed: true,
-                egpUsed: true,
+                boosterUsers: true,
+                totalBoosterUsage: true,
+                egpUsers: true,
+                totalEgpUsage: true,
                 totalCompletionDuration: true,
                 completionCount: true,
                 totalFailDuration: true,
@@ -213,8 +215,10 @@ export class LevelFunnelService {
                     fails: 0,
                     startedUserIds: new Set<string>(),
                     completedUserIds: new Set<string>(),
-                    boosterUsed: 0,
-                    egpUsed: 0,
+                    boosterUsers: 0,
+                    totalBoosterUsage: 0,
+                    egpUsers: 0,
+                    totalEgpUsage: 0,
                     totalCompletionDuration: BigInt(0),
                     completionCount: 0,
                     totalFailDuration: BigInt(0),
@@ -226,8 +230,10 @@ export class LevelFunnelService {
             group.starts += row.starts;
             group.completes += row.completes;
             group.fails += row.fails;
-            group.boosterUsed += row.boosterUsed;
-            group.egpUsed += row.egpUsed;
+            group.boosterUsers += row.boosterUsers;
+            group.totalBoosterUsage += row.totalBoosterUsage;
+            group.egpUsers += row.egpUsers;
+            group.totalEgpUsage += row.totalEgpUsage;
             group.totalCompletionDuration += BigInt(row.totalCompletionDuration);
             group.completionCount += row.completionCount;
             group.totalFailDuration += BigInt(row.totalFailDuration);
@@ -349,26 +355,32 @@ export class LevelFunnelService {
             const startedUserIds = new Set(startEvents.map(e => e.userId));
             const completedUserIds = new Set(completeEvents.map(e => e.userId));
 
-            // Booster usage (unique users)
-            const usersWithBoosters = new Set(
-                [...completeEvents, ...failEvents]
-                    .filter(e => {
-                        const props = e.properties as any;
-                        return props?.boosters && typeof props.boosters === 'object' && Object.keys(props.boosters).length > 0;
-                    })
-                    .map(e => e.userId)
-            );
+            // Booster usage (unique users and total count)
+            const usersWithBoosters = new Set<string>();
+            let totalBoosterUsage = 0;
+            [...completeEvents, ...failEvents].forEach(e => {
+                const props = e.properties as any;
+                if (props?.boosters && typeof props.boosters === 'object' && Object.keys(props.boosters).length > 0) {
+                    usersWithBoosters.add(e.userId);
+                    // Sum total booster count
+                    const boosterCount = Object.values(props.boosters).reduce((sum: number, val: any) => {
+                        return sum + (typeof val === 'number' ? val : 0);
+                    }, 0);
+                    totalBoosterUsage += boosterCount;
+                }
+            });
 
-            // EGP usage (unique users)
-            const usersWithEGP = new Set(
-                [...completeEvents, ...failEvents]
-                    .filter(e => {
-                        const props = e.properties as any;
-                        const egpValue = props?.egp ?? props?.endGamePurchase;
-                        return (typeof egpValue === 'number' && egpValue > 0) || egpValue === true;
-                    })
-                    .map(e => e.userId)
-            );
+            // EGP usage (unique users and total count)
+            const usersWithEGP = new Set<string>();
+            let totalEgpUsage = 0;
+            [...completeEvents, ...failEvents].forEach(e => {
+                const props = e.properties as any;
+                const egpValue = props?.egp ?? props?.endGamePurchase;
+                if ((typeof egpValue === 'number' && egpValue > 0) || egpValue === true) {
+                    usersWithEGP.add(e.userId);
+                    totalEgpUsage += typeof egpValue === 'number' ? egpValue : 1;
+                }
+            });
 
             // Duration calculations
             const completionDurations = this.calculateDurations(startEvents, completeEvents);
@@ -381,8 +393,10 @@ export class LevelFunnelService {
                 fails: failEvents.length,
                 startedUserIds,
                 completedUserIds,
-                boosterUsed: usersWithBoosters.size,
-                egpUsed: usersWithEGP.size,
+                boosterUsers: usersWithBoosters.size,
+                totalBoosterUsage: totalBoosterUsage,
+                egpUsers: usersWithEGP.size,
+                totalEgpUsage: totalEgpUsage,
                 totalCompletionDuration: BigInt(Math.floor(completionDurations.reduce((sum, d) => sum + d, 0))),
                 completionCount: completionDurations.length,
                 totalFailDuration: BigInt(Math.floor(failDurations.reduce((sum, d) => sum + d, 0))),
@@ -408,8 +422,10 @@ export class LevelFunnelService {
                 fails: hist.fails,
                 startedUserIds: hist.startedUserIds,
                 completedUserIds: hist.completedUserIds,
-                boosterUsed: hist.boosterUsed,
-                egpUsed: hist.egpUsed,
+                boosterUsers: hist.boosterUsers,
+                totalBoosterUsage: hist.totalBoosterUsage,
+                egpUsers: hist.egpUsers,
+                totalEgpUsage: hist.totalEgpUsage,
                 totalCompletionDuration: hist.totalCompletionDuration,
                 completionCount: hist.completionCount,
                 totalFailDuration: hist.totalFailDuration,
@@ -427,8 +443,10 @@ export class LevelFunnelService {
                     fails: 0,
                     startedUserIds: new Set<string>(),
                     completedUserIds: new Set<string>(),
-                    boosterUsed: 0,
-                    egpUsed: 0,
+                    boosterUsers: 0,
+                    totalBoosterUsage: 0,
+                    egpUsers: 0,
+                    totalEgpUsage: 0,
                     totalCompletionDuration: BigInt(0),
                     completionCount: 0,
                     totalFailDuration: BigInt(0),
@@ -440,8 +458,10 @@ export class LevelFunnelService {
             group.starts += todayData.starts;
             group.completes += todayData.completes;
             group.fails += todayData.fails;
-            group.boosterUsed += todayData.boosterUsed;
-            group.egpUsed += todayData.egpUsed;
+            group.boosterUsers += todayData.boosterUsers;
+            group.totalBoosterUsage += todayData.totalBoosterUsage;
+            group.egpUsers += todayData.egpUsers;
+            group.totalEgpUsage += todayData.totalEgpUsage;
             group.totalCompletionDuration += todayData.totalCompletionDuration;
             group.completionCount += todayData.completionCount;
             group.totalFailDuration += todayData.totalFailDuration;
@@ -498,8 +518,11 @@ export class LevelFunnelService {
             const funnelRate = firstLevelStartedUsers > 0 ? (completedPlayers / firstLevelStartedUsers) * 100 : 0;
 
             // APS calculations
+            // apsRaw: All starts per completing player
             const apsRaw = completedPlayers > 0 ? data.starts / completedPlayers : 0;
-            const apsClean = completedPlayers > 0 ? (data.completes + data.fails) / completedPlayers : 0;
+            
+            // apsClean: Obsolete for now (not calculated)
+            const apsClean = 0;
 
             // Duration averages
             const meanCompletionDuration = data.completionCount > 0
@@ -509,10 +532,12 @@ export class LevelFunnelService {
                 ? Number(data.totalFailDuration) / data.failCount
                 : 0;
 
-            // Booster and EGP rates (matching current logic)
-            const uniquePlayers = data.startedUserIds.size;
-            const boosterUsage = uniquePlayers > 0 ? (data.boosterUsed / uniquePlayers) * 100 : 0;
-            const egpRate = uniquePlayers > 0 ? (data.egpUsed / uniquePlayers) * 100 : 0;
+            // Booster and EGP rates
+            // uniquePlayers = all users who interacted with this level (started, completed, or failed)
+            // In practice, this equals startedPlayers since you can't complete/fail without starting
+            const uniquePlayers = startedPlayers;
+            const boosterUsage = uniquePlayers > 0 ? (data.boosterUsers / uniquePlayers) * 100 : 0;
+            const egpRate = uniquePlayers > 0 ? (data.egpUsers / uniquePlayers) * 100 : 0;
 
             // Churn calculations
             const churnStartComplete = startedPlayers > 0
@@ -888,23 +913,16 @@ export class LevelFunnelService {
             ? ((usersWhoDidntComplete + usersWhoCompletedButDidntContinue) / usersWhoStarted.size) * 100
             : 0;
 
-        // APS (Attempts Per Success): Two different calculations
+        // APS (Attempts Per Success)
         
-        // 1. Raw APS: All starts from completing users (includes orphaned starts from crashes, etc.)
+        // Raw APS: All starts from completing users
         const allStartsFromCompletedUsers = startEvents.filter(e => usersWhoCompleted.has(e.userId)).length;
         const apsRaw = usersWhoCompleted.size > 0
             ? allStartsFromCompletedUsers / usersWhoCompleted.size
             : 0;
         
-        // 2. Clean APS: Only starts that have a corresponding conclusion (complete or fail)
-        // This filters out orphaned start events from crashes, network issues, etc.
-        const matchedStarts = this.matchStartsWithConclusions(startEvents, [...completeEvents, ...failEvents]);
-        const matchedStartsFromCompletedUsers = matchedStarts.filter(match => 
-            usersWhoCompleted.has(match.userId)
-        ).length;
-        const apsClean = usersWhoCompleted.size > 0
-            ? matchedStartsFromCompletedUsers / usersWhoCompleted.size
-            : 0;
+        // Clean APS: Obsolete for now (not calculated)
+        const apsClean = 0;
 
         // Mean Completion Duration
         const completionDurations = this.calculateDurations(startEvents, completeEvents);
@@ -986,37 +1004,6 @@ export class LevelFunnelService {
         };
     }
 
-    /**
-     * Match start events with their corresponding conclusion events (complete or fail)
-     * Returns only starts that have a matching conclusion
-     */
-    private matchStartsWithConclusions(startEvents: any[], conclusionEvents: any[]): any[] {
-        const matchedStarts: any[] = [];
-        
-        // Group starts by user
-        const userStarts = new Map<string, any[]>();
-        for (const startEvent of startEvents) {
-            if (!userStarts.has(startEvent.userId)) {
-                userStarts.set(startEvent.userId, []);
-            }
-            userStarts.get(startEvent.userId)!.push(startEvent);
-        }
-        
-        // For each conclusion, find the closest preceding start
-        for (const conclusion of conclusionEvents) {
-            const starts = userStarts.get(conclusion.userId);
-            if (starts && starts.length > 0) {
-                // Find the most recent start before this conclusion
-                const validStarts = starts.filter(s => s.timestamp <= conclusion.timestamp);
-                if (validStarts.length > 0) {
-                    const closestStart = validStarts[validStarts.length - 1];
-                    matchedStarts.push(closestStart);
-                }
-            }
-        }
-        
-        return matchedStarts;
-    }
 
     /**
      * Calculate durations between start and end events for the same user

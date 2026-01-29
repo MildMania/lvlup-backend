@@ -106,8 +106,10 @@ export class LevelMetricsAggregationService {
               fails: metrics.fails,
               startedPlayers: metrics.startedPlayers,
               completedPlayers: metrics.completedPlayers,
-              boosterUsed: metrics.boosterUsed,
-              egpUsed: metrics.egpUsed,
+              boosterUsers: metrics.boosterUsers,
+              totalBoosterUsage: metrics.totalBoosterUsage,
+              egpUsers: metrics.egpUsers,
+              totalEgpUsage: metrics.totalEgpUsage,
               totalCompletionDuration: metrics.totalCompletionDuration,
               completionCount: metrics.completionCount,
               totalFailDuration: metrics.totalFailDuration,
@@ -119,8 +121,10 @@ export class LevelMetricsAggregationService {
               fails: metrics.fails,
               startedPlayers: metrics.startedPlayers,
               completedPlayers: metrics.completedPlayers,
-              boosterUsed: metrics.boosterUsed,
-              egpUsed: metrics.egpUsed,
+              boosterUsers: metrics.boosterUsers,
+              totalBoosterUsage: metrics.totalBoosterUsage,
+              egpUsers: metrics.egpUsers,
+              totalEgpUsage: metrics.totalEgpUsage,
               totalCompletionDuration: metrics.totalCompletionDuration,
               completionCount: metrics.completionCount,
               totalFailDuration: metrics.totalFailDuration,
@@ -202,6 +206,8 @@ export class LevelMetricsAggregationService {
           completedUserIds: new Set<string>(),
           usersWithBoosters: new Set<string>(),
           usersWithEGP: new Set<string>(),
+          totalBoosterUsage: 0,
+          totalEgpUsage: 0,
           totalCompletionDuration: BigInt(0),
           completionCount: 0,
           totalFailDuration: BigInt(0),
@@ -224,9 +230,17 @@ export class LevelMetricsAggregationService {
       this.processEventForGroup(group, event, startEventsByUser);
     }
 
-    // Convert Sets to counts
+    // Convert Sets to counts and calculate apsRaw
     const result = new Map();
     for (const [key, group] of groups.entries()) {
+      // Calculate starts from completing users (for apsRaw)
+      // We need to track which start events came from users who completed
+      const startsFromCompletingUsers = events.filter(e =>
+        e.eventName === 'level_start' &&
+        group.completedUserIds.has(e.userId) &&
+        (e.properties as any)?.levelId === group.levelId
+      ).length;
+      
       result.set(key, {
         levelId: group.levelId,
         levelFunnel: group.levelFunnel,
@@ -239,8 +253,11 @@ export class LevelMetricsAggregationService {
         fails: group.fails,
         startedPlayers: group.startedUserIds.size,
         completedPlayers: group.completedUserIds.size,
-        boosterUsed: group.usersWithBoosters.size,
-        egpUsed: group.usersWithEGP.size,
+        startsFromCompletingUsers: startsFromCompletingUsers,
+        boosterUsers: group.usersWithBoosters.size,
+        totalBoosterUsage: group.totalBoosterUsage,
+        egpUsers: group.usersWithEGP.size,
+        totalEgpUsage: group.totalEgpUsage,
         totalCompletionDuration: group.totalCompletionDuration,
         completionCount: group.completionCount,
         totalFailDuration: group.totalFailDuration,
@@ -277,6 +294,11 @@ export class LevelMetricsAggregationService {
       // Check for boosters (matches current logic: object with keys)
       if (props?.boosters && typeof props.boosters === 'object' && Object.keys(props.boosters).length > 0) {
         group.usersWithBoosters.add(event.userId);
+        // Sum total booster usage (count values in the boosters object)
+        const boosterCount = Object.values(props.boosters).reduce((sum: number, val: any) => {
+          return sum + (typeof val === 'number' ? val : 0);
+        }, 0);
+        group.totalBoosterUsage += boosterCount;
       }
     } 
     else if (event.eventName === 'level_failed') {
@@ -293,11 +315,19 @@ export class LevelMetricsAggregationService {
       const egpValue = props?.egp ?? props?.endGamePurchase;
       if ((typeof egpValue === 'number' && egpValue > 0) || egpValue === true) {
         group.usersWithEGP.add(event.userId);
+        // Sum total EGP usage
+        const egpCount = typeof egpValue === 'number' ? egpValue : 1;
+        group.totalEgpUsage += egpCount;
       }
 
       // Check for boosters on fail events too
       if (props?.boosters && typeof props.boosters === 'object' && Object.keys(props.boosters).length > 0) {
         group.usersWithBoosters.add(event.userId);
+        // Sum total booster usage
+        const boosterCount = Object.values(props.boosters).reduce((sum: number, val: any) => {
+          return sum + (typeof val === 'number' ? val : 0);
+        }, 0);
+        group.totalBoosterUsage += boosterCount;
       }
     }
   }

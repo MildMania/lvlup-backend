@@ -35,8 +35,24 @@ async function backfillLevelMetrics() {
       const endDate = new Date(endDateStr + 'T23:59:59.999Z');
 
       logger.info(`Backfilling metrics for game ${gameId} from ${startDateStr} to ${endDateStr}`);
-      await service.backfillHistorical(gameId, startDate, endDate);
-      logger.info('Backfill completed successfully!');
+      
+      try {
+        await service.backfillHistorical(gameId, startDate, endDate);
+        logger.info('✅ Backfill completed successfully!');
+        process.exit(0);
+      } catch (error: any) {
+        // Check if error contains information about failed dates
+        if (error.message?.includes('Failed dates:')) {
+          logger.error('⚠️  Backfill completed with some failures:');
+          logger.error(error.message);
+          logger.info('');
+          logger.info('To retry failed dates, run the script again with the same date range.');
+          logger.info('The aggregation is idempotent - it will update existing data.');
+          process.exit(1);
+        } else {
+          throw error;
+        }
+      }
     } else if (args.length === 0) {
       // All games, last 30 days
       logger.info('Backfilling metrics for all games (last 30 days)');
@@ -51,16 +67,41 @@ async function backfillLevelMetrics() {
       startDate.setDate(startDate.getDate() - 30);
       startDate.setHours(0, 0, 0, 0);
 
+      let totalSucceeded = 0;
+      let totalFailed = 0;
+      const failedGames: string[] = [];
+
       for (const gameId of games) {
         logger.info(`Processing game: ${gameId}`);
         try {
           await service.backfillHistorical(gameId, startDate, endDate);
-        } catch (error) {
-          logger.error(`Failed to backfill game ${gameId}:`, error);
+          totalSucceeded++;
+        } catch (error: any) {
+          totalFailed++;
+          failedGames.push(gameId);
+          logger.error(`Failed to backfill game ${gameId}:`, error.message);
+          // Continue to next game
         }
       }
 
-      logger.info('Backfill completed for all games!');
+      logger.info('');
+      logger.info('='.repeat(60));
+      logger.info('Backfill Summary:');
+      logger.info(`  Total games: ${games.length}`);
+      logger.info(`  ✅ Succeeded: ${totalSucceeded}`);
+      logger.info(`  ❌ Failed: ${totalFailed}`);
+      if (failedGames.length > 0) {
+        logger.info(`  Failed games: ${failedGames.join(', ')}`);
+      }
+      logger.info('='.repeat(60));
+
+      if (totalFailed > 0) {
+        logger.warn('Some games failed. You can retry them individually.');
+        process.exit(1);
+      } else {
+        logger.info('✅ All games backfilled successfully!');
+        process.exit(0);
+      }
     } else {
       console.error('Invalid arguments!');
       console.error('Usage:');
@@ -70,10 +111,9 @@ async function backfillLevelMetrics() {
       console.error('  ts-node src/scripts/backfillLevelMetrics.ts abc123 2026-01-01 2026-01-28');
       process.exit(1);
     }
-
-    process.exit(0);
-  } catch (error) {
-    logger.error('Backfill failed:', error);
+  } catch (error: any) {
+    logger.error('❌ Backfill failed:', error.message);
+    logger.error('Stack trace:', error.stack);
     process.exit(1);
   }
 }

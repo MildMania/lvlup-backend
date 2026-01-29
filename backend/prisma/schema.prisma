@@ -830,9 +830,11 @@ model LevelMetricsDaily {
   startedPlayers     Int @default(0)
   completedPlayers   Int @default(0)
   
-  // Booster & EGP event counts (matching current LevelFunnelService logic)
-  boosterUsed        Int @default(0) // Count of complete/fail events with boosters (for unique users who used them)
-  egpUsed            Int @default(0) // Count of unique users who used EGP
+  // Booster & EGP metrics
+  boosterUsers       Int @default(0) // Count of unique users who used boosters
+  totalBoosterUsage  Int @default(0) // Total number of boosters used (sum across all events)
+  egpUsers           Int @default(0) // Count of unique users who used EGP
+  totalEgpUsage      Int @default(0) // Total number of EGP purchases (sum across all events)
   
   // Duration metrics (for calculating averages)
   totalCompletionDuration BigInt @default(0) // Sum of completion durations in seconds

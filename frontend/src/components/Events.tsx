@@ -340,7 +340,7 @@ const Events: React.FC<EventsProps> = ({ gameInfo, isCollapsed = false }) => {
         ) : (
           <div className="events-list">
             {filteredEvents.map((event) => {
-              const isLevelEvent = ['level_start', 'level_complete', 'level_fail'].includes(event.eventName);
+              const isLevelEvent = ['level_start', 'level_complete', 'level_failed'].includes(event.eventName);
               return (
               <div key={event.id} className={`event-card ${event.isRevenueEvent ? 'revenue-event' : ''} ${isLevelEvent ? 'level-event' : ''}`}>
                 <div className="event-header">

@@ -45,7 +45,7 @@ export class HealthMetricsService {
       crashesOffset?: number;
     }
   ): Promise<CrashMetrics> {
-    const { startDate, endDate, platform, country, appVersion, crashesLimit = 20, crashesOffset = 0 } = filters;
+    const { startDate, endDate, platform, country, appVersion, crashesLimit = 15, crashesOffset = 0 } = filters;
 
     // Build where clause for crash logs
     const crashWhere: any = {
@@ -309,16 +309,14 @@ export class HealthMetricsService {
 
   async getErrorInstances(
     gameId: string,
-    message: string,
-    exceptionType: string,
+    message: string | undefined,
+    exceptionType: string | undefined,
     filters: HealthFilters & { limit?: number; offset?: number }
   ) {
     const { startDate, endDate, platform, country, appVersion, limit = 50, offset = 0 } = filters;
 
     const where: any = {
       gameId,
-      message,
-      exceptionType,
       timestamp: {
         gte: startDate,
         lte: endDate,
@@ -328,6 +326,13 @@ export class HealthMetricsService {
     if (platform) where.platform = platform;
     if (country) where.country = country;
     if (appVersion) where.appVersion = appVersion;
+    // Allow searching by message and/or exceptionType. If message is provided use it; otherwise fallback to exceptionType only
+    if (message) {
+      where.message = message;
+    }
+    if (exceptionType) {
+      where.exceptionType = exceptionType;
+    }
 
     // Get total count for pagination
     const totalCount = await prisma.crashLog.count({ where });

@@ -137,8 +137,9 @@ export class HealthMetricsController {
         return res.status(400).json({ error: 'gameId is required' });
       }
 
-      if (!message || !exceptionType) {
-        return res.status(400).json({ error: 'message and exceptionType are required' });
+      // Accept queries that include either exceptionType or message (or both)
+      if (!message && !exceptionType) {
+        return res.status(400).json({ error: 'message or exceptionType is required' });
       }
 
       if (!startDate || !endDate) {
@@ -157,8 +158,8 @@ export class HealthMetricsController {
 
       const result = await healthService.getErrorInstances(
         gameId,
-        message as string,
-        exceptionType as string,
+        message as string | undefined,
+        exceptionType as string | undefined,
         filters
       );
 
@@ -242,4 +243,3 @@ export class HealthMetricsController {
     }
   }
 }
-

@@ -128,9 +128,9 @@ model Event {
   user    User     @relation(fields: [userId], references: [id], onDelete: Cascade)
   game    Game     @relation(fields: [gameId], references: [id], onDelete: Cascade)
 
-  @@index([gameId, eventName, timestamp])
   @@index([userId, timestamp])
   @@index([gameId, appVersion, timestamp])
+  @@index([gameId, eventName, timestamp(sort: Desc), userId], name: "idx_events_hybrid_queries")
   @@map("events")
 }
 

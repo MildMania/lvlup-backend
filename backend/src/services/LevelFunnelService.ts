@@ -63,7 +63,12 @@ export class LevelFunnelService {
             const end = endDate || new Date();
 
             // Determine if we're querying multiple days
-            const isMultipleDays = (end.getTime() - start.getTime()) > 24 * 60 * 60 * 1000;
+            const daysDifference = Math.ceil((end.getTime() - start.getTime()) / (24 * 60 * 60 * 1000));
+            const isMultipleDays = daysDifference > 1;
+            
+            // For performance, only query raw events for date ranges ≤ 90 days
+            // Longer ranges use aggregated data (faster but approximate user counts)
+            const useRawEventsForUserCounts = isMultipleDays && daysDifference <= 90;
 
             // Query pre-aggregated data for event counts (all days)
             const aggregatedMetrics = await this.queryAggregatedMetrics(gameId, start, end, {
@@ -74,7 +79,7 @@ export class LevelFunnelService {
                 levelFunnelVersion
             });
 
-            // If querying multiple days, get accurate user counts from raw events
+            // If querying multiple days (≤90 days), get accurate user counts from raw events
             let userCountsByLevel: Map<number, {
                 startedPlayers: number;
                 completedPlayers: number;
@@ -82,8 +87,8 @@ export class LevelFunnelService {
                 egpUsers: number;
             }> | null = null;
 
-            if (isMultipleDays) {
-                logger.info('Multi-day query detected - fetching accurate user counts from raw events');
+            if (useRawEventsForUserCounts) {
+                logger.info(`Multi-day query (${daysDifference} days) - fetching accurate user counts from raw events`);
                 userCountsByLevel = await this.queryRawEventUserCounts(gameId, start, end, {
                     country,
                     platform,
@@ -91,6 +96,8 @@ export class LevelFunnelService {
                     levelFunnel,
                     levelFunnelVersion
                 });
+            } else if (isMultipleDays && daysDifference > 90) {
+                logger.warn(`Large date range (${daysDifference} days) - using aggregated user counts (approximate)`);
             }
 
             // Group by levelId and sum event counts from aggregated data
@@ -153,7 +160,7 @@ export class LevelFunnelService {
             const levelMetrics = this.calculateDerivedMetrics(grouped, levelLimit);
 
             const totalDuration = Date.now() - queryStart;
-            logger.info(`FAST level funnel query (hybrid) completed in ${totalDuration}ms (${levelMetrics.length} levels, multi-day: ${isMultipleDays})`);
+            logger.info(`FAST level funnel query completed in ${totalDuration}ms (${levelMetrics.length} levels, ${daysDifference} days, accurate user counts: ${useRawEventsForUserCounts})`);
 
             return levelMetrics;
         } catch (error) {

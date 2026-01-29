@@ -2,6 +2,18 @@ import { PrismaClient } from '@prisma/client';
 import prisma from '../prisma';
 import logger from '../utils/logger';
 
+/**
+ * Level Metrics Aggregation Service
+ * 
+ * Pre-aggregates daily level metrics to improve dashboard performance.
+ * All calculations match the existing LevelFunnelService logic exactly.
+ * 
+ * Key principles:
+ * - User IDs are used ONLY during aggregation (in-memory)
+ * - Aggregated tables contain ONLY counts
+ * - All metrics can be derived from aggregated counts
+ * - Idempotent UPSERT operations
+ */
 export class LevelMetricsAggregationService {
   private prisma: PrismaClient;
 
@@ -15,12 +27,17 @@ export class LevelMetricsAggregationService {
    */
   async aggregateDailyMetrics(gameId: string, targetDate: Date): Promise<void> {
     try {
-      const dateStr = targetDate.toISOString().split('T')[0];
+      // Normalize date to UTC midnight
+      const normalizedDate = new Date(targetDate);
+      normalizedDate.setUTCHours(0, 0, 0, 0);
+      
+      const dateStr = normalizedDate.toISOString().split('T')[0];
       logger.info(`Starting daily aggregation for game ${gameId} on ${dateStr}`);
 
       // Set date boundaries (in UTC)
-      const dayStart = new Date(`${dateStr}T00:00:00.000Z`);
-      const dayEnd = new Date(`${dateStr}T23:59:59.999Z`);
+      const dayStart = new Date(normalizedDate);
+      const dayEnd = new Date(normalizedDate);
+      dayEnd.setUTCHours(23, 59, 59, 999);
 
       // Get all level events for this day
       const events = await this.prisma.event.findMany({
@@ -42,6 +59,9 @@ export class LevelMetricsAggregationService {
           countryCode: true,
           appVersion: true,
           properties: true
+        },
+        orderBy: {
+          timestamp: 'asc'
         }
       });
 
@@ -52,70 +72,66 @@ export class LevelMetricsAggregationService {
         return;
       }
 
-      // Group events by all dimensions
-      const groupedMetrics = this.groupEventsByDimensions(events, targetDate);
+      // Group events by all dimensions and aggregate
+      const groupedMetrics = this.groupAndAggregateEvents(events);
 
       // Upsert aggregated data
       let upsertCount = 0;
       for (const [_key, metrics] of groupedMetrics.entries()) {
         try {
-          await (this.prisma as any).levelMetricsDaily.upsert({
-          where: {
-            unique_daily_metrics: {
+          await this.prisma.levelMetricsDaily.upsert({
+            where: {
+              unique_daily_metrics: {
+                gameId,
+                date: normalizedDate,
+                levelId: metrics.levelId,
+                levelFunnel: metrics.levelFunnel,
+                levelFunnelVersion: metrics.levelFunnelVersion,
+                platform: metrics.platform,
+                countryCode: metrics.countryCode,
+                appVersion: metrics.appVersion
+              }
+            },
+            create: {
               gameId,
-              date: targetDate,
+              date: normalizedDate,
               levelId: metrics.levelId,
-              levelFunnel: metrics.levelFunnel || '',
-              levelFunnelVersion: metrics.levelFunnelVersion || 0,
-              platform: metrics.platform || '',
-              countryCode: metrics.countryCode || '',
-              appVersion: metrics.appVersion || ''
+              levelFunnel: metrics.levelFunnel,
+              levelFunnelVersion: metrics.levelFunnelVersion,
+              platform: metrics.platform,
+              countryCode: metrics.countryCode,
+              appVersion: metrics.appVersion,
+              starts: metrics.starts,
+              completes: metrics.completes,
+              fails: metrics.fails,
+              startedPlayers: metrics.startedPlayers,
+              completedPlayers: metrics.completedPlayers,
+              boosterUsed: metrics.boosterUsed,
+              egpUsed: metrics.egpUsed,
+              totalCompletionDuration: metrics.totalCompletionDuration,
+              completionCount: metrics.completionCount,
+              totalFailDuration: metrics.totalFailDuration,
+              failCount: metrics.failCount
+            },
+            update: {
+              starts: metrics.starts,
+              completes: metrics.completes,
+              fails: metrics.fails,
+              startedPlayers: metrics.startedPlayers,
+              completedPlayers: metrics.completedPlayers,
+              boosterUsed: metrics.boosterUsed,
+              egpUsed: metrics.egpUsed,
+              totalCompletionDuration: metrics.totalCompletionDuration,
+              completionCount: metrics.completionCount,
+              totalFailDuration: metrics.totalFailDuration,
+              failCount: metrics.failCount,
+              updatedAt: new Date()
             }
-          },
-          create: {
-            gameId,
-            date: targetDate,
-            levelId: metrics.levelId,
-            levelFunnel: metrics.levelFunnel,
-            levelFunnelVersion: metrics.levelFunnelVersion,
-            platform: metrics.platform,
-            countryCode: metrics.countryCode,
-            appVersion: metrics.appVersion,
-            startedPlayers: metrics.startedPlayers,
-            completedPlayers: metrics.completedPlayers,
-            starts: metrics.starts,
-            completes: metrics.completes,
-            fails: metrics.fails,
-            startedUserIds: Array.from(metrics.startedUserIds),
-            completedUserIds: Array.from(metrics.completedUserIds),
-            totalCompletionDuration: metrics.totalCompletionDuration,
-            totalFailDuration: metrics.totalFailDuration,
-            completionCount: metrics.completionCount,
-            failCount: metrics.failCount,
-            usersWithBoosters: metrics.usersWithBoosters,
-            failsWithPurchase: metrics.failsWithPurchase
-          },
-          update: {
-            startedPlayers: metrics.startedPlayers,
-            completedPlayers: metrics.completedPlayers,
-            starts: metrics.starts,
-            completes: metrics.completes,
-            fails: metrics.fails,
-            startedUserIds: Array.from(metrics.startedUserIds),
-            completedUserIds: Array.from(metrics.completedUserIds),
-            totalCompletionDuration: metrics.totalCompletionDuration,
-            totalFailDuration: metrics.totalFailDuration,
-            completionCount: metrics.completionCount,
-            failCount: metrics.failCount,
-            usersWithBoosters: metrics.usersWithBoosters,
-            failsWithPurchase: metrics.failsWithPurchase,
-            updatedAt: new Date()
-          }
           });
 
           upsertCount++;
         } catch (upsertError) {
-          logger.warn(`Failed to upsert metric group: ${upsertError}`);
+          logger.error(`Failed to upsert metric group:`, upsertError);
         }
       }
 
@@ -127,139 +143,201 @@ export class LevelMetricsAggregationService {
   }
 
   /**
-   * Group events by all dimensions (level, platform, country, version, funnel)
+   * Group events by all dimensions and aggregate metrics
+   * Matches the calculation logic from LevelFunnelService.calculateLevelMetrics()
    */
-  private groupEventsByDimensions(
-    events: any[],
-    targetDate: Date
-  ): Map<
-    string,
-    {
-      levelId: number;
-      levelFunnel?: string;
-      levelFunnelVersion?: number;
-      platform?: string;
-      countryCode?: string;
-      appVersion?: string;
-      startedPlayers: number;
-      completedPlayers: number;
-      starts: number;
-      completes: number;
-      fails: number;
-      startedUserIds: Set<string>;
-      completedUserIds: Set<string>;
-      usersWithBoostersSet?: Set<string>; // For tracking unique users with boosters
-      failsWithPurchaseSet?: Set<string>; // For tracking unique users with purchases
-      totalCompletionDuration: number;
-      totalFailDuration: number;
-      completionCount: number;
-      failCount: number;
-      usersWithBoosters: number;
-      failsWithPurchase: number;
-    }
-  > {
+  private groupAndAggregateEvents(events: any[]): Map<string, {
+    levelId: number;
+    levelFunnel: string;
+    levelFunnelVersion: number;
+    platform: string;
+    countryCode: string;
+    appVersion: string;
+    starts: number;
+    completes: number;
+    fails: number;
+    startedPlayers: number;
+    completedPlayers: number;
+    boosterUsed: number;
+    egpUsed: number;
+    totalCompletionDuration: bigint;
+    completionCount: number;
+    totalFailDuration: bigint;
+    failCount: number;
+  }> {
     const groups = new Map();
 
-    // First pass: extract level info from properties and track by user
-    const startEventsByUser = new Map<string, any>();
-    const eventsByLevel = new Map<string, any[]>();
-
+    // Build index of start events by user for duration calculation
+    const startEventsByUser = new Map<string, any[]>();
+    
     for (const event of events) {
       const props = event.properties as any;
       const levelId = props?.levelId;
 
-      if (!levelId) continue;
+      if (levelId === undefined || levelId === null) continue;
 
-      const key = `${levelId}:${event.levelFunnel || 'none'}:${event.levelFunnelVersion || 0}:${
-        event.platform || 'none'
-      }:${event.countryCode || 'none'}:${event.appVersion || 'none'}`;
+      // Create dimension key
+      const key = this.createDimensionKey(
+        levelId,
+        event.levelFunnel,
+        event.levelFunnelVersion,
+        event.platform,
+        event.countryCode,
+        event.appVersion
+      );
 
+      // Initialize group if not exists
       if (!groups.has(key)) {
         groups.set(key, {
           levelId,
-          levelFunnel: event.levelFunnel,
-          levelFunnelVersion: event.levelFunnelVersion,
-          platform: event.platform,
-          countryCode: event.countryCode,
-          appVersion: event.appVersion,
+          levelFunnel: event.levelFunnel || '',
+          levelFunnelVersion: event.levelFunnelVersion || 0,
+          platform: event.platform || '',
+          countryCode: event.countryCode || '',
+          appVersion: event.appVersion || '',
           starts: 0,
           completes: 0,
           fails: 0,
           startedUserIds: new Set<string>(),
           completedUserIds: new Set<string>(),
-          usersWithBoostersSet: new Set<string>(),
-          failsWithPurchaseSet: new Set<string>(),
-          totalCompletionDuration: 0,
-          totalFailDuration: 0,
+          usersWithBoosters: new Set<string>(),
+          usersWithEGP: new Set<string>(),
+          totalCompletionDuration: BigInt(0),
           completionCount: 0,
-          failCount: 0,
-          startedPlayers: 0,
-          completedPlayers: 0,
-          usersWithBoosters: 0,
-          failsWithPurchase: 0
+          totalFailDuration: BigInt(0),
+          failCount: 0
         });
       }
 
       const group = groups.get(key);
 
-      // Track events
+      // Track start events for duration matching
       if (event.eventName === 'level_start') {
-        group.starts++;
-        group.startedUserIds.add(event.userId);
-        startEventsByUser.set(`${event.userId}:${levelId}`, event);
-      } else if (event.eventName === 'level_complete') {
-        group.completes++;
-        group.completedUserIds.add(event.userId);
-
-        // Calculate duration from matching start event
-        const startKey = `${event.userId}:${levelId}`;
-        const startEvent = startEventsByUser.get(startKey);
-        if (startEvent) {
-          const duration =
-            (event.timestamp.getTime() - startEvent.timestamp.getTime()) / 1000;
-          group.totalCompletionDuration += duration;
-          group.completionCount++;
+        const userKey = `${event.userId}:${levelId}`;
+        if (!startEventsByUser.has(userKey)) {
+          startEventsByUser.set(userKey, []);
         }
+        startEventsByUser.get(userKey)!.push(event);
+      }
 
-        // Check for boosters - it's a Dictionary object with booster types and counts
-        // If boosters dict exists and has any entries, count this event
-        if (props?.boosters && typeof props.boosters === 'object' && Object.keys(props.boosters).length > 0) {
-          group.usersWithBoosters++;
-        }
-      } else if (event.eventName === 'level_failed') {
-        group.fails++;
+      // Process event
+      this.processEventForGroup(group, event, startEventsByUser);
+    }
 
-        // Calculate duration from matching start event
-        const startKey = `${event.userId}:${levelId}`;
-        const startEvent = startEventsByUser.get(startKey);
-        if (startEvent) {
-          const duration =
-            (event.timestamp.getTime() - startEvent.timestamp.getTime()) / 1000;
-          group.totalFailDuration += duration;
-          group.failCount++;
-        }
+    // Convert Sets to counts
+    const result = new Map();
+    for (const [key, group] of groups.entries()) {
+      result.set(key, {
+        levelId: group.levelId,
+        levelFunnel: group.levelFunnel,
+        levelFunnelVersion: group.levelFunnelVersion,
+        platform: group.platform,
+        countryCode: group.countryCode,
+        appVersion: group.appVersion,
+        starts: group.starts,
+        completes: group.completes,
+        fails: group.fails,
+        startedPlayers: group.startedUserIds.size,
+        completedPlayers: group.completedUserIds.size,
+        boosterUsed: group.usersWithBoosters.size,
+        egpUsed: group.usersWithEGP.size,
+        totalCompletionDuration: group.totalCompletionDuration,
+        completionCount: group.completionCount,
+        totalFailDuration: group.totalFailDuration,
+        failCount: group.failCount
+      });
+    }
 
-        // Check for EGP (End Game Purchase) - it's an int count
-        // If egp > 0, count this event
-        if (props?.egp && typeof props.egp === 'number' && props.egp > 0) {
-          group.failsWithPurchase++;
-        }
+    return result;
+  }
 
-        // Check for boosters - also count on failure events
-        if (props?.boosters && typeof props.boosters === 'object' && Object.keys(props.boosters).length > 0) {
-          group.usersWithBoosters++;
-        }
+  /**
+   * Process a single event and update group metrics
+   * Matches logic from LevelFunnelService.calculateLevelMetrics()
+   */
+  private processEventForGroup(group: any, event: any, startEventsByUser: Map<string, any[]>): void {
+    const props = event.properties as any;
+    const levelId = props?.levelId;
+
+    if (event.eventName === 'level_start') {
+      group.starts++;
+      group.startedUserIds.add(event.userId);
+    } 
+    else if (event.eventName === 'level_complete') {
+      group.completes++;
+      group.completedUserIds.add(event.userId);
+
+      // Calculate duration from matching start event
+      const duration = this.findMatchingDuration(event, levelId, startEventsByUser);
+      if (duration !== null) {
+        group.totalCompletionDuration += BigInt(Math.floor(duration));
+        group.completionCount++;
+      }
+
+      // Check for boosters (matches current logic: object with keys)
+      if (props?.boosters && typeof props.boosters === 'object' && Object.keys(props.boosters).length > 0) {
+        group.usersWithBoosters.add(event.userId);
+      }
+    } 
+    else if (event.eventName === 'level_failed') {
+      group.fails++;
+
+      // Calculate duration from matching start event
+      const duration = this.findMatchingDuration(event, levelId, startEventsByUser);
+      if (duration !== null) {
+        group.totalFailDuration += BigInt(Math.floor(duration));
+        group.failCount++;
+      }
+
+      // Check for EGP (matches current logic: number > 0 or true)
+      const egpValue = props?.egp ?? props?.endGamePurchase;
+      if ((typeof egpValue === 'number' && egpValue > 0) || egpValue === true) {
+        group.usersWithEGP.add(event.userId);
+      }
+
+      // Check for boosters on fail events too
+      if (props?.boosters && typeof props.boosters === 'object' && Object.keys(props.boosters).length > 0) {
+        group.usersWithBoosters.add(event.userId);
       }
     }
+  }
 
-    // Calculate unique user counts from Sets
-    for (const group of groups.values()) {
-      group.startedPlayers = group.startedUserIds.size;
-      group.completedPlayers = group.completedUserIds.size;
-      // usersWithBoosters and failsWithPurchase are already event counts, no need to convert
+  /**
+   * Find the matching start event duration for a completion/fail event
+   * Matches logic from LevelFunnelService.calculateDurations()
+   */
+  private findMatchingDuration(endEvent: any, levelId: number, startEventsByUser: Map<string, any[]>): number | null {
+    const userKey = `${endEvent.userId}:${levelId}`;
+    const starts = startEventsByUser.get(userKey);
+    
+    if (!starts || starts.length === 0) {
+      return null;
     }
 
-    return groups;
+    // Find the most recent start before this end event
+    const validStarts = starts.filter(s => s.timestamp <= endEvent.timestamp);
+    if (validStarts.length === 0) {
+      return null;
+    }
+
+    const closestStart = validStarts[validStarts.length - 1];
+    const duration = (endEvent.timestamp.getTime() - closestStart.timestamp.getTime()) / 1000;
+    
+    return duration > 0 ? duration : null;
+  }
+
+  /**
+   * Create a unique key for dimension grouping
+   */
+  private createDimensionKey(
+    levelId: number,
+    levelFunnel: string | null,
+    levelFunnelVersion: number | null,
+    platform: string | null,
+    countryCode: string | null,
+    appVersion: string | null
+  ): string {
+    return `${levelId}:${levelFunnel || ''}:${levelFunnelVersion || 0}:${platform || ''}:${countryCode || ''}:${appVersion || ''}`;
   }
 
   /**
@@ -273,9 +351,14 @@ export class LevelMetricsAggregationService {
       );
 
       const currentDate = new Date(startDate);
+      currentDate.setUTCHours(0, 0, 0, 0);
+      
+      const end = new Date(endDate);
+      end.setUTCHours(0, 0, 0, 0);
+
       let processedDays = 0;
 
-      while (currentDate <= endDate) {
+      while (currentDate <= end) {
         await this.aggregateDailyMetrics(gameId, new Date(currentDate));
         currentDate.setDate(currentDate.getDate() + 1);
         processedDays++;
@@ -316,4 +399,6 @@ export class LevelMetricsAggregationService {
     }
   }
 }
+
+export default new LevelMetricsAggregationService();
 

@@ -22,7 +22,7 @@
     "postinstall": "prisma generate",
     "deploy": "npm run build",
     "analyze:redundancy": "node dist/scripts/analyzeRedundancy.js",
-    "backfill:level-metrics": "ts-node scripts/backfillLevelMetrics.ts",
+    "backfill:level-metrics": "ts-node src/scripts/backfillLevelMetrics.ts",
     "env:local": "cd .. && ./switch-env.sh local",
     "env:prod": "cd .. && ./switch-env.sh production",
     "env:status": "cd .. && ./switch-env.sh status"

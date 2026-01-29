@@ -1,168 +1,330 @@
-# Level Funnel Pre-Aggregation Feature Implementation Prompt
+# Level Funnel Pre-Aggregation Feature Implementation
 
 ## Overview
-Implement a pre-aggregation system for Level Funnel queries to improve performance from ~9.5 seconds to ~250ms for historical data queries.
+
+Implement a **daily pre-aggregation system** for Level Funnel queries to improve performance from ~9.5 seconds to ~250ms for historical data, while preserving calculation correctness and supporting live “today so far” data.
+
+The system uses **daily aggregated metrics + raw-event delta for today**, enabling fast dashboards without losing analytical flexibility.
+
+---
 
 ## Problem Statement
-- Current Level Funnel dashboard queries take **9.5 seconds** for historical data
+
+- Current Level Funnel dashboard queries take **~9.5 seconds**
 - Database: PostgreSQL with ~360K level events
-- Users: ~5K currently, scaling to 50K-500K
-- Database growth: ~100MB/day (unsustainable at current rate)
-- Goal: 38x performance improvement while maintaining calculation accuracy
+- Users: ~5K currently, scaling to 50K–500K
+- Database growth: ~100MB/day (unsustainable for query performance)
+- Goal: **~38× performance improvement** while keeping analytics accurate and trustworthy
 
-## Key Constraints
-1. **No user ID tracking** - Do NOT store user IDs in database (removes deduplication benefit, wastes space)
-2. **Simple count-based calculations** - All metrics should use only player counts and event counts
-3. **All filters must still work** - platform, country, appVersion, levelFunnel, levelFunnelVersion
-4. **Calculations must match old approach exactly** - Accuracy is critical
-5. **Internal tool only** - Max 10 dashboard users, no multi-instance scaling needed
-6. **Preserve existing data** - Never delete old events, only add aggregated metrics
+---
 
-## Current System Understanding
+## Key Constraints & Rules
 
-### Event Structure
-```
+1. **No user IDs stored in aggregated tables**
+   - User IDs may be used *during aggregation only*
+   - Aggregated tables must contain **counts only**
+
+2. **Count-based calculations only**
+   - All dashboard metrics must be derived from aggregated counts
+
+3. **All filters must work**
+   - platform
+   - countryCode
+   - appVersion
+   - levelFunnel
+   - levelFunnelVersion
+
+4. **Metric semantics must be explicit**
+   - Player-based metrics are **range-unique**
+   - Funnel rate is **derived at query time**
+   - No lifetime cohort guarantees
+
+5. **Internal tool**
+   - Max ~10 dashboard users
+   - Single instance
+   - No multi-region or sharding required
+
+6. **Raw events are preserved**
+   - Never delete raw events
+   - Aggregation is additive and idempotent
+
+---
+
+## Event Structure (Source of Truth)
+
+```ts
 Event {
-  userId, gameId, sessionId
+  userId
+  gameId
+  sessionId
   eventName: 'level_start' | 'level_complete' | 'level_failed'
   properties: {
     levelId: number
-    boosters: { booster_type: count, ... }  // Dictionary
-    egp: number  // End Game Purchase count (int)
-    ... other properties
+    boosters: { booster_type: number }
+    egp: number
+    duration: number
   }
-  platform: string  // iOS, Android, WebGL
-  countryCode: string  // US, TR, MX, etc
-  appVersion: string  // 0.1, 0.2, etc
-  levelFunnel: string  // live_v1, test_hard, etc
-  levelFunnelVersion: number  // 1, 2, 3, etc
+  platform: string
+  countryCode: string
+  appVersion: string
+  levelFunnel: string
+  levelFunnelVersion: number
+  createdAt: timestamp
 }
 ```
 
-### Old Calculation Logic (Reference)
-```
-churnStartComplete = (started - completed) / started × 100
-churnCompleteNext = (completed - nextLevelStarted) / completed × 100
-churnTotal = (started - nextLevelStarted) / started × 100
+Metric Definitions
+Core Event Counts
 
-boosterUsage = boosterEvents / (completes + fails) × 100
-egpRate = egpEvents / fails × 100
+starts
+Count of level_start events
 
-winRate = completes / (completes + fails) × 100
+completes
+Count of level_complete events
+
+fails
+Count of level_failed events
+
+Player Counts (Daily Unique)
+
+startedPlayers
+Unique users who triggered level_start on that day
+
+completedPlayers
+Unique users who triggered level_complete on that day
+
+Player counts are daily-unique, not deduplicated across multiple days.
+
+Booster & Purchase Metrics
+
+boosterUsed
+Event count of level_complete + level_failed
+Only when boosters property exists and is non-empty
+
+egpUsed
+Event count of level_failed
+Only when egp > 0
+
+These are event counts, not unique user counts.
+
+winRate        = completes / (completes + fails) × 100
+failRate       = fails / (completes + fails) × 100
+
 completionRate = completedPlayers / startedPlayers × 100
-failRate = fails / (completes + fails) × 100
-funnelRate = completedPlayers / firstLevelCompletedUsers × 100
 
-apsRaw = starts / completedPlayers
-apsClean = completes / (completes + fails)  // Filters orphaned starts
+apsRaw         = starts / completedPlayers
+apsClean       = completes / (completes + fails)
 
-meanCompletionDuration = totalCompletionDuration / completionCount
-meanFailDuration = totalFailDuration / failCount
-```
+boosterUsage   = boosterUsed / (completes + fails) × 100
+egpRate        = egpUsed / fails × 100
 
-## Implementation Steps
+Funnel Rate (Authoritative Definition)
 
-### Phase 1: Database Schema
-1. Create `LevelMetricsDaily` table with:
-   - Composite key: (gameId, date, levelId, levelFunnel, levelFunnelVersion, platform, countryCode, appVersion)
-   - Fields: starts, completes, fails, startedPlayers, completedPlayers
-   - Fields: usersWithBoosters (count of events), failsWithPurchase (count of events)
-   - Fields: totalCompletionDuration, completionCount, totalFailDuration, failCount
-   - Indexes on gameId, date, platform, countryCode, appVersion, levelFunnel
+Funnel rate is derived at query time, not stored.
 
-2. DO NOT store user IDs - only counts are needed
+funnelRate(level X) =
+  completedPlayers(level X) /
+  startedPlayers(level 1) × 100
+“Out of users who started level 1 during this time range, how many completed level X?”
 
-### Phase 2: Aggregation Service
-1. Create `LevelMetricsAggregationService`:
-   - `aggregateDailyMetrics(gameId, date)` - Aggregates one day's level events
-   - `backfillHistorical(gameId, startDate, endDate)` - Backfills historical data
-   - `getGamesWithLevelEvents()` - Returns list of games with level data
+Notes
+Funnel rate is time-window dependent
+Users may enter or exit the window at different levels
+This behavior is expected and intentional
 
-2. Aggregation Logic:
-   - Group raw events by: (levelId, levelFunnel, levelFunnelVersion, platform, countryCode, appVersion)
-   - For each group, calculate:
-     - Count unique players who started: `startedPlayers`
-     - Count unique players who completed: `completedPlayers`
-     - Count starts, completes, fails events
-     - Count booster events (where boosters dict exists and has entries)
-     - Count EGP events (where egp > 0)
-     - Sum duration data for mean calculations
+Database Schema
+Table: LevelMetricsDaily
+Composite Primary Key
 
-3. Store in database using UPSERT (safe for re-runs)
+(gameId,
+ date,
+ levelId,
+ levelFunnel,
+ levelFunnelVersion,
+ platform,
+ countryCode,
+ appVersion)
 
-### Phase 3: Fast Query Method
-1. Create `getLevelFunnelDataFast()` in LevelFunnelService:
-   - Query pre-aggregated data instead of raw events
-   - Merge data across dimensions:
-     - Group by levelId only
-     - Sum: starts, completes, fails, startedPlayers, completedPlayers
-     - Sum: usersWithBoosters, failsWithPurchase, duration totals
-   - Calculate all metrics using the formulas above
-   - Return same LevelMetrics structure as old method
+starts                   INT
+completes                INT
+fails                    INT
 
-### Phase 4: Cron Job
-1. Create job that runs daily at 2 AM UTC
-2. Find all games with level events
-3. Call `aggregateDailyMetrics()` for previous day
-4. Initialize in server startup
+startedPlayers           INT
+completedPlayers         INT
 
-### Phase 5: Controller Update
-1. Update `LevelFunnelController` to use fast query by default
-2. Keep old query method as fallback
+boosterUsed              INT
+egpUsed                  INT
 
-## Testing Strategy
+totalCompletionDuration  BIGINT
+completionCount          INT
 
-### Validation Queries
-1. Verify aggregated data exists:
-   ```sql
-   SELECT COUNT(*) FROM level_metrics_daily WHERE gameId = 'xxx'
-   ```
+totalFailDuration        BIGINT
+failCount                INT
 
-2. Verify counts match:
-   ```sql
-   SELECT usersWithBoosters, failsWithPurchase FROM level_metrics_daily WHERE usersWithBoosters > 0
-   ```
+Indexes
 
-3. Compare old vs new calculation for specific level/date
+(gameId, date)
 
-### Performance Testing
-1. Measure old query time: ~9.5 seconds
-2. Measure new query time: target ~250ms
-3. Verify all filters work correctly
+(gameId, levelFunnel, levelFunnelVersion, date)
 
-## Success Criteria
-- ✅ Fast query returns results in ~250ms (38x improvement)
-- ✅ All calculations match old approach exactly
-- ✅ All filters (platform, country, version, funnel) still work
-- ✅ Churn metrics calculated correctly from player counts only
-- ✅ Booster usage and EGP rate show correct percentages
-- ✅ APS Clean filters out orphaned starts correctly
-- ✅ No compilation errors
-- ✅ Backfill script works and can be re-run safely
-- ✅ Cron job runs automatically daily
+(platform)
 
-## Important Notes
-- **Event counts are the source of truth** - usersWithBoosters and failsWithPurchase are event counts, not unique user counts
-- **Booster events** = completes + fails with boosters dictionary
-- **EGP events** = fails with egp > 0
-- **All aggregations happen on the database** - keep processing in backend to minimum
-- **Re-running backfill is safe** - UPSERT ensures no duplicates
-- **Keep old method** - For debugging/validation purposes
+(countryCode)
 
-## Files to Create/Modify
-1. `prisma/schema.prisma` - Add LevelMetricsDaily model
-2. `src/services/LevelMetricsAggregationService.ts` - NEW aggregation service
-3. `src/jobs/levelMetricsAggregation.ts` - NEW cron job
-4. `src/services/LevelFunnelService.ts` - Add getLevelFunnelDataFast() method
-5. `src/controllers/LevelFunnelController.ts` - Use fast query
-6. `src/index.ts` - Initialize cron job on startup
-7. `scripts/backfillLevelMetrics.ts` - NEW backfill script
-8. `package.json` - Add scripts and dependencies (node-cron, etc)
+(appVersion)
 
-## Known Issues to Avoid
-- DO NOT store user IDs (wastes space, defeats aggregation purpose)
-- DO NOT delete old events (only add aggregated metrics)
-- DO NOT overcomplicate calculations (use simple counts only)
-- DO NOT track unique users per dimension (causes duplication issues)
-- DO NOT use real-time query for all data (defeats performance purpose)
+Phase 2: Aggregation Service
+Service: LevelMetricsAggregationService
+Methods
 
+aggregateDailyMetrics(gameId, date)
+
+backfillHistorical(gameId, startDate, endDate)
+
+getGamesWithLevelEvents()
+
+Aggregation Rules
+
+Group raw events by:
+levelId,
+levelFunnel,
+levelFunnelVersion,
+platform,
+countryCode,
+appVersion
+
+Use userId only in-memory to compute daily unique players
+
+Never persist userId
+
+Use UPSERT for idempotent writes
+
+Phase 3: Fast Query (Hybrid Read)
+Method: getLevelFunnelDataFast()
+Query Flow
+
+Historical Data
+
+Query LevelMetricsDaily
+
+Range: [startDate → yesterday]
+
+Aggregate by levelId
+
+Today (Live Data)
+
+Query raw events
+
+Range: [today 00:00 → now]
+
+Aggregate in memory using the same rules
+
+Merge
+
+Sum historical + today delta
+
+Derive Metrics
+
+winRate, failRate
+
+APS
+
+boosterUsage, egpRate
+
+funnelRate (level 1 as denominator)
+
+Phase 4: Cron Job
+
+Runs daily at 02:00 UTC
+
+For each game:
+
+Aggregate yesterday
+
+Uses UPSERT
+
+Safe to re-run
+
+Phase 5: Controller Update
+LevelFunnelController
+
+Use fast aggregated query by default
+
+Keep legacy raw-event query for:
+
+Validation
+
+Debugging
+
+Metric verification
+
+Testing Strategy
+Validation
+
+Compare old vs new results for:
+
+Single-day range
+
+7-day range
+
+Filtered queries
+
+Verify funnelRate correctness
+
+Verify APS Clean behavior
+
+Performance
+
+Old query time: ~9.5s
+
+New target: ~250ms
+
+Today-only queries may be slightly slower (acceptable)
+
+Data Retention Policy
+
+Raw events are the source of truth
+
+Do NOT delete raw events
+
+Future option:
+
+Archive old raw events to cold storage (S3 / Parquet)
+
+Keep last N days in Postgres
+
+Accepted Trade-offs
+
+Player counts are range-unique, not lifetime cohorts
+
+Funnel rate reflects time-window progression
+
+Aggregated schema is opinionated and dashboard-focused
+
+Exploratory analytics should use raw events
+
+Files to Create / Modify
+
+prisma/schema.prisma
+
+src/services/LevelMetricsAggregationService.ts
+
+src/jobs/levelMetricsAggregation.ts
+
+src/services/LevelFunnelService.ts
+
+src/controllers/LevelFunnelController.ts
+
+src/index.ts
+
+scripts/backfillLevelMetrics.ts
+
+package.json
+
+Final Notes
+
+Aggregates are optimized for decision dashboards
+
+Raw events remain for exploration and future metrics
+
+This architecture intentionally separates speed from flexibility

@@ -494,7 +494,8 @@ const Health: React.FC<{ gameId: string }> = ({ gameId }) => {
     }
   };
 
-  const parseBreadcrumbs = (breadcrumbsStr: string) => {
+  const parseBreadcrumbs = (breadcrumbsStr: string | undefined) => {
+    if (!breadcrumbsStr) return [];
     try {
       const parsed = JSON.parse(breadcrumbsStr);
       if (Array.isArray(parsed)) {
@@ -520,8 +521,8 @@ const Health: React.FC<{ gameId: string }> = ({ gameId }) => {
     }
   };
 
-  const formatBreadcrumbTimestamp = (timestamp: any) => {
-    if (!timestamp) return null;
+  const formatBreadcrumbTimestamp = (timestamp: any): string => {
+    if (!timestamp) return '';
     
     try {
       // Handle different timestamp formats
@@ -547,9 +548,9 @@ const Health: React.FC<{ gameId: string }> = ({ gameId }) => {
       if (date && !isNaN(date.getTime())) {
         return date.toLocaleString();
       }
-      return null;
+      return '';
     } catch (e) {
-      return null;
+      return '';
     }
   };
 

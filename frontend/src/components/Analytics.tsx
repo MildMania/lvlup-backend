@@ -922,28 +922,6 @@ const MonetizationTab: React.FC<{ gameInfo: any }> = ({ gameInfo }) => {
     if (percentile >= 10) return 'metric-low';
     return 'metric-very-low';
   };
-
-  const formatMetricValue = (value: number | undefined) => {
-    // Explicitly handle all non-valid values
-    if (value === undefined || value === null || isNaN(value)) return 'N/A';
-    if (value < 0) return 'N/A';
-    if (value === 0) {
-      // For monetization, 0 values might be legitimate (no revenue), so format them
-      if (selectedMetric === 'conversionRate') {
-        return `${value.toFixed(2)}%`;
-      } else {
-        return `$${value.toFixed(2)}`;
-      }
-    }
-    
-    if (selectedMetric === 'conversionRate') {
-      return `${value.toFixed(2)}%`;
-    } else {
-      // Revenue/ARPU metrics
-      return `$${value.toFixed(2)}`;
-    }
-  };
-
   return (
     <div className="tab-content">
       <h2>Monetization Analytics</h2>

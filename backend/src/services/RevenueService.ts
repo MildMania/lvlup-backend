@@ -33,32 +33,48 @@ export class RevenueService {
                 revenue: revenueData.revenue,
                 currency: revenueData.currency || 'USD',
                 timestamp,
-                clientTs: revenueData.clientTs ? BigInt(revenueData.clientTs) : null,
                 transactionTimestamp: revenueData.transactionTimestamp ? BigInt(revenueData.transactionTimestamp) : null,
                 
-                // Minimal context (most context available via Session join)
+                // Device & App context
                 platform: revenueData.platform || eventMetadata?.platform || null,
+                device: revenueData.device || null,
+                deviceId: revenueData.deviceId || null,
                 appVersion: revenueData.appVersion || eventMetadata?.appVersion || null,
-                appBuild: eventMetadata?.appBuild || null,
+                appBuild: revenueData.appBuild || eventMetadata?.appBuild || null,
                 countryCode: revenueData.countryCode || eventMetadata?.countryCode || null,
+                
+                // Custom data
+                customData: revenueData.customData || null,
             };
 
             // Add type-specific fields
             if (revenueData.revenueType === RevenueType.AD_IMPRESSION) {
                 Object.assign(revenueRecord, {
-                    adNetworkName: revenueData.adNetworkName,
-                    adFormat: revenueData.adFormat,
+                    adNetworkName: revenueData.adNetworkName || null,
+                    adFormat: revenueData.adFormat || null,
+                    adUnitId: revenueData.adUnitId || null,
+                    adUnitName: revenueData.adUnitName || null,
                     adPlacement: revenueData.adPlacement || null,
+                    adCreativeId: revenueData.adCreativeId || null,
                     adImpressionId: revenueData.adImpressionId || null,
+                    adNetworkPlacement: revenueData.adNetworkPlacement || null,
                 });
                 
                 logger.info(`Ad impression tracked: ${revenueData.adNetworkName} ${revenueData.adFormat} - $${revenueData.revenue}`);
             } else if (revenueData.revenueType === RevenueType.IN_APP_PURCHASE) {
                 Object.assign(revenueRecord, {
-                    productId: revenueData.productId,
-                    transactionId: revenueData.transactionId,
-                    store: revenueData.store,
+                    productId: revenueData.productId || null,
+                    productName: revenueData.productName || null,
+                    productType: revenueData.productType || null,
+                    transactionId: revenueData.transactionId || null,
+                    orderId: revenueData.orderId || null,
+                    purchaseToken: revenueData.purchaseToken || null,
+                    store: revenueData.store || null,
                     isVerified: revenueData.isVerified || false,
+                    quantity: revenueData.quantity || 1,
+                    isSandbox: revenueData.isSandbox || false,
+                    isRestored: revenueData.isRestored || false,
+                    subscriptionPeriod: revenueData.subscriptionPeriod || null,
                 });
                 
                 logger.info(`IAP tracked: ${revenueData.productId} - $${revenueData.revenue} (${revenueData.store})`);

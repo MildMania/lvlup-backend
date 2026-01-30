@@ -450,8 +450,16 @@
 }
 
 .level-funnel-table tbody tr:hover td:first-child {
+  background: var(--bg-secondary);
+  z-index: 100;
+}
+
+.level-funnel-table tbody tr:hover td:first-child::before {
+  content: '';
+  position: absolute;
+  inset: 0;
   background: rgba(59, 130, 246, 0.05);
-  z-index: 11;
+  z-index: -1;
 }
 
 /* Metric Values with Colors - Vibrant and Appealing */

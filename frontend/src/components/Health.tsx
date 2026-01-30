@@ -101,8 +101,22 @@ const Health: React.FC<{ gameId: string }> = ({ gameId }) => {
 
   // Pagination for crash list
   const [crashesPage, setCrashesPage] = useState(0);
-  const [crashesLimit] = useState(20);
+  const [crashesLimit] = useState(15);
   const [totalCrashGroups, setTotalCrashGroups] = useState(0);
+
+  // Hover state for showing stack trace
+  const [hoveredErrorId, setHoveredErrorId] = useState<string | null>(null);
+  const [hoveredStackTrace, setHoveredStackTrace] = useState<string | null>(null);
+  const [loadingStackTrace, setLoadingStackTrace] = useState(false);
+  const hideTooltipTimer = useRef<number | null>(null);
+
+  useEffect(() => {
+    return () => {
+      if (hideTooltipTimer.current) {
+        window.clearTimeout(hideTooltipTimer.current);
+      }
+    };
+  }, []);
 
   // Filters
   const [dateRange, setDateRange] = useState('7d');
@@ -356,6 +370,95 @@ const Health: React.FC<{ gameId: string }> = ({ gameId }) => {
     setClickedErrorId(error.id);
     setInstancesPage(0);
     fetchErrorInstances(error.message, error.exceptionType);
+  };
+
+  const fetchFirstErrorStackTrace = async (message: string, exceptionType: string, errorId: string) => {
+    console.debug('[Health] fetchFirstErrorStackTrace called', { errorId, message, exceptionType });
+    if (hideTooltipTimer.current) {
+      window.clearTimeout(hideTooltipTimer.current);
+      hideTooltipTimer.current = null;
+    }
+    setLoadingStackTrace(true);
+    setHoveredErrorId(errorId);
+    setHoveredStackTrace(null);
+    
+    try {
+      const { start, end } = getDateRange();
+      const params = new URLSearchParams({
+        message,
+        exceptionType,
+        startDate: start.toISOString(),
+        endDate: end.toISOString(),
+        limit: '1', // Only fetch the first instance
+        offset: '0',
+      });
+
+      if (platform) params.append('platform', platform);
+      if (selectedCountries.length > 0) {
+        selectedCountries.forEach(country => params.append('country', country));
+      }
+      if (selectedVersions.length > 0) {
+        selectedVersions.forEach(version => params.append('appVersion', version));
+      }
+
+      const apiUrl = import.meta.env.VITE_API_BASE_URL;
+      const apiKey = getApiKey();
+
+      const url = `${apiUrl}/games/${gameId}/health/error-instances?${params}`;
+      console.debug('[Health] fetching stack trace from', url);
+
+      const response = await fetch(
+        url,
+        {
+          headers: {
+            'X-API-Key': apiKey,
+            'Content-Type': 'application/json',
+          },
+        }
+      );
+
+      console.debug('[Health] stack trace response status', response.status);
+
+      if (!response.ok) {
+        throw new Error(`HTTP error! Status: ${response.status}`);
+      }
+
+      const data = await response.json();
+      console.debug('[Health] stack trace data', data && data.instances && data.instances.length);
+      if (data.instances && data.instances.length > 0) {
+        setHoveredStackTrace(data.instances[0].stackTrace || 'No stack trace available');
+      } else {
+        setHoveredStackTrace('No stack trace available');
+      }
+    } catch (error) {
+      console.error('Error fetching stack trace:', error);
+      setHoveredStackTrace('Error loading stack trace');
+    } finally {
+      setLoadingStackTrace(false);
+    }
+  };
+
+  const handleErrorMessageMouseEnter = (error: HealthMetrics['topCrashes'][0]) => {
+    console.debug('[Health] hover enter', { id: error.id, message: error.message });
+    if (hideTooltipTimer.current) {
+      window.clearTimeout(hideTooltipTimer.current);
+      hideTooltipTimer.current = null;
+    }
+    fetchFirstErrorStackTrace(error.message, error.exceptionType, error.id);
+  };
+
+  const handleErrorMessageMouseLeave = () => {
+    console.debug('[Health] hover leave');
+    // Use a small delay to allow entering the tooltip without closing it
+    if (hideTooltipTimer.current) {
+      window.clearTimeout(hideTooltipTimer.current);
+    }
+    hideTooltipTimer.current = window.setTimeout(() => {
+      setHoveredErrorId(null);
+      setHoveredStackTrace(null);
+      setLoadingStackTrace(false);
+      hideTooltipTimer.current = null;
+    }, 200);
   };
 
   const navigateInstance = (direction: 'prev' | 'next') => {
@@ -770,14 +873,55 @@ const Health: React.FC<{ gameId: string }> = ({ gameId }) => {
                   <td>
                     <code className="exception-type">{crash.exceptionType}</code>
                   </td>
-                  <td className="crash-message">
+                  <td 
+                    className="crash-message"
+                    onMouseEnter={() => handleErrorMessageMouseEnter(crash)}
+                    onMouseLeave={handleErrorMessageMouseLeave}
+                    style={{ position: 'relative' }}
+                  >
                     {clickedErrorId === crash.id ? (
                       <span className="loading-text">
                         <span className="spinner"></span>
                         Loading instances...
                       </span>
                     ) : (
-                      crash.message
+                      <>
+                        <span className="crash-message-text">{crash.message}</span>
+                        {loadingStackTrace && hoveredErrorId === crash.id && (
+                          <span style={{ marginLeft: 8 }} className="spinner" aria-hidden="true"></span>
+                        )}
+                         {hoveredErrorId === crash.id && (
+                           <div
+                             className="stack-trace-tooltip"
+                             onMouseEnter={() => {
+                               if (hideTooltipTimer.current) {
+                                 window.clearTimeout(hideTooltipTimer.current);
+                                 hideTooltipTimer.current = null;
+                               }
+                             }}
+                             onMouseLeave={() => {
+                               if (hideTooltipTimer.current) {
+                                 window.clearTimeout(hideTooltipTimer.current);
+                               }
+                               hideTooltipTimer.current = window.setTimeout(() => {
+                                 setHoveredErrorId(null);
+                                 setHoveredStackTrace(null);
+                                 setLoadingStackTrace(false);
+                                 hideTooltipTimer.current = null;
+                               }, 200);
+                             }}
+                           >
+                             {loadingStackTrace ? (
+                               <div className="tooltip-loading">Loading stack trace...</div>
+                             ) : (
+                               <>
+                                 <div className="tooltip-header">First Instance Stack Trace:</div>
+                                 <pre className="tooltip-stack-trace">{hoveredStackTrace}</pre>
+                               </>
+                             )}
+                           </div>
+                         )}
+                      </>
                     )}
                   </td>
                   <td>{crash.count}</td>
@@ -942,51 +1086,49 @@ const Health: React.FC<{ gameId: string }> = ({ gameId }) => {
                 </div>
               </div>
 
-              {selectedCrash.breadcrumbs && (
-                <div className="detail-section">
-                  <h3>Breadcrumbs ({parseBreadcrumbs(selectedCrash.breadcrumbs).length} entries)</h3>
-                  <div className="breadcrumbs-timeline">
-                    {(() => {
-                      const breadcrumbs = parseBreadcrumbs(selectedCrash.breadcrumbs);
-                      const totalEntries = breadcrumbs.length;
-                      return breadcrumbs.reverse().map((crumb: any, index: number) => {
-                        const originalIndex = totalEntries - index;
-                        const timestamp = formatBreadcrumbTimestamp(crumb.Timestamp);
-                        return (
-                        <div key={index} className="breadcrumb-entry">
-                          <div className="breadcrumb-header">
-                            <span className="breadcrumb-index">#{originalIndex}</span>
-                            <span 
-                              className="breadcrumb-type"
-                              style={{ 
-                                backgroundColor: getBreadcrumbTypeColor(crumb.Type),
-                                color: 'white',
-                                padding: '2px 8px',
-                                borderRadius: '4px',
-                                fontSize: '11px',
-                                fontWeight: 600
-                              }}
-                            >
-                              {crumb.Type || 'Log'}
-                            </span>
-                            <span className="breadcrumb-timestamp">
-                              {timestamp || `Entry ${originalIndex}`}
-                            </span>
-                          </div>
-                          <div className="breadcrumb-message">{crumb.Message || 'No message'}</div>
-                          {crumb.Data && (
-                            <div className="breadcrumb-data">
-                              <strong>Data:</strong>
-                              <pre>{JSON.stringify(crumb.Data, null, 2)}</pre>
-                            </div>
-                          )}
+              <div className="detail-section">
+                <h3>Breadcrumbs ({parseBreadcrumbs(selectedCrash.breadcrumbs).length} entries)</h3>
+                <div className="breadcrumbs-timeline">
+                  {(() => {
+                    const breadcrumbs = parseBreadcrumbs(selectedCrash.breadcrumbs);
+                    const totalEntries = breadcrumbs.length;
+                    return breadcrumbs.reverse().map((crumb: any, index: number) => {
+                      const originalIndex = totalEntries - index;
+                      const timestamp = formatBreadcrumbTimestamp(crumb.Timestamp);
+                      return (
+                      <div key={index} className="breadcrumb-entry">
+                        <div className="breadcrumb-header">
+                          <span className="breadcrumb-index">#{originalIndex}</span>
+                          <span 
+                            className="breadcrumb-type"
+                            style={{ 
+                              backgroundColor: getBreadcrumbTypeColor(crumb.Type),
+                              color: 'white',
+                              padding: '2px 8px',
+                              borderRadius: '4px',
+                              fontSize: '11px',
+                              fontWeight: 600
+                            }}
+                          >
+                            {crumb.Type || 'Log'}
+                          </span>
+                          <span className="breadcrumb-timestamp">
+                            {timestamp || `Entry ${originalIndex}`}
+                          </span>
                         </div>
-                      );
-                      });
-                    })()}
-                  </div>
+                        <div className="breadcrumb-message">{crumb.Message || 'No message'}</div>
+                        {crumb.Data && (
+                          <div className="breadcrumb-data">
+                            <strong>Data:</strong>
+                            <pre>{JSON.stringify(crumb.Data, null, 2)}</pre>
+                          </div>
+                        )}
+                      </div>
+                    );
+                    });
+                  })()}
                 </div>
-              )}
+              </div>
 
               {selectedCrash.customData && (
                 <div className="detail-section">

@@ -84,7 +84,7 @@ const EngagementTab: React.FC<{ gameInfo: any }> = ({ gameInfo }) => {
 
   // Available days for selection
   const availableDays = [0, 1, 2, 3, 4, 5, 6, 7, 14, 30, 60, 90, 180, 360, 540, 720];
-  const [selectedDays, setSelectedDays] = useState<number[]>([0, 1, 2, 3, 4, 5, 6, 7, 14, 30]);
+  const [selectedDays, setSelectedDays] = useState<number[]>([0, 1, 2, 3, 4, 5, 6, 7]);
 
   // Filter options from API
   const [availableCountries, setAvailableCountries] = useState<string[]>(['All']);
@@ -667,6 +667,7 @@ const HealthTab: React.FC<{ gameInfo: any }> = ({ gameInfo }) => {
 const MonetizationTab: React.FC<{ gameInfo: any }> = ({ gameInfo }) => {
   const [cohortData, setCohortData] = useState<any[]>([]);
   const [revenueSummary, setRevenueSummary] = useState<any>(null);
+  const [revenueSummaryLoaded, setRevenueSummaryLoaded] = useState(false);
   const [loading, setLoading] = useState(false);
   const [selectedMetric, setSelectedMetric] = useState<'totalRevenue' | 'iapRevenue' | 'adRevenue' | 'arpu' | 'arpuIap' | 'arppuIap' | 'conversionRate'>('totalRevenue');
   const [showDaySelector, setShowDaySelector] = useState(false);
@@ -674,7 +675,7 @@ const MonetizationTab: React.FC<{ gameInfo: any }> = ({ gameInfo }) => {
   const [showCountrySelector, setShowCountrySelector] = useState(false);
   const [showVersionSelector, setShowVersionSelector] = useState(false);
   const [filters, setFilters] = useState({
-    startDate: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
+    startDate: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
     endDate: new Date().toISOString().split('T')[0]
   });
   const [selectedPlatforms, setSelectedPlatforms] = useState<string[]>([]);
@@ -683,7 +684,7 @@ const MonetizationTab: React.FC<{ gameInfo: any }> = ({ gameInfo }) => {
 
   // Available days for selection
   const availableDays = [0, 1, 2, 3, 4, 5, 6, 7, 14, 30, 60, 90];
-  const [selectedDays, setSelectedDays] = useState<number[]>([0, 1, 3, 7, 14, 30]);
+  const [selectedDays, setSelectedDays] = useState<number[]>([0, 1, 2, 3, 4, 5, 6, 7 ]);
 
   // Filter options from API
   const [availableCountries, setAvailableCountries] = useState<string[]>(['All']);
@@ -753,6 +754,8 @@ const MonetizationTab: React.FC<{ gameInfo: any }> = ({ gameInfo }) => {
       }
     } catch (error) {
       console.error('Error fetching revenue summary:', error);
+    } finally {
+      setRevenueSummaryLoaded(true);
     }
   };
 
@@ -776,8 +779,71 @@ const MonetizationTab: React.FC<{ gameInfo: any }> = ({ gameInfo }) => {
   }, [gameInfo.id]);
 
   useEffect(() => {
+    // Wait until we've attempted to load revenue summary to enable fast-path
+    if (!revenueSummaryLoaded) return;
+
+    // Short-circuit: if user hasn't selected any days, don't fetch
+    if (!selectedDays || selectedDays.length === 0) {
+      setCohortData([]);
+      return;
+    }
+
+    // Always fetch cohort data (which includes install counts) even if there are no monetization events
     fetchMonetizationCohorts();
-  }, [gameInfo.id, filters, selectedDays, selectedPlatforms, selectedCountries, selectedVersions, selectedMetric]);
+  }, [gameInfo.id, filters, selectedDays, selectedPlatforms, selectedCountries, selectedVersions, selectedMetric, revenueSummaryLoaded]);
+
+  const getMetricValue = (metrics: any, day: number) => {
+    const dayKey = `day${day}`;
+    if (!metrics || !metrics[dayKey]) return undefined;
+
+    const data = metrics[dayKey];
+    
+    switch (selectedMetric) {
+      case 'iapRevenue':
+        return data.iapRevenue;
+      case 'adRevenue':
+        return data.adRevenue;
+      case 'totalRevenue':
+        return data.totalRevenue;
+      case 'arpuIap':
+        return data.arpuIap;
+      case 'arppuIap':
+        return data.arppuIap;
+      case 'arpu':
+        return data.arpu;
+      case 'conversionRate':
+        return data.conversionRate;
+      default:
+        return undefined;
+    }
+  };
+
+  const getUserCount = (metrics: any, day: number) => {
+    const dayKey = `day${day}`;
+    if (!metrics || !metrics[dayKey]) return undefined;
+    return metrics[dayKey].returningUsers;
+  };
+
+  const getPayingUserCount = (metrics: any, day: number) => {
+    const dayKey = `day${day}`;
+    if (!metrics || !metrics[dayKey]) return undefined;
+    return metrics[dayKey].iapPayingUsers;
+  };
+
+  // Memoize per-day sorted values to avoid recomputing percentiles on every render
+  const perDaySortedValues = React.useMemo(() => {
+    const map: Record<number, number[]> = {};
+    if (!cohortData || cohortData.length === 0) return map;
+    
+    selectedDays.forEach((day) => {
+      const values = cohortData
+        .map((cohort: any) => getMetricValue(cohort.metrics, day))
+        .filter((v: any) => v !== undefined && v !== null && v >= 0)
+        .sort((a: number, b: number) => a - b);
+      map[day] = values;
+    });
+    return map;
+  }, [cohortData, selectedDays, selectedMetric]);
 
   const toggleDay = (day: number) => {
     setSelectedDays(prev => 
@@ -834,62 +900,21 @@ const MonetizationTab: React.FC<{ gameInfo: any }> = ({ gameInfo }) => {
     });
   };
 
-  const getMetricValue = (metrics: any, day: number) => {
-    const dayKey = `day${day}`;
-    if (!metrics[dayKey]) return undefined;
-
-    const data = metrics[dayKey];
-    
-    switch (selectedMetric) {
-      case 'iapRevenue':
-        return data.iapRevenue;
-      case 'adRevenue':
-        return data.adRevenue;
-      case 'totalRevenue':
-        return data.totalRevenue;
-      case 'arpuIap':
-        return data.arpuIap;
-      case 'arppuIap':
-        return data.iapPayingUsers > 0 ? data.arppuIap : undefined;
-      case 'arpu':
-        return data.arpu;
-      case 'conversionRate':
-        return data.conversionRate;
-      default:
-        return undefined;
-    }
-  };
-
-  const getUserCount = (metrics: any, day: number) => {
-    const dayKey = `day${day}`;
-    if (!metrics[dayKey]) return undefined;
-    return metrics[dayKey].returningUsers;
-  };
-
-  const getPayingUserCount = (metrics: any, day: number) => {
-    const dayKey = `day${day}`;
-    if (!metrics[dayKey]) return undefined;
-    return metrics[dayKey].iapPayingUsers;
-  };
+  // ...existing code...
 
   // Calculate color for metric values based on percentile within each day
   const getMetricColor = (day: number, value: number | undefined) => {
     if (value === undefined || value === null || value < 0) return 'not-available';
     if (value === 0) return 'metric-very-low';
 
-    // Get all values for this specific day across all cohorts
-    const dayValues = cohortData
-      .map((cohort: any) => getMetricValue(cohort.metrics, day))
-      .filter((v: any) => v !== undefined && v !== null && v >= 0 && v > 0);
+    const sortedValues = perDaySortedValues[day] || [];
+    if (sortedValues.length === 0) return 'metric-very-low';
 
-    if (dayValues.length === 0) return '';
+    const idx = sortedValues.indexOf(value);
+    const valueIndex = idx >= 0 ? idx : sortedValues.findIndex((v: number) => v >= value);
+    const effectiveIndex = valueIndex >= 0 ? valueIndex : sortedValues.length - 1;
+    const percentile = sortedValues.length > 1 ? (effectiveIndex / (sortedValues.length - 1)) * 100 : 50;
 
-    // Sort values to determine percentiles
-    const sortedValues = [...dayValues].sort((a, b) => a - b);
-    const valueIndex = sortedValues.indexOf(value);
-    const percentile = (valueIndex / (sortedValues.length - 1)) * 100;
-
-    // Assign color based on percentile (higher is better)
     if (percentile >= 90) return 'metric-top';
     if (percentile >= 75) return 'metric-high';
     if (percentile >= 50) return 'metric-good';
@@ -899,7 +924,17 @@ const MonetizationTab: React.FC<{ gameInfo: any }> = ({ gameInfo }) => {
   };
 
   const formatMetricValue = (value: number | undefined) => {
-    if (value === undefined || value === null) return 'N/A';
+    // Explicitly handle all non-valid values
+    if (value === undefined || value === null || isNaN(value)) return 'N/A';
+    if (value < 0) return 'N/A';
+    if (value === 0) {
+      // For monetization, 0 values might be legitimate (no revenue), so format them
+      if (selectedMetric === 'conversionRate') {
+        return `${value.toFixed(2)}%`;
+      } else {
+        return `$${value.toFixed(2)}`;
+      }
+    }
     
     if (selectedMetric === 'conversionRate') {
       return `${value.toFixed(2)}%`;
@@ -1211,8 +1246,8 @@ const MonetizationTab: React.FC<{ gameInfo: any }> = ({ gameInfo }) => {
             <tbody>
               {cohortData.length === 0 ? (
                 <tr>
-                  <td colSpan={selectedDays.length + 2} style={{ textAlign: 'center', padding: '2rem' }}>
-                    No data available for the selected period
+                  <td colSpan={selectedDays.length + 2} style={{ textAlign: 'center', padding: '2rem', color: '#888' }}>
+                    No cohort data available for the selected period
                   </td>
                 </tr>
               ) : (
@@ -1224,9 +1259,14 @@ const MonetizationTab: React.FC<{ gameInfo: any }> = ({ gameInfo }) => {
                       const value = getMetricValue(cohort.metrics, day);
                       const userCount = getUserCount(cohort.metrics, day);
                       const payingUsers = getPayingUserCount(cohort.metrics, day);
-                      const isNotAvailable = value === undefined;
-                      const formattedValue = formatMetricValue(value);
-                      const colorClass = getMetricColor(day, value);
+                      // Match Engagement tab: isNotAvailable checks for negative values (backend marker for unreached days)
+                      const isNotAvailable = value === undefined || value === null || value < 0;
+                      const formattedValue = isNotAvailable 
+                        ? 'N/A' 
+                        : selectedMetric === 'conversionRate'
+                        ? `${value.toFixed(2)}%`
+                        : `$${value.toFixed(2)}`;
+                      const colorClass = isNotAvailable ? 'not-available' : getMetricColor(day, value);
                       
                       return (
                         <td key={day} className={`retention-cell ${colorClass}`}>

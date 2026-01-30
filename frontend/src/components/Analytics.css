@@ -321,6 +321,8 @@
 .cohort-table td.retention-cell.not-available {
   color: var(--text-secondary);
   font-style: italic;
+  background-color: rgba(128, 128, 128, 0.08);
+  opacity: 0.65;
 }
 
 /* Metric value styling */

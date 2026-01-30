@@ -219,11 +219,13 @@
 
 .crashes-table {
   overflow-x: auto;
+  overflow-y: visible;
 }
 
 .crashes-table table {
   width: 100%;
   border-collapse: collapse;
+  min-width: 800px; /* ensure table can scroll horizontally when necessary */
 }
 
 .crashes-table th {
@@ -261,6 +263,13 @@
 }
 
 .crash-message {
+  /* the cell allows visible overflow for tooltip; inner span handles ellipsis */
+  max-width: 400px;
+  overflow: visible;
+}
+
+.crash-message-text {
+  display: inline-block;
   max-width: 400px;
   white-space: nowrap;
   overflow: hidden;
@@ -719,3 +728,62 @@
   font-weight: 500;
 }
 
+/* Stack Trace Tooltip */
+.stack-trace-tooltip {
+  position: absolute;
+  left: 0;
+  top: 100%;
+  margin-top: 8px;
+  background: var(--bg-primary);
+  border: 1px solid var(--border-primary);
+  border-radius: 8px;
+  padding: 12px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+  z-index: 9999; /* increase z-index to be above other elements */
+  min-width: 500px;
+  max-width: 700px;
+  max-height: 400px;
+  overflow: auto;
+  animation: tooltipFadeIn 0.2s ease-in-out;
+}
+
+@keyframes tooltipFadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(-4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.tooltip-header {
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: var(--text-primary);
+  margin-bottom: 8px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid var(--border-primary);
+}
+
+.tooltip-stack-trace {
+  font-family: 'Monaco', 'Menlo', 'Courier New', monospace;
+  font-size: 0.75rem;
+  line-height: 1.5;
+  color: var(--text-secondary);
+  background: var(--bg-tertiary);
+  padding: 8px;
+  border-radius: 4px;
+  margin: 0;
+  white-space: pre-wrap;
+  word-break: break-word;
+  overflow-x: auto;
+}
+
+.tooltip-loading {
+  font-size: 0.875rem;
+  color: var(--text-secondary);
+  padding: 8px;
+  text-align: center;
+}

@@ -2,6 +2,7 @@
 import { RevenueData, RevenueType, RevenueAnalytics, MonetizationMetrics } from '../types/revenue';
 import logger from '../utils/logger';
 import prisma from '../prisma';
+import { convertToUSD } from '../utils/currencyConverter';
 
 export class RevenueService {
     private prisma: PrismaClient;
@@ -23,6 +24,19 @@ export class RevenueService {
     ) {
         try {
             const timestamp = revenueData.timestamp ? new Date(revenueData.timestamp) : new Date();
+            const currency = revenueData.currency || 'USD';
+            
+            // Use revenueUSD from SDK if provided (and valid), otherwise convert it
+            let revenueUSD: number;
+            if (revenueData.revenueUSD && revenueData.revenueUSD > 0) {
+                // SDK already converted it, use the provided value
+                revenueUSD = revenueData.revenueUSD;
+                logger.debug(`Using pre-converted revenueUSD: ${revenueUSD} USD`);
+            } else {
+                // Backend converts the revenue to USD
+                revenueUSD = convertToUSD(revenueData.revenue, currency);
+                logger.debug(`Backend converted ${revenueData.revenue} ${currency} to ${revenueUSD} USD`);
+            }
             
             // Prepare common revenue fields
             const revenueRecord = {
@@ -31,34 +45,51 @@ export class RevenueService {
                 sessionId,
                 revenueType: revenueData.revenueType,
                 revenue: revenueData.revenue,
-                currency: revenueData.currency || 'USD',
+                currency: currency,
+                revenueUSD: revenueUSD, // Store USD-converted value
                 timestamp,
-                clientTs: revenueData.clientTs ? BigInt(revenueData.clientTs) : null,
                 transactionTimestamp: revenueData.transactionTimestamp ? BigInt(revenueData.transactionTimestamp) : null,
                 
-                // Minimal context (most context available via Session join)
+                // Device & App context
                 platform: revenueData.platform || eventMetadata?.platform || null,
+                device: revenueData.device || null,
+                deviceId: revenueData.deviceId || null,
                 appVersion: revenueData.appVersion || eventMetadata?.appVersion || null,
-                appBuild: eventMetadata?.appBuild || null,
+                appBuild: revenueData.appBuild || eventMetadata?.appBuild || null,
                 countryCode: revenueData.countryCode || eventMetadata?.countryCode || null,
+                
+                // Custom data
+                customData: revenueData.customData || null,
             };
 
             // Add type-specific fields
             if (revenueData.revenueType === RevenueType.AD_IMPRESSION) {
                 Object.assign(revenueRecord, {
-                    adNetworkName: revenueData.adNetworkName,
-                    adFormat: revenueData.adFormat,
+                    adNetworkName: revenueData.adNetworkName || null,
+                    adFormat: revenueData.adFormat || null,
+                    adUnitId: revenueData.adUnitId || null,
+                    adUnitName: revenueData.adUnitName || null,
                     adPlacement: revenueData.adPlacement || null,
+                    adCreativeId: revenueData.adCreativeId || null,
                     adImpressionId: revenueData.adImpressionId || null,
+                    adNetworkPlacement: revenueData.adNetworkPlacement || null,
                 });
                 
                 logger.info(`Ad impression tracked: ${revenueData.adNetworkName} ${revenueData.adFormat} - $${revenueData.revenue}`);
             } else if (revenueData.revenueType === RevenueType.IN_APP_PURCHASE) {
                 Object.assign(revenueRecord, {
-                    productId: revenueData.productId,
-                    transactionId: revenueData.transactionId,
-                    store: revenueData.store,
+                    productId: revenueData.productId || null,
+                    productName: revenueData.productName || null,
+                    productType: revenueData.productType || null,
+                    transactionId: revenueData.transactionId || null,
+                    orderId: revenueData.orderId || null,
+                    purchaseToken: revenueData.purchaseToken || null,
+                    store: revenueData.store || null,
                     isVerified: revenueData.isVerified || false,
+                    quantity: revenueData.quantity || 1,
+                    isSandbox: revenueData.isSandbox || false,
+                    isRestored: revenueData.isRestored || false,
+                    subscriptionPeriod: revenueData.subscriptionPeriod || null,
                 });
                 
                 logger.info(`IAP tracked: ${revenueData.productId} - $${revenueData.revenue} (${revenueData.store})`);
@@ -85,14 +116,14 @@ export class RevenueService {
         endDate: Date
     ): Promise<RevenueAnalytics> {
         try {
-            // Get total revenue by type
+            // Get total revenue by type (use revenueUSD for aggregation)
             const revenueByType = await this.prisma.revenue.groupBy({
                 by: ['revenueType'],
                 where: {
                     gameId,
                     timestamp: { gte: startDate, lte: endDate }
                 },
-                _sum: { revenue: true },
+                _sum: { revenueUSD: true },
                 _count: true
             });
 
@@ -101,7 +132,7 @@ export class RevenueService {
             let iapRevenue = 0;
 
             revenueByType.forEach(item => {
-                const revenue = Number(item._sum.revenue || 0);
+                const revenue = Number(item._sum.revenueUSD || 0);
                 totalRevenue += revenue;
                 
                 if (item.revenueType === 'AD_IMPRESSION') {
@@ -111,7 +142,7 @@ export class RevenueService {
                 }
             });
 
-            // Get ad revenue by network
+            // Get ad revenue by network (use revenueUSD)
             const byNetwork = await this.prisma.revenue.groupBy({
                 by: ['adNetworkName'],
                 where: {
@@ -119,11 +150,11 @@ export class RevenueService {
                     revenueType: 'AD_IMPRESSION',
                     timestamp: { gte: startDate, lte: endDate }
                 },
-                _sum: { revenue: true },
+                _sum: { revenueUSD: true },
                 _count: true
             });
 
-            // Get ad revenue by format
+            // Get ad revenue by format (use revenueUSD)
             const byFormat = await this.prisma.revenue.groupBy({
                 by: ['adFormat'],
                 where: {
@@ -131,11 +162,11 @@ export class RevenueService {
                     revenueType: 'AD_IMPRESSION',
                     timestamp: { gte: startDate, lte: endDate }
                 },
-                _sum: { revenue: true },
+                _sum: { revenueUSD: true },
                 _count: true
             });
 
-            // Get IAP revenue by product
+            // Get IAP revenue by product (use revenueUSD)
             const byProduct = await this.prisma.revenue.groupBy({
                 by: ['productId'],
                 where: {
@@ -143,11 +174,11 @@ export class RevenueService {
                     revenueType: 'IN_APP_PURCHASE',
                     timestamp: { gte: startDate, lte: endDate }
                 },
-                _sum: { revenue: true },
+                _sum: { revenueUSD: true },
                 _count: true
             });
 
-            // Get revenue by country (top 10)
+            // Get revenue by country (top 10) (use revenueUSD)
             const byCountry = await this.prisma.revenue.groupBy({
                 by: ['countryCode'],
                 where: {
@@ -155,8 +186,8 @@ export class RevenueService {
                     timestamp: { gte: startDate, lte: endDate },
                     countryCode: { not: null }
                 },
-                _sum: { revenue: true },
-                orderBy: { _sum: { revenue: 'desc' } },
+                _sum: { revenueUSD: true },
+                orderBy: { _sum: { revenueUSD: 'desc' } },
                 take: 10
             });
 
@@ -164,25 +195,25 @@ export class RevenueService {
                 totalRevenue,
                 adRevenue,
                 iapRevenue,
-                currency: 'USD',
+                currency: 'USD', // All values are in USD after conversion
                 byNetwork: byNetwork.map(item => ({
                     network: item.adNetworkName || 'Unknown',
-                    revenue: Number(item._sum.revenue || 0),
+                    revenue: Number(item._sum.revenueUSD || 0),
                     impressions: item._count
                 })),
                 byFormat: byFormat.map(item => ({
                     format: item.adFormat || 'Unknown',
-                    revenue: Number(item._sum.revenue || 0),
+                    revenue: Number(item._sum.revenueUSD || 0),
                     impressions: item._count
                 })),
                 byProduct: byProduct.map(item => ({
                     product: item.productId || 'Unknown',
-                    revenue: Number(item._sum.revenue || 0),
+                    revenue: Number(item._sum.revenueUSD || 0),
                     purchases: item._count
                 })),
                 byCountry: byCountry.map(item => ({
                     country: item.countryCode || 'Unknown',
-                    revenue: Number(item._sum.revenue || 0)
+                    revenue: Number(item._sum.revenueUSD || 0)
                 }))
             };
         } catch (error) {
@@ -218,17 +249,17 @@ export class RevenueService {
             });
             const payingUsers = payingUsersResult.length;
 
-            // Get total revenue and count
+            // Get total revenue and count (use revenueUSD)
             const revenueStats = await this.prisma.revenue.aggregate({
                 where: {
                     gameId,
                     timestamp: { gte: startDate, lte: endDate }
                 },
-                _sum: { revenue: true },
+                _sum: { revenueUSD: true },
                 _count: true
             });
 
-            const totalRevenue = Number(revenueStats._sum.revenue || 0);
+            const totalRevenue = Number(revenueStats._sum.revenueUSD || 0);
             const transactionCount = revenueStats._count;
 
             return {

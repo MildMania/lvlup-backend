@@ -396,19 +396,19 @@ export class AnalyticsController {
         try {
             const gameId = requireGameId(req);
 
-            // Get total revenue by type
+            // Get total revenue by type (use revenueUSD for multi-currency support)
             const revenueByType = await prisma.revenue.groupBy({
                 by: ['revenueType'],
                 where: { gameId },
-                _sum: { revenue: true },
+                _sum: { revenueUSD: true },
                 _count: true
             });
 
-            // Get total revenue count by user
+            // Get total revenue count by user (use revenueUSD)
             const userRevenueCount = await prisma.revenue.groupBy({
                 by: ['userId'],
                 where: { gameId },
-                _sum: { revenue: true }
+                _sum: { revenueUSD: true }
             });
 
             // Calculate totals
@@ -419,7 +419,7 @@ export class AnalyticsController {
             let iapCount = 0;
 
             revenueByType.forEach((item: any) => {
-                const revenue = Number(item._sum.revenue || 0);
+                const revenue = Number(item._sum.revenueUSD || 0);
                 totalRevenue += revenue;
                 
                 if (item.revenueType === 'AD_IMPRESSION') {

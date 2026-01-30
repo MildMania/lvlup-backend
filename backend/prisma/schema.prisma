@@ -142,49 +142,56 @@ model Revenue {
   gameId    String
   userId    String
   sessionId String?
-  eventId   String? // Optional link to corresponding event in events table
   
   // Revenue Type & Core Metrics
   revenueType RevenueType // "AD_IMPRESSION" or "IN_APP_PURCHASE"
-  revenue     Float // Revenue amount (use Float for SQLite, Decimal for PostgreSQL in production)
+  revenue     Float // Revenue amount in original currency
   currency    String      @default("USD") // ISO 4217 currency code
+  revenueUSD  Float       @default(0) // Revenue amount converted to USD (for aggregation)
   
-  // Timing (with client/server timestamp tracking like events)
+  // Timing (with server timestamp tracking)
   timestamp           DateTime
-  clientTs            BigInt? // Client-side Unix timestamp (milliseconds)
   serverReceivedAt    DateTime  @default(now())
   transactionTimestamp BigInt? // Original transaction timestamp from store/ad network
   
   // === AD IMPRESSION FIELDS (populated when revenueType = AD_IMPRESSION) ===
-  adNetworkName   String? // e.g., "MAX", "AdMob", "IronSource", "Unity Ads"
-  adFormat        String? // e.g., "BANNER", "INTER", "REWARDED", "MREC", "APPOPEN"
-  adPlacement     String? // Ad placement identifier
-  adImpressionId  String? // Unique impression identifier from ad network
+  adNetworkName       String? // e.g., "MAX", "AdMob", "IronSource", "Unity Ads"
+  adFormat            String? // e.g., "BANNER", "INTER", "REWARDED", "MREC", "APPOPEN"
+  adUnitId            String? // Ad unit identifier
+  adUnitName          String? // Ad unit name
+  adPlacement         String? // Ad placement identifier
+  adCreativeId        String? // Creative asset identifier
+  adImpressionId      String? // Unique impression identifier from ad network
+  adNetworkPlacement  String? // Network-specific placement info
   
   // === IN-APP PURCHASE FIELDS (populated when revenueType = IN_APP_PURCHASE) ===
-  productId       String? // Store product identifier (e.g., "com.game.coins_100")
-  productType     String? // "CONSUMABLE", "NON_CONSUMABLE", "SUBSCRIPTION"
-  transactionId   String? // Unique transaction ID from store (Apple/Google)
-  store           String? // "APPLE_APP_STORE", "GOOGLE_PLAY", "AMAZON", etc.
-  isVerified      Boolean @default(false) // Receipt validation status
-  quantity        Int?    @default(1) // Number of items purchased
+  productId           String? // Store product identifier (e.g., "com.game.coins_100")
+  productName         String? // Product display name
+  productType         String? // "CONSUMABLE", "NON_CONSUMABLE", "SUBSCRIPTION"
+  transactionId       String? // Unique transaction ID from store (Apple/Google)
+  orderId             String? // Order identifier from store
+  purchaseToken       String? // Purchase verification token
+  store               String? // "APPLE_APP_STORE", "GOOGLE_PLAY", "AMAZON", etc.
+  isVerified          Boolean @default(false) // Receipt validation status
+  quantity            Int?    @default(1) // Number of items purchased
+  isSandbox           Boolean @default(false) // Sandbox/test transaction
+  isRestored          Boolean @default(false) // Restored purchase
+  subscriptionPeriod  String? // e.g., "P1M", "P1Y" (ISO 8601 duration)
   
-  // Device & Platform Context (copied from event metadata)
-  platform     String? // e.g., "android", "ios", "webgl"
-  osVersion    String?
-  manufacturer String?
-  device       String?
-  deviceId     String?
+  // Device & Platform Context (essential fields only)
+  platform    String? // e.g., "android", "ios", "webgl"
+  device      String? // e.g., "iPhone 14", "Samsung Galaxy"
+  deviceId    String? // Device identifier
   
   // App Context
-  appVersion    String?
-  appBuild      String?
+  appVersion  String? // e.g., "0.0.3"
+  appBuild    String? // e.g., "30087"
   
   // Geographic Context
   countryCode String? // ISO 3166-1 alpha-2
   
-  // Network Context
-  connectionType String?
+  // Custom data
+  customData  Json? // Flexible JSON payload for additional fields
   
   // Relations
   user    User     @relation(fields: [userId], references: [id], onDelete: Cascade)

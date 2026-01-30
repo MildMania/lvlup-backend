@@ -12,16 +12,22 @@ export enum RevenueType {
 export interface BaseRevenueData {
     revenue: number;
     currency?: string; // Defaults to USD
+    revenueUSD?: number; // Pre-converted USD value (optional - backend will convert if not provided)
     
     // Timing
     timestamp?: string;
-    clientTs?: number;
     transactionTimestamp?: number;
     
     // Context (optional - will be populated from event metadata if not provided)
     platform?: string;
     appVersion?: string;
+    appBuild?: string;
     countryCode?: string; // ISO 3166-1 alpha-2 (e.g., "US", "TR")
+    device?: string;
+    deviceId?: string;
+    
+    // Custom data (flexible payload for additional fields)
+    customData?: Record<string, any>;
 }
 
 // Ad Impression specific data
@@ -34,8 +40,11 @@ export interface AdImpressionData extends BaseRevenueData {
     
     // Optional ad fields
     adUnitId?: string;
+    adUnitName?: string;
     adPlacement?: string;
+    adCreativeId?: string;
     adImpressionId?: string; // For deduplication
+    adNetworkPlacement?: string;
     
     // Additional data
     metadata?: Record<string, any>;
@@ -51,7 +60,15 @@ export interface InAppPurchaseData extends BaseRevenueData {
     transactionId: string; // Unique transaction ID for deduplication
     
     // Optional IAP fields
+    productName?: string;
+    productType?: string; // "CONSUMABLE", "NON_CONSUMABLE", "SUBSCRIPTION"
+    orderId?: string;
+    purchaseToken?: string;
+    quantity?: number;
     isVerified?: boolean;
+    isSandbox?: boolean;
+    isRestored?: boolean;
+    subscriptionPeriod?: string;
     
     // Additional data
     metadata?: Record<string, any>;

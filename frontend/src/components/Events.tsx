@@ -354,7 +354,7 @@ const Events: React.FC<EventsProps> = ({ gameInfo, isCollapsed = false }) => {
                       <span className="level-badge">🎮 Level</span>
                     )}
                   </div>
-                  <span className="event-time">{formatTime(event.timestamp)}</span>
+                  <span className="event-time">{formatTime(event.serverReceivedAt || event.timestamp)}</span>
                 </div>
 
                 <div className="event-summary">

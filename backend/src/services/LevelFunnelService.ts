@@ -62,6 +62,9 @@ export class LevelFunnelService {
             const start = startDate || new Date(0);
             const end = endDate || new Date();
 
+            // Check if query includes today (today's data is not yet aggregated)
+            const queryIncludesToday = end >= today;
+            
             // Determine if we're querying multiple days
             const daysDifference = Math.ceil((end.getTime() - start.getTime()) / (24 * 60 * 60 * 1000));
             const isMultipleDays = daysDifference > 1;
@@ -70,14 +73,28 @@ export class LevelFunnelService {
             // Longer ranges use aggregated data (faster but approximate user counts)
             const useRawEventsForUserCounts = isMultipleDays && daysDifference <= 90;
 
-            // Query pre-aggregated data for event counts (all days)
-            const aggregatedMetrics = await this.queryAggregatedMetrics(gameId, start, end, {
+            // Query pre-aggregated data for event counts (all days except today)
+            const aggregatedEnd = queryIncludesToday ? new Date(today.getTime() - 1) : end;
+            const aggregatedMetrics = await this.queryAggregatedMetrics(gameId, start, aggregatedEnd, {
                 country,
                 platform,
                 version,
                 levelFunnel,
                 levelFunnelVersion
             });
+
+            // Query today's raw events if the date range includes today
+            let todayMetrics: any[] = [];
+            if (queryIncludesToday) {
+                logger.info('Query includes today - fetching raw events for current day');
+                todayMetrics = await this.queryTodayRawEvents(gameId, today, {
+                    country,
+                    platform,
+                    version,
+                    levelFunnel,
+                    levelFunnelVersion
+                });
+            }
 
             // If querying multiple days (≤90 days), get accurate user counts from raw events
             let userCountsByLevel: Map<number, {
@@ -102,6 +119,8 @@ export class LevelFunnelService {
 
             // Group by levelId and sum event counts from aggregated data
             const grouped = new Map<number, any>();
+            
+            // Process aggregated historical data
             for (const row of aggregatedMetrics) {
                 if (!grouped.has(row.levelId)) {
                     grouped.set(row.levelId, {
@@ -142,6 +161,43 @@ export class LevelFunnelService {
                     group.egpUsers += row.egpUsers;
                 }
             }
+            
+            // Merge today's raw metrics into grouped data
+            for (const row of todayMetrics) {
+                if (!grouped.has(row.levelId)) {
+                    grouped.set(row.levelId, {
+                        levelId: row.levelId,
+                        starts: 0,
+                        completes: 0,
+                        fails: 0,
+                        startedPlayers: 0,
+                        completedPlayers: 0,
+                        boosterUsers: 0,
+                        totalBoosterUsage: 0,
+                        egpUsers: 0,
+                        totalEgpUsage: 0,
+                        totalCompletionDuration: BigInt(0),
+                        completionCount: 0,
+                        totalFailDuration: BigInt(0),
+                        failCount: 0
+                    });
+                }
+
+                const group = grouped.get(row.levelId)!;
+                group.starts += row.starts;
+                group.completes += row.completes;
+                group.fails += row.fails;
+                group.startedPlayers += row.startedPlayers;
+                group.completedPlayers += row.completedPlayers;
+                group.boosterUsers += row.boosterUsers;
+                group.totalBoosterUsage += row.totalBoosterUsage;
+                group.egpUsers += row.egpUsers;
+                group.totalEgpUsage += row.totalEgpUsage;
+                group.totalCompletionDuration += BigInt(row.totalCompletionDuration);
+                group.completionCount += row.completionCount;
+                group.totalFailDuration += BigInt(row.totalFailDuration);
+                group.failCount += row.failCount;
+            }
 
             // Replace user counts with accurate raw event counts for multi-day queries
             if (userCountsByLevel) {
@@ -160,7 +216,7 @@ export class LevelFunnelService {
             const levelMetrics = this.calculateDerivedMetrics(grouped, levelLimit);
 
             const totalDuration = Date.now() - queryStart;
-            logger.info(`FAST level funnel query completed in ${totalDuration}ms (${levelMetrics.length} levels, ${daysDifference} days, accurate user counts: ${useRawEventsForUserCounts})`);
+            logger.info(`FAST level funnel query completed in ${totalDuration}ms (${levelMetrics.length} levels, ${daysDifference} days, includes today: ${queryIncludesToday}, accurate user counts: ${useRawEventsForUserCounts})`);
 
             return levelMetrics;
         } catch (error) {
@@ -228,12 +284,34 @@ export class LevelFunnelService {
         }
 
         if (filters.levelFunnel && filters.levelFunnelVersion) {
-            whereClause.levelFunnel = filters.levelFunnel;
-            whereClause.levelFunnelVersion = filters.levelFunnelVersion;
+            const funnels = filters.levelFunnel.split(',').map(f => f.trim()).filter(f => f);
+            const versions = filters.levelFunnelVersion.toString().split(',').map(v => parseInt(v.trim())).filter(v => !isNaN(v));
+            
+            if (funnels.length === 1 && versions.length === 1) {
+                // Single funnel+version pair - simple equality
+                whereClause.levelFunnel = funnels[0];
+                whereClause.levelFunnelVersion = versions[0];
+            } else if (funnels.length > 0 && versions.length > 0 && funnels.length === versions.length) {
+                // Multiple funnel+version pairs - use OR condition for exact pairs
+                whereClause.OR = funnels.map((funnel, idx) => ({
+                    levelFunnel: funnel,
+                    levelFunnelVersion: versions[idx]
+                }));
+            }
         } else if (filters.levelFunnel) {
-            whereClause.levelFunnel = filters.levelFunnel;
+            const funnels = filters.levelFunnel.split(',').map(f => f.trim()).filter(f => f);
+            if (funnels.length > 1) {
+                whereClause.levelFunnel = { in: funnels };
+            } else if (funnels.length === 1) {
+                whereClause.levelFunnel = funnels[0];
+            }
         } else if (filters.levelFunnelVersion) {
-            whereClause.levelFunnelVersion = filters.levelFunnelVersion;
+            const versions = filters.levelFunnelVersion.toString().split(',').map(v => parseInt(v.trim())).filter(v => !isNaN(v));
+            if (versions.length > 1) {
+                whereClause.levelFunnelVersion = { in: versions };
+            } else if (versions.length === 1) {
+                whereClause.levelFunnelVersion = versions[0];
+            }
         }
 
         // Fetch events
@@ -371,13 +449,15 @@ export class LevelFunnelService {
             const versions = filters.levelFunnelVersion.toString().split(',').map(v => parseInt(v.trim())).filter(v => !isNaN(v));
             
             if (funnels.length === 1 && versions.length === 1) {
+                // Single funnel+version pair - simple equality
                 whereClause.levelFunnel = funnels[0];
                 whereClause.levelFunnelVersion = versions[0];
-            } else if (funnels.length > 0 && versions.length > 0) {
-                const allFunnels = [...new Set(funnels)];
-                const allVersions = [...new Set(versions)];
-                whereClause.levelFunnel = { in: allFunnels };
-                whereClause.levelFunnelVersion = { in: allVersions };
+            } else if (funnels.length > 0 && versions.length > 0 && funnels.length === versions.length) {
+                // Multiple funnel+version pairs - use OR condition for exact pairs
+                whereClause.OR = funnels.map((funnel, idx) => ({
+                    levelFunnel: funnel,
+                    levelFunnelVersion: versions[idx]
+                }));
             }
         } else if (filters.levelFunnel) {
             const funnels = filters.levelFunnel.split(',').map(f => f.trim()).filter(f => f);
@@ -509,13 +589,15 @@ export class LevelFunnelService {
             const versions = filters.levelFunnelVersion.toString().split(',').map(v => parseInt(v.trim())).filter(v => !isNaN(v));
             
             if (funnels.length === 1 && versions.length === 1) {
+                // Single funnel+version pair - simple equality
                 whereClause.levelFunnel = funnels[0];
                 whereClause.levelFunnelVersion = versions[0];
-            } else if (funnels.length > 0 && versions.length > 0) {
-                const allFunnels = [...new Set(funnels)];
-                const allVersions = [...new Set(versions)];
-                whereClause.levelFunnel = { in: allFunnels };
-                whereClause.levelFunnelVersion = { in: allVersions };
+            } else if (funnels.length > 0 && versions.length > 0 && funnels.length === versions.length) {
+                // Multiple funnel+version pairs - use OR condition for exact pairs
+                whereClause.OR = funnels.map((funnel, idx) => ({
+                    levelFunnel: funnel,
+                    levelFunnelVersion: versions[idx]
+                }));
             }
         } else if (filters.levelFunnel) {
             const funnels = filters.levelFunnel.split(',').map(f => f.trim()).filter(f => f);
@@ -854,17 +936,11 @@ export class LevelFunnelService {
                         whereClause.levelFunnel = funnels[0];
                         whereClause.levelFunnelVersion = versions[0];
                     } else {
-                        // Multiple funnel pairs - need to filter in code since Prisma doesn't support complex OR well
-                        // Just get all events and filter after
-                        const allFunnels = [...new Set(funnels)];
-                        const allVersions = [...new Set(versions)];
-                        
-                        if (allFunnels.length > 0) {
-                            whereClause.levelFunnel = { in: allFunnels };
-                        }
-                        if (allVersions.length > 0) {
-                            whereClause.levelFunnelVersion = { in: allVersions };
-                        }
+                        // Multiple funnel pairs - use OR condition for exact pairs
+                        whereClause.OR = funnels.map((funnel, idx) => ({
+                            levelFunnel: funnel,
+                            levelFunnelVersion: versions[idx]
+                        }));
                     }
                 }
             } else if (levelFunnel) {
@@ -929,27 +1005,6 @@ export class LevelFunnelService {
             const queryDuration = Date.now() - queryStart;
             logger.info(`Level funnel query completed in ${queryDuration}ms, fetched ${events.length} events`);
 
-            // Post-filter for exact funnel+version pairs when multiple selected
-            if (levelFunnel && levelFunnelVersion) {
-                const funnels = levelFunnel.split(',').map(f => f.trim()).filter(f => f);
-                const versions = levelFunnelVersion.toString().split(',').map(v => parseInt(v.trim())).filter(v => !isNaN(v));
-                
-                // Apply post-filter when we have multiple selections (even if same funnel name)
-                if (funnels.length > 0 && versions.length > 0 && funnels.length === versions.length && (funnels.length > 1 || versions.length > 1)) {
-                    // Create set of valid funnel+version combinations
-                    const validCombinations = new Set(
-                        funnels.map((funnel, idx) => `${funnel}:${versions[idx]}`)
-                    );
-                    
-                    // Filter events to only include exact pairs
-                    events = events.filter(event => {
-                        const key = `${(event as any).levelFunnel}:${(event as any).levelFunnelVersion}`;
-                        return validCombinations.has(key);
-                    });
-                }
-            }
-
-            // ...existing code...
             // Group events by level
             const levelGroups = this.groupEventsByLevel(events);
 

@@ -147,7 +147,7 @@ model Revenue {
   revenueType RevenueType // "AD_IMPRESSION" or "IN_APP_PURCHASE"
   revenue     Float // Revenue amount in original currency
   currency    String      @default("USD") // ISO 4217 currency code
-  revenueUSD  Float // Revenue amount converted to USD (for aggregation)
+  revenueUSD  Float       @default(0) // Revenue amount converted to USD (for aggregation)
   
   // Timing (with server timestamp tracking)
   timestamp           DateTime

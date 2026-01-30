@@ -451,6 +451,7 @@
 
 .level-funnel-table tbody tr:hover td:first-child {
   background: rgba(59, 130, 246, 0.05);
+  z-index: 11;
 }
 
 /* Metric Values with Colors - Vibrant and Appealing */

@@ -716,7 +716,7 @@ export class AnalyticsService {
                     countryCode: true,
                 },
                 orderBy: {
-                    timestamp: sort === 'desc' ? 'desc' : 'asc'
+                    serverReceivedAt: sort === 'desc' ? 'desc' : 'asc'
                 },
                 take: limit
             });
@@ -753,7 +753,7 @@ export class AnalyticsService {
                     isVerified: true,
                 },
                 orderBy: {
-                    timestamp: sort === 'desc' ? 'desc' : 'asc'
+                    serverReceivedAt: sort === 'desc' ? 'desc' : 'asc'
                 },
                 take: limit
             });
@@ -797,11 +797,12 @@ export class AnalyticsService {
                 isRevenueEvent: true // Flag to identify revenue events in frontend
             }));
 
-            // Merge and sort by timestamp
+            // Merge and sort by serverReceivedAt (when server actually received the event)
+            // Fall back to timestamp if serverReceivedAt is null (for older data)
             const allEvents = [...events.map(e => ({ ...e, isRevenueEvent: false })), ...transformedRevenueEvents];
             allEvents.sort((a, b) => {
-                const aTime = new Date(a.timestamp).getTime();
-                const bTime = new Date(b.timestamp).getTime();
+                const aTime = new Date(a.serverReceivedAt || a.timestamp).getTime();
+                const bTime = new Date(b.serverReceivedAt || b.timestamp).getTime();
                 return sort === 'desc' ? bTime - aTime : aTime - bTime;
             });
 

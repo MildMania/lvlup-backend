@@ -12,6 +12,7 @@ export enum RevenueType {
 export interface BaseRevenueData {
     revenue: number;
     currency?: string; // Defaults to USD
+    revenueUSD?: number; // Pre-converted USD value (optional - backend will convert if not provided)
     
     // Timing
     timestamp?: string;

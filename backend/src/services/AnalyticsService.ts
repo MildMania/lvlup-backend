@@ -821,6 +821,7 @@ export class AnalyticsService {
                     sessionId: true,
                     revenueType: true,
                     revenue: true,
+                    revenueUSD: true,
                     currency: true,
                     timestamp: true,
                     serverReceivedAt: true,
@@ -855,6 +856,7 @@ export class AnalyticsService {
                 sessionId: rev.sessionId,
                 properties: {
                     revenue: rev.revenue,
+                    revenueUSD: rev.revenueUSD,
                     currency: rev.currency,
                     ...(rev.revenueType === 'AD_IMPRESSION' ? {
                         adNetworkName: rev.adNetworkName,

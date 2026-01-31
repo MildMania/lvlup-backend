@@ -412,7 +412,7 @@ const Events: React.FC<EventsProps> = ({ gameInfo, isCollapsed = false }) => {
                       <div className="event-detail-item revenue-amount">
                         <span className="detail-label">Revenue:</span>
                         <code className="detail-value revenue-value">
-                          ${event.properties.revenue?.toFixed(4)} {event.properties.currency || 'USD'}
+                          ${(event.properties.revenueUSD || event.properties.revenue || 0).toFixed(2)} USD
                         </code>
                       </div>
                       

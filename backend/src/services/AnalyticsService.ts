@@ -693,10 +693,13 @@ export class AnalyticsService {
             // Fetch 3x the limit from each table to ensure we have enough events to merge
             const fetchLimit = Math.max(limit * 3, 300);
             
-            // Fetch regular events
+            // Fetch regular events (only those with serverReceivedAt set)
             const events = await this.prisma.event.findMany({
                 where: {
-                    gameId
+                    gameId,
+                    NOT: {
+                        serverReceivedAt: null
+                    }
                 },
                 select: {
                     id: true,

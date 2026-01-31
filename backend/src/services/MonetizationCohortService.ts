@@ -210,8 +210,10 @@ export class MonetizationCohortService {
                             r.timestamp < periodEnd
                         )
                         .forEach(item => {
-                            // Use revenueUSD for consistent multi-currency aggregation
-                            const revenue = Number(item.revenueUSD || item.revenue || 0);
+                            // IMPORTANT: ONLY use revenueUSD for multi-currency aggregation
+                            // DO NOT fall back to 'revenue' as it's in original currency (e.g., TRY, EUR)
+                            // which would inflate USD calculations
+                            const revenue = Number(item.revenueUSD || 0);
 
                             if (item.revenueType === 'IN_APP_PURCHASE') {
                                 iapRevenue += revenue;

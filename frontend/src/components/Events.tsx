@@ -79,9 +79,11 @@ const Events: React.FC<EventsProps> = ({ gameInfo, isCollapsed = false }) => {
         sort: 'desc'
       });
       
-      // Add search parameter if present
+      // Add userId filter if present
+      // This fetches the last 100 events FOR users matching this search term
+      // (backend uses partial match with 'contains')
       if (searchTerm) {
-        params.append('search', searchTerm);
+        params.append('userId', searchTerm);
       }
       
       // Add event type filter if not 'all'
@@ -237,7 +239,7 @@ const Events: React.FC<EventsProps> = ({ gameInfo, isCollapsed = false }) => {
             <Search size={16} />
             <input
               type="text"
-              placeholder="Search events or users..."
+              placeholder="Search by user ID..."
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
             />

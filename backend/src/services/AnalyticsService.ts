@@ -688,6 +688,11 @@ export class AnalyticsService {
 
     async getEvents(gameId: string, limit: number = 100, offset: number = 0, sort: string = 'desc') {
         try {
+            // To properly merge events from both tables and get the correct top N events,
+            // we need to fetch more records initially, then merge, sort, and limit
+            // Fetch 3x the limit from each table to ensure we have enough events to merge
+            const fetchLimit = Math.max(limit * 3, 300);
+            
             // Fetch regular events
             const events = await this.prisma.event.findMany({
                 where: {
@@ -718,7 +723,7 @@ export class AnalyticsService {
                 orderBy: {
                     serverReceivedAt: sort === 'desc' ? 'desc' : 'asc'
                 },
-                take: limit
+                take: fetchLimit
             });
 
             // Fetch revenue events
@@ -755,7 +760,7 @@ export class AnalyticsService {
                 orderBy: {
                     serverReceivedAt: sort === 'desc' ? 'desc' : 'asc'
                 },
-                take: limit
+                take: fetchLimit
             });
 
             // Transform revenue events to match event format

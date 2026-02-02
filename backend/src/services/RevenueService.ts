@@ -3,6 +3,7 @@ import { RevenueData, RevenueType, RevenueAnalytics, MonetizationMetrics } from 
 import logger from '../utils/logger';
 import prisma from '../prisma';
 import { convertToUSD } from '../utils/currencyConverter';
+import { revenueBatchWriter } from './RevenueBatchWriter';
 
 export class RevenueService {
     private prisma: PrismaClient;
@@ -13,7 +14,7 @@ export class RevenueService {
 
     /**
      * Track revenue event (Ad Impression or In-App Purchase)
-     * This creates both an Event record and a Revenue record (dual-write pattern)
+     * Uses batch writer to optimize database writes
      */
     async trackRevenue(
         gameId: string,
@@ -39,7 +40,7 @@ export class RevenueService {
             }
             
             // Prepare common revenue fields
-            const revenueRecord = {
+            const revenueRecord: any = {
                 gameId,
                 userId,
                 sessionId,
@@ -48,6 +49,7 @@ export class RevenueService {
                 currency: currency,
                 revenueUSD: revenueUSD, // Store USD-converted value
                 timestamp,
+                serverReceivedAt: new Date(),
                 transactionTimestamp: revenueData.transactionTimestamp ? BigInt(revenueData.transactionTimestamp) : null,
                 
                 // Device & App context
@@ -60,6 +62,28 @@ export class RevenueService {
                 
                 // Custom data
                 customData: revenueData.customData || null,
+                
+                // Initialize all optional fields to null by default
+                adNetworkName: null,
+                adFormat: null,
+                adUnitId: null,
+                adUnitName: null,
+                adPlacement: null,
+                adCreativeId: null,
+                adImpressionId: null,
+                adNetworkPlacement: null,
+                productId: null,
+                productName: null,
+                productType: null,
+                transactionId: null,
+                orderId: null,
+                purchaseToken: null,
+                store: null,
+                isVerified: false,
+                quantity: null,
+                isSandbox: false,
+                isRestored: false,
+                subscriptionPeriod: null,
             };
 
             // Add type-specific fields
@@ -75,7 +99,7 @@ export class RevenueService {
                     adNetworkPlacement: revenueData.adNetworkPlacement || null,
                 });
                 
-                logger.info(`Ad impression tracked: ${revenueData.adNetworkName} ${revenueData.adFormat} - $${revenueData.revenue}`);
+                logger.info(`Ad impression enqueued: ${revenueData.adNetworkName} ${revenueData.adFormat} - $${revenueData.revenue}`);
             } else if (revenueData.revenueType === RevenueType.IN_APP_PURCHASE) {
                 Object.assign(revenueRecord, {
                     productId: revenueData.productId || null,
@@ -92,15 +116,14 @@ export class RevenueService {
                     subscriptionPeriod: revenueData.subscriptionPeriod || null,
                 });
                 
-                logger.info(`IAP tracked: ${revenueData.productId} - $${revenueData.revenue} (${revenueData.store})`);
+                logger.info(`IAP enqueued: ${revenueData.productId} - $${revenueData.revenue} (${revenueData.store})`);
             }
 
-            // Create revenue record
-            const revenue = await this.prisma.revenue.create({
-                data: revenueRecord as any
-            });
-
-            return revenue;
+            // Enqueue revenue record for batched insertion (non-blocking)
+            revenueBatchWriter.enqueue(revenueRecord);
+            
+            // Return the revenue record (note: not yet persisted, but will be within ~750ms)
+            return revenueRecord;
         } catch (error) {
             logger.error('Error tracking revenue:', error);
             throw error;

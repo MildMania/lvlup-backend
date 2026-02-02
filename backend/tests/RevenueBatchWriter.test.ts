@@ -169,8 +169,8 @@ describe('RevenueBatchWriter', () => {
 
         expect(mockPrisma.revenue.createMany).not.toHaveBeenCalled();
 
-        // Wait for timer to trigger flush (750ms + buffer)
-        await new Promise(resolve => setTimeout(resolve, 850));
+        // Wait for timer to trigger flush (5000ms + buffer)
+        await new Promise(resolve => setTimeout(resolve, 5100));
 
         expect(mockPrisma.revenue.createMany).toHaveBeenCalledTimes(1);
     });

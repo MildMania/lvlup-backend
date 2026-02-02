@@ -22,7 +22,7 @@ import prisma from '../prisma';
 
 // Configuration
 const MAX_BATCH_SIZE = 100; // Flush when batch reaches this size
-const MAX_BATCH_DELAY_MS = 750; // Flush after this delay (ms)
+const MAX_BATCH_DELAY_MS = 5000; // Flush after this delay (ms) - 5 seconds optimal for sparse traffic
 const SHUTDOWN_GRACE_PERIOD_MS = 3000; // Max time to wait during shutdown
 
 interface PendingEvent {

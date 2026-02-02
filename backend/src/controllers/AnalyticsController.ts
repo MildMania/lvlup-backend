@@ -375,8 +375,15 @@ export class AnalyticsController {
             const limit = parseInt(req.query.limit as string) || 100;
             const offset = parseInt(req.query.offset as string) || 0;
             const sort = (req.query.sort as string) || 'desc';
+            const userId = req.query.userId as string | undefined;
+            const eventName = req.query.eventName as string | undefined;
+            const search = req.query.search as string | undefined;
 
-            const events = await analyticsService.getEvents(gameId, limit, offset, sort);
+            const events = await analyticsService.getEvents(gameId, limit, offset, sort, {
+                userId,
+                eventName,
+                search
+            });
 
             res.status(200).json({
                 success: true,

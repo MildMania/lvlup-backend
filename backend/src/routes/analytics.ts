@@ -38,6 +38,9 @@ router.post('/revenue', (req, res) => analyticsController.trackRevenue(req, res)
  * @query {number} limit - Maximum number of events to return (default: 100)
  * @query {number} offset - Number of events to skip (default: 0)
  * @query {string} sort - Sort order: 'asc' or 'desc' (default: 'desc')
+ * @query {string} userId - Filter by user ID (partial match, case-insensitive)
+ * @query {string} eventName - Filter by event name (exact match)
+ * @query {string} search - Search in userId and eventName (partial match, case-insensitive)
  */
 router.get('/events', (req, res) => analyticsController.getEvents(req, res));
 

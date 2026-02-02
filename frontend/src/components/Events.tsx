@@ -71,7 +71,25 @@ const Events: React.FC<EventsProps> = ({ gameInfo, isCollapsed = false }) => {
     
     try {
       const apiBaseUrl = import.meta.env.VITE_API_BASE_URL || 'http://localhost:3000/api';
-      const url = `${apiBaseUrl}/analytics/events?gameId=${gameInfo.id}&limit=100&sort=desc`;
+      
+      // Build query parameters
+      const params = new URLSearchParams({
+        gameId: gameInfo.id,
+        limit: '100',
+        sort: 'desc'
+      });
+      
+      // Add search parameter if present
+      if (searchTerm) {
+        params.append('search', searchTerm);
+      }
+      
+      // Add event type filter if not 'all'
+      if (filterEventType && filterEventType !== 'all') {
+        params.append('eventName', filterEventType);
+      }
+      
+      const url = `${apiBaseUrl}/analytics/events?${params.toString()}`;
       
       console.log('[Events] Fetching events from:', url);
       console.log('[Events] Using API Key:', gameInfo.apiKey ? `${gameInfo.apiKey.substring(0, 10)}...` : 'MISSING');
@@ -106,12 +124,25 @@ const Events: React.FC<EventsProps> = ({ gameInfo, isCollapsed = false }) => {
     } finally {
       setLoading(false); // Always reset loading state
     }
-  }, [gameInfo, clearedAtTimestamp]);
+  }, [gameInfo, clearedAtTimestamp, searchTerm, filterEventType]);
 
   // Initial load
   useEffect(() => {
     fetchEvents();
   }, [fetchEvents]);
+
+  // Debounced search and filter - refetch when search or filter changes
+  useEffect(() => {
+    // Don't refetch immediately on mount
+    if (searchTerm === '' && filterEventType === 'all') return;
+    
+    // Debounce search to avoid excessive API calls
+    const debounceTimer = setTimeout(() => {
+      fetchEvents();
+    }, 500); // 500ms debounce
+
+    return () => clearTimeout(debounceTimer);
+  }, [searchTerm, filterEventType]);
 
   // Auto-refresh
   useEffect(() => {
@@ -130,19 +161,8 @@ const Events: React.FC<EventsProps> = ({ gameInfo, isCollapsed = false }) => {
     await fetchEvents();
   };
 
-  // Filter events
-  const filteredEvents = events.filter(event => {
-    const matchesSearch = searchTerm === '' || 
-      event.eventName.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      event.userId.toLowerCase().includes(searchTerm.toLowerCase());
-    
-    const matchesFilter = filterEventType === 'all' || 
-      event.eventName === filterEventType;
-
-    return matchesSearch && matchesFilter;
-  });
-
-  // Get unique event types for filter
+  // Get unique event types for filter - fetch from all events
+  // Note: This shows event types from current filtered results
   const eventTypes = ['all', ...Array.from(new Set(events.map(e => e.eventName)))];
 
   const formatTime = (timestamp: string) => {
@@ -305,10 +325,6 @@ const Events: React.FC<EventsProps> = ({ gameInfo, isCollapsed = false }) => {
           <span className="stat-value">{events.length}</span>
         </div>
         <div className="stat-card">
-          <span className="stat-label">Filtered Events</span>
-          <span className="stat-value">{filteredEvents.length}</span>
-        </div>
-        <div className="stat-card">
           <span className="stat-label">Unique Users</span>
           <span className="stat-value">
             {new Set(events.map(e => e.userId)).size}
@@ -327,7 +343,7 @@ const Events: React.FC<EventsProps> = ({ gameInfo, isCollapsed = false }) => {
             <RefreshCw size={32} className="spinning" />
             <p>Loading events...</p>
           </div>
-        ) : filteredEvents.length === 0 ? (
+        ) : events.length === 0 ? (
           <div className="empty-state">
             <Activity size={48} className="empty-icon" />
             <h3>No Events Found</h3>
@@ -339,7 +355,7 @@ const Events: React.FC<EventsProps> = ({ gameInfo, isCollapsed = false }) => {
           </div>
         ) : (
           <div className="events-list">
-            {filteredEvents.map((event) => {
+            {events.map((event) => {
               const isLevelEvent = ['level_start', 'level_complete', 'level_failed'].includes(event.eventName);
               return (
               <div key={event.id} className={`event-card ${event.isRevenueEvent ? 'revenue-event' : ''} ${isLevelEvent ? 'level-event' : ''}`}>
@@ -394,7 +410,7 @@ const Events: React.FC<EventsProps> = ({ gameInfo, isCollapsed = false }) => {
                       <div className="event-detail-item revenue-amount">
                         <span className="detail-label">Revenue:</span>
                         <code className="detail-value revenue-value">
-                          ${event.properties.revenue?.toFixed(4)} {event.properties.currency || 'USD'}
+                          ${(event.properties.revenueUSD || event.properties.revenue || 0).toFixed(2)} USD
                         </code>
                       </div>
                       

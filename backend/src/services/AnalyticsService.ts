@@ -697,13 +697,65 @@ export class AnalyticsService {
         }
     }
 
-    async getEvents(gameId: string, limit: number = 100, offset: number = 0, sort: string = 'desc') {
+    async getEvents(
+        gameId: string, 
+        limit: number = 100, 
+        offset: number = 0, 
+        sort: string = 'desc',
+        filters?: {
+            userId?: string;
+            eventName?: string;
+            search?: string;
+        }
+    ) {
         try {
-            // Fetch regular events
+            // To properly merge events from both tables and get the correct top N events,
+            // we need to fetch more records initially, then merge, sort, and limit
+            // Fetch 3x the limit from each table to ensure we have enough events to merge
+            const fetchLimit = Math.max(limit * 3, 300);
+            
+            // Build where clause for filters
+            const whereClause: any = {
+                gameId,
+                NOT: {
+                    serverReceivedAt: null
+                }
+            };
+
+            // Add userId filter if provided
+            if (filters?.userId) {
+                whereClause.userId = {
+                    contains: filters.userId,
+                    mode: 'insensitive'
+                };
+            }
+
+            // Add eventName filter if provided
+            if (filters?.eventName && filters.eventName !== 'all') {
+                whereClause.eventName = filters.eventName;
+            }
+
+            // Add search filter (searches both userId and eventName)
+            if (filters?.search) {
+                whereClause.OR = [
+                    {
+                        userId: {
+                            contains: filters.search,
+                            mode: 'insensitive'
+                        }
+                    },
+                    {
+                        eventName: {
+                            contains: filters.search,
+                            mode: 'insensitive'
+                        }
+                    }
+                ];
+            }
+            
+            // Fetch regular events (only those with serverReceivedAt set)
             const events = await this.prisma.event.findMany({
-                where: {
-                    gameId
-                },
+                where: whereClause,
                 select: {
                     id: true,
                     eventName: true,
@@ -729,20 +781,58 @@ export class AnalyticsService {
                 orderBy: {
                     serverReceivedAt: sort === 'desc' ? 'desc' : 'asc'
                 },
-                take: limit
+                take: fetchLimit
             });
 
-            // Fetch revenue events
+            // Fetch revenue events with same filters
+            const revenueWhereClause: any = {
+                gameId
+            };
+
+            // Add userId filter if provided
+            if (filters?.userId) {
+                revenueWhereClause.userId = {
+                    contains: filters.userId,
+                    mode: 'insensitive'
+                };
+            }
+
+            // Add eventName filter if provided (convert to revenueType)
+            if (filters?.eventName && filters.eventName !== 'all') {
+                if (filters.eventName === 'ad_impression') {
+                    revenueWhereClause.revenueType = 'AD_IMPRESSION';
+                } else if (filters.eventName === 'in_app_purchase') {
+                    revenueWhereClause.revenueType = 'IN_APP_PURCHASE';
+                }
+            }
+
+            // Add search filter for revenue events
+            if (filters?.search) {
+                revenueWhereClause.OR = [
+                    {
+                        userId: {
+                            contains: filters.search,
+                            mode: 'insensitive'
+                        }
+                    },
+                    {
+                        revenueType: {
+                            contains: filters.search,
+                            mode: 'insensitive'
+                        }
+                    }
+                ];
+            }
+
             const revenueEvents = await this.prisma.revenue.findMany({
-                where: {
-                    gameId
-                },
+                where: revenueWhereClause,
                 select: {
                     id: true,
                     userId: true,
                     sessionId: true,
                     revenueType: true,
                     revenue: true,
+                    revenueUSD: true,
                     currency: true,
                     timestamp: true,
                     serverReceivedAt: true,
@@ -766,7 +856,7 @@ export class AnalyticsService {
                 orderBy: {
                     serverReceivedAt: sort === 'desc' ? 'desc' : 'asc'
                 },
-                take: limit
+                take: fetchLimit
             });
 
             // Transform revenue events to match event format
@@ -777,6 +867,7 @@ export class AnalyticsService {
                 sessionId: rev.sessionId,
                 properties: {
                     revenue: rev.revenue,
+                    revenueUSD: rev.revenueUSD,
                     currency: rev.currency,
                     ...(rev.revenueType === 'AD_IMPRESSION' ? {
                         adNetworkName: rev.adNetworkName,

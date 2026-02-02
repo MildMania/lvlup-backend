@@ -7,6 +7,7 @@ import { cache, generateCacheKey } from '../utils/simpleCache';
 import prisma from '../prisma';
 import { RevenueService } from './RevenueService';
 import { eventBatchWriter } from './EventBatchWriter';
+import { sessionHeartbeatBatchWriter } from './SessionHeartbeatBatchWriter';
 
 export class AnalyticsService {
     private prisma: PrismaClient;
@@ -178,13 +179,12 @@ export class AnalyticsService {
             if (now < session.startTime) {
                 logger.warn(`Heartbeat timestamp (${now.toISOString()}) is before session startTime (${session.startTime.toISOString()}). Using startTime as heartbeat.`);
                 // Use startTime as fallback to prevent negative duration
-                await this.prisma.session.update({
-                    where: { id: sessionId },
-                    data: {
-                        lastHeartbeat: session.startTime,
-                        endTime: session.startTime,
-                        duration: 0
-                    }
+                sessionHeartbeatBatchWriter.enqueue({
+                    sessionId,
+                    lastHeartbeat: session.startTime,
+                    endTime: session.startTime,
+                    duration: 0,
+                    countryCode: countryCode || session.countryCode || null
                 });
                 return;
             }
@@ -197,27 +197,16 @@ export class AnalyticsService {
 
             const duration = Math.floor((now.getTime() - session.startTime.getTime()) / 1000);
 
-            // Prepare update data
-            const updateData: any = {
+            // Enqueue heartbeat for batched processing (non-blocking)
+            sessionHeartbeatBatchWriter.enqueue({
+                sessionId,
                 lastHeartbeat: now,
                 endTime: now,
-                duration: Math.max(duration, 0)
-            };
-
-            // Update countryCode only if:
-            // 1. New countryCode is provided in heartbeat
-            // 2. Session doesn't have a countryCode yet (is NULL)
-            if (countryCode && !session.countryCode) {
-                updateData.countryCode = countryCode;
-                logger.info(`Updated session ${sessionId} with countryCode: ${countryCode} from heartbeat`);
-            }
-
-            await this.prisma.session.update({
-                where: { id: sessionId },
-                data: updateData
+                duration: Math.max(duration, 0),
+                countryCode: countryCode || session.countryCode || null
             });
 
-            logger.debug(`Updated heartbeat, endTime, and duration (${duration}s) for session ${sessionId}`);
+            logger.debug(`Enqueued heartbeat update for session ${sessionId} (duration: ${duration}s)`);
         } catch (error) {
             logger.error('Error updating session heartbeat:', error);
             throw error;

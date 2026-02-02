@@ -9,6 +9,7 @@ import logger from './utils/logger';
 import { sessionHeartbeatService } from './services/SessionHeartbeatService';
 import dataRetentionService from './services/DataRetentionService';
 import { startLevelMetricsAggregationJob } from './jobs/levelMetricsAggregation';
+import { eventBatchWriter } from './services/EventBatchWriter';
 
 // Load environment variables
 dotenv.config();
@@ -187,15 +188,23 @@ app.listen(PORT, '0.0.0.0', () => {
 });
 
 // Graceful shutdown
-process.on('SIGTERM', () => {
+process.on('SIGTERM', async () => {
     logger.info('SIGTERM signal received: closing HTTP server');
+    
+    // Flush remaining events before shutdown
+    await eventBatchWriter.shutdown();
+    
     sessionHeartbeatService.stop();
     dataRetentionService.stop();
     process.exit(0);
 });
 
-process.on('SIGINT', () => {
+process.on('SIGINT', async () => {
     logger.info('SIGINT signal received: closing HTTP server');
+    
+    // Flush remaining events before shutdown
+    await eventBatchWriter.shutdown();
+    
     sessionHeartbeatService.stop();
     dataRetentionService.stop();
     process.exit(0);

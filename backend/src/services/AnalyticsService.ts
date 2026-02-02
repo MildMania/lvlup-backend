@@ -6,6 +6,7 @@ import { v4 as uuidv4 } from 'uuid';
 import { cache, generateCacheKey } from '../utils/simpleCache';
 import prisma from '../prisma';
 import { RevenueService } from './RevenueService';
+import { eventBatchWriter } from './EventBatchWriter';
 
 export class AnalyticsService {
     private prisma: PrismaClient;
@@ -245,61 +246,70 @@ export class AnalyticsService {
             const eventTimestamp = this.validateClientTimestamp(eventData.clientTs);
             const serverTime = new Date(); // Actual server receipt time
             
-            const event = await this.prisma.event.create({
-                data: {
-                    gameId: gameId,
-                    userId: userId,
-                    sessionId: sessionId,
-                    eventName: eventData.eventName,
-                    properties: properties,
-                    timestamp: eventTimestamp, // Use validated client timestamp
-                    
-                    // Event metadata
-                    eventUuid: eventData.eventUuid ?? null,
-                    // Store original client timestamp for reference
-                    clientTs: eventData.clientTs ? BigInt(eventData.clientTs) : 
-                              (eventData.timestamp ? BigInt(new Date(eventData.timestamp).getTime()) : null),
-                    serverReceivedAt: serverTime, // Track when server received the event
-                    
-                    // Device & Platform info
-                    platform: eventData.platform ?? null,
-                    osVersion: eventData.osVersion ?? null,
-                    manufacturer: eventData.manufacturer ?? null,
-                    device: eventData.device ?? null,
-                    deviceId: eventData.deviceId ?? null,
-                    
-                    // App info
-                    appVersion: eventData.appVersion ?? null,
-                    appBuild: eventData.appBuild ?? null,
-                    sdkVersion: eventData.sdkVersion ?? null,
-                    
-                    // Network & Additional
-                    connectionType: eventData.connectionType ?? null,
-                    sessionNum: eventData.sessionNum ?? null,
-                    
-                    // Geographic location (minimal)
-                    countryCode: eventData.countryCode ?? null,
-                    
-                    // Level funnel tracking (for AB testing level designs)
-                    // Extracted from properties (new SDK format) or top-level (backward compatibility)
-                    levelFunnel: levelFunnel,
-                    levelFunnelVersion: levelFunnelVersion,
-                }
-            });
+            // Prepare event data for batch writer
+            const eventRecord = {
+                gameId: gameId,
+                userId: userId,
+                sessionId: sessionId,
+                eventName: eventData.eventName,
+                properties: properties,
+                timestamp: eventTimestamp, // Use validated client timestamp
+                
+                // Event metadata
+                eventUuid: eventData.eventUuid ?? null,
+                // Store original client timestamp for reference
+                clientTs: eventData.clientTs ? BigInt(eventData.clientTs) : 
+                          (eventData.timestamp ? BigInt(new Date(eventData.timestamp).getTime()) : null),
+                serverReceivedAt: serverTime, // Track when server received the event
+                
+                // Device & Platform info
+                platform: eventData.platform ?? null,
+                osVersion: eventData.osVersion ?? null,
+                manufacturer: eventData.manufacturer ?? null,
+                device: eventData.device ?? null,
+                deviceId: eventData.deviceId ?? null,
+                
+                // App info
+                appVersion: eventData.appVersion ?? null,
+                appBuild: eventData.appBuild ?? null,
+                sdkVersion: eventData.sdkVersion ?? null,
+                
+                // Network & Additional
+                connectionType: eventData.connectionType ?? null,
+                sessionNum: eventData.sessionNum ?? null,
+                
+                // Geographic location (minimal)
+                countryCode: eventData.countryCode ?? null,
+                
+                // Level funnel tracking (for AB testing level designs)
+                // Extracted from properties (new SDK format) or top-level (backward compatibility)
+                levelFunnel: levelFunnel,
+                levelFunnelVersion: levelFunnelVersion,
+            };
+            
+            // Enqueue event for batched insertion (non-blocking)
+            eventBatchWriter.enqueue(eventRecord);
 
-            logger.debug(`Event ${eventData.eventName} tracked for user ${userId} with full metadata`);
+            logger.debug(`Event ${eventData.eventName} enqueued for batch write (user: ${userId})`);
             
             // Dual-write pattern: Create revenue record for monetization events
             if (eventData.eventName === 'ad_impression' || eventData.eventName === 'iap_purchase') {
                 try {
-                    await this.trackRevenueFromEvent(gameId, userId, sessionId, eventData, event.id);
+                    // Pass a synthetic event ID (we don't have the real one yet due to batching)
+                    // Revenue tracking will work independently
+                    await this.trackRevenueFromEvent(gameId, userId, sessionId, eventData, 'pending');
                 } catch (revenueError) {
                     // Don't fail the event tracking if revenue tracking fails
                     logger.error(`Failed to create revenue record for ${eventData.eventName}:`, revenueError);
                 }
             }
             
-            return event;
+            // Return a synthetic response (we don't have the DB-generated ID yet)
+            return {
+                id: 'batched', // Indicate this was batched
+                timestamp: eventTimestamp,
+                eventName: eventData.eventName,
+            } as any;
         } catch (error) {
             logger.error('Error tracking event:', error);
             throw error;
@@ -388,9 +398,9 @@ export class AnalyticsService {
             // Extract device info for easier access
             const deviceInfo = batchData.deviceInfo || {};
 
-            // Create events in batch with comprehensive metadata
+            // Enqueue all events for batched insertion
             // Prioritize event-level metadata over batch deviceInfo
-            const events = batchData.events.map(eventData => {
+            batchData.events.forEach(eventData => {
                 // Extract levelFunnel fields from properties (new SDK) or top-level (backward compatibility)
                 const properties = { ...(eventData.properties || {}) };
                 const levelFunnel = (properties as any).levelFunnel ?? eventData.levelFunnel ?? null;
@@ -410,7 +420,7 @@ export class AnalyticsService {
                 const eventTimestamp = this.validateClientTimestamp(eventData.clientTs);
                 const serverTime = new Date(); // Server receipt time
                 
-                return {
+                const eventRecord = {
                     gameId: gameId,
                     userId: user.id,
                     sessionId: batchData.sessionId || null,
@@ -447,14 +457,15 @@ export class AnalyticsService {
                     levelFunnel: levelFunnel,
                     levelFunnelVersion: levelFunnelVersion,
                 };
+                
+                // Enqueue each event for batched insertion
+                eventBatchWriter.enqueue(eventRecord);
             });
 
-            const createdEvents = await this.prisma.event.createMany({
-                data: events
-            });
-
-            logger.info(`Batch tracked ${createdEvents.count} events for user ${batchData.userId} with full device metadata`);
-            return createdEvents;
+            logger.info(`Batch enqueued ${batchData.events.length} events for user ${batchData.userId}`);
+            
+            // Return count of enqueued events
+            return { count: batchData.events.length };
         } catch (error) {
             logger.error('Error tracking batch events:', error);
             throw error;

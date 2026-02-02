@@ -20,6 +20,7 @@ import gameAccessRoutes from './game-access';
 import { HealthMetricsController } from '../controllers/HealthMetricsController';
 import { authenticateEither } from '../middleware/authenticateEither';
 import { truncateCrashData } from '../middleware/truncateCrashData';
+import { eventBatchWriter } from '../services/EventBatchWriter';
 
 const router = Router();
 const healthController = new HealthMetricsController();
@@ -31,6 +32,16 @@ router.get('/health', (req, res) => {
         status: 'ok',
         timestamp: new Date().toISOString(),
         service: 'lvlup-backend'
+    });
+});
+
+// Batch writer metrics endpoint (for monitoring)
+router.get('/metrics/batch-writer', (req, res) => {
+    const metrics = eventBatchWriter.getMetrics();
+    res.status(200).json({
+        status: 'ok',
+        timestamp: new Date().toISOString(),
+        batchWriter: metrics
     });
 });
 

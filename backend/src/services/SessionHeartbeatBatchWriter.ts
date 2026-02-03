@@ -23,6 +23,7 @@ import prisma from '../prisma';
 // Configuration
 const MAX_BATCH_SIZE = 100; // Flush when batch reaches this size
 const MAX_BATCH_DELAY_MS = 5000; // Flush after this delay (ms) - 5 seconds optimal for sparse traffic
+const MAX_BUFFER_SIZE = 1000; // Hard limit to prevent unbounded memory growth
 const SHUTDOWN_GRACE_PERIOD_MS = 3000; // Max time to wait during shutdown
 
 interface PendingHeartbeat {
@@ -63,6 +64,13 @@ export class SessionHeartbeatBatchWriter {
     enqueue(heartbeat: PendingHeartbeat): void {
         if (this.isShuttingDown) {
             logger.warn('SessionHeartbeatBatchWriter is shutting down, rejecting new heartbeats');
+            return;
+        }
+
+        // Enforce buffer limit to prevent unbounded memory growth
+        if (this.buffer.length >= MAX_BUFFER_SIZE) {
+            logger.error(`SessionHeartbeatBatchWriter buffer full (${MAX_BUFFER_SIZE} heartbeats), dropping heartbeat to prevent memory exhaustion`);
+            this.totalDropped++;
             return;
         }
 

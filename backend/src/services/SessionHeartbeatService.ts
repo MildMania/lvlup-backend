@@ -10,7 +10,8 @@ export class SessionHeartbeatService {
     private prisma: PrismaClient;
     private intervalId: NodeJS.Timeout | null = null;
     private readonly HEARTBEAT_TIMEOUT_SECONDS = 180; // 3 minutes without heartbeat = session ended
-    private readonly CLEANUP_INTERVAL_SECONDS = 60; // Check every 1 minute
+    private readonly CLEANUP_INTERVAL_SECONDS = 120; // Check every 2 minutes (reduced from 60s to save memory)
+    private readonly MAX_SESSIONS_PER_CLEANUP = 100; // Limit sessions processed per run to prevent memory spikes
 
     constructor() {
         this.prisma = prismaInstance;
@@ -77,6 +78,7 @@ export class SessionHeartbeatService {
             // Find sessions that:
             // 1. Don't have an endTime (still open)
             // 2. Last heartbeat was before cutoff time (or no heartbeat at all)
+            // NOTE: Limit to MAX_SESSIONS_PER_CLEANUP to prevent memory spikes
             const inactiveSessions = await this.prisma.session.findMany({
                 where: {
                     endTime: null,
@@ -91,7 +93,8 @@ export class SessionHeartbeatService {
                     lastHeartbeat: true,
                     platform: true,
                     userId: true
-                }
+                },
+                take: this.MAX_SESSIONS_PER_CLEANUP // Limit to prevent memory exhaustion
             });
 
             if (inactiveSessions.length === 0) {

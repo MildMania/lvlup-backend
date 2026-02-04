@@ -1,4 +1,4 @@
-import { PrismaClient } from '@prisma/client';
+import { Prisma, PrismaClient } from '@prisma/client';
 import logger from '../utils/logger';
 import { AnalyticsFilterParams } from '../types/api';
 import { cache, generateCacheKey } from '../utils/simpleCache';
@@ -292,22 +292,25 @@ export class AnalyticsMetricsService {
                 // Get unique users for each time frame
                 const [dau, wau, mau] = await Promise.all([
                     // Daily active users
-                    this.prisma.event.count({
+                    this.prisma.event.findMany({
                         where: buildEventFilters(dayStart, dayEnd),
-                        distinct: ['userId']
-                    }),
+                        distinct: [Prisma.EventScalarFieldEnum.userId],
+                        select: { userId: true }
+                    }).then((rows: Array<{ userId: string }>) => rows.length),
 
                     // Weekly active users
-                    this.prisma.event.count({
+                    this.prisma.event.findMany({
                         where: buildEventFilters(weekStart, dayEnd),
-                        distinct: ['userId']
-                    }),
+                        distinct: [Prisma.EventScalarFieldEnum.userId],
+                        select: { userId: true }
+                    }).then((rows: Array<{ userId: string }>) => rows.length),
 
                     // Monthly active users
-                    this.prisma.event.count({
+                    this.prisma.event.findMany({
                         where: buildEventFilters(monthStart, dayEnd),
-                        distinct: ['userId']
-                    })
+                        distinct: [Prisma.EventScalarFieldEnum.userId],
+                        select: { userId: true }
+                    }).then((rows: Array<{ userId: string }>) => rows.length)
                 ]);
 
                 // Format date as ISO string (YYYY-MM-DD)

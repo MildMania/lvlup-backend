@@ -6,9 +6,10 @@ import type {
   ApiResponse,
   UserAnalytics,
   RetentionData,
-  PlayerJourneyData,
   DashboardSummary,
 } from '../types/analytics';
+
+const DEFAULT_TIMEOUT_MS = 15000;
 
 // API endpoints
 const RETENTION_PATH = 'analytics/metrics/retention';
@@ -18,7 +19,7 @@ const PLAYTIME_PATH = 'analytics/metrics/playtime';
 export const fetchRetention = async (params: URLSearchParams) => {
   const response = await apiClient.get<ApiResponse<RetentionPoint[]>>(
     RETENTION_PATH,
-    { params }
+    { params, timeout: DEFAULT_TIMEOUT_MS }
   );
   return response.data.data;
 };
@@ -26,7 +27,7 @@ export const fetchRetention = async (params: URLSearchParams) => {
 export const fetchActiveUsers = async (params: URLSearchParams) => {
   const response = await apiClient.get<ApiResponse<ActiveUserPoint[]>>(
     ACTIVE_USERS_PATH,
-    { params }
+    { params, timeout: DEFAULT_TIMEOUT_MS }
   );
   return response.data.data;
 };
@@ -34,7 +35,7 @@ export const fetchActiveUsers = async (params: URLSearchParams) => {
 export const fetchPlaytime = async (params: URLSearchParams) => {
   const response = await apiClient.get<ApiResponse<PlaytimePoint[]>>(
     PLAYTIME_PATH,
-    { params }
+    { params, timeout: DEFAULT_TIMEOUT_MS }
   );
   return response.data.data;
 };
@@ -46,7 +47,8 @@ export class AnalyticsService {
     try {
       const params = startDate && endDate ? { gameId, startDate, endDate } : { gameId };
       const response = await apiClient.get<ApiResponse<DashboardSummary>>('/analytics/dashboard', {
-        params
+        params,
+        timeout: DEFAULT_TIMEOUT_MS
       });
       return response.data.data;
     } catch (error) {
@@ -58,14 +60,16 @@ export class AnalyticsService {
   // User Analytics
   static async getUserAnalytics(startDate: string, endDate: string): Promise<UserAnalytics> {
     const response = await apiClient.get<ApiResponse<UserAnalytics>>('/analytics/users', {
-      params: { startDate, endDate }
+      params: { startDate, endDate },
+      timeout: DEFAULT_TIMEOUT_MS
     });
     return response.data.data;
   }
 
   static async getActiveUsers(gameId: string, startDate: string, endDate: string): Promise<ActiveUserPoint[]> {
     const response = await apiClient.get<ApiResponse<ActiveUserPoint[]>>('/analytics/metrics/active-users', {
-      params: { gameId, startDate, endDate }
+      params: { gameId, startDate, endDate },
+      timeout: DEFAULT_TIMEOUT_MS
     });
     return response.data.data;
   }
@@ -73,16 +77,8 @@ export class AnalyticsService {
   // Retention Analysis
   static async getRetentionCohorts(gameId: string, startDate: string, endDate: string): Promise<RetentionData[]> {
     const response = await apiClient.get<ApiResponse<RetentionData[]>>('/analytics/metrics/retention', {
-      params: { gameId, startDate, endDate }
-    });
-    return response.data.data;
-  }
-
-  // Player Journey
-  static async getPlayerJourney(gameId: string, startDate?: string, endDate?: string): Promise<PlayerJourneyData[]> {
-    const params = startDate && endDate ? { gameId, startDate, endDate } : { gameId };
-    const response = await apiClient.get<ApiResponse<PlayerJourneyData[]>>('/analytics/player-journey/funnel', {
-      params
+      params: { gameId, startDate, endDate },
+      timeout: DEFAULT_TIMEOUT_MS
     });
     return response.data.data;
   }
@@ -92,7 +88,8 @@ export class AnalyticsService {
     try {
       const params = startDate && endDate ? { gameId, startDate, endDate } : { gameId };
       const response = await apiClient.get<ApiResponse<RetentionPoint[]>>('/analytics/retention/cohorts', {
-        params
+        params,
+        timeout: DEFAULT_TIMEOUT_MS
       });
       return response.data.data;
     } catch (error) {

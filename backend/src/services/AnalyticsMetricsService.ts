@@ -292,22 +292,22 @@ export class AnalyticsMetricsService {
                 // Get unique users for each time frame
                 const [dau, wau, mau] = await Promise.all([
                     // Daily active users
-                    this.prisma.event.groupBy({
-                        by: ['userId'],
-                        where: buildEventFilters(dayStart, dayEnd)
-                    }).then((results: any[]) => results.length),
+                    this.prisma.event.count({
+                        where: buildEventFilters(dayStart, dayEnd),
+                        distinct: ['userId']
+                    }),
 
                     // Weekly active users
-                    this.prisma.event.groupBy({
-                        by: ['userId'],
-                        where: buildEventFilters(weekStart, dayEnd)
-                    }).then((results: any[]) => results.length),
+                    this.prisma.event.count({
+                        where: buildEventFilters(weekStart, dayEnd),
+                        distinct: ['userId']
+                    }),
 
                     // Monthly active users
-                    this.prisma.event.groupBy({
-                        by: ['userId'],
-                        where: buildEventFilters(monthStart, dayEnd)
-                    }).then((results: any[]) => results.length)
+                    this.prisma.event.count({
+                        where: buildEventFilters(monthStart, dayEnd),
+                        distinct: ['userId']
+                    })
                 ]);
 
                 // Format date as ISO string (YYYY-MM-DD)
@@ -343,6 +343,24 @@ export class AnalyticsMetricsService {
         filters?: AnalyticsFilterParams
     ): Promise<PlaytimeData[]> {
         try {
+            // Generate cache key
+            const cacheKey = generateCacheKey(
+                'playtime',
+                gameId,
+                startDate.toISOString(),
+                endDate.toISOString(),
+                JSON.stringify(filters || {})
+            );
+
+            // Check cache first (5 minute TTL)
+            const cached = cache.get<PlaytimeData[]>(cacheKey);
+            if (cached) {
+                logger.debug(`Cache hit for playtime: ${cacheKey}`);
+                return cached;
+            }
+
+            logger.debug(`Cache miss for playtime: ${cacheKey}, calculating...`);
+
             // Get daily playtime data for each day in the range
             const playtimeData: PlaytimeData[] = [];
 
@@ -427,6 +445,8 @@ export class AnalyticsMetricsService {
             }
 
             logger.info(`Calculated playtime metrics for game ${gameId}`);
+            // Cache for 5 minutes (300 seconds)
+            cache.set(cacheKey, playtimeData, 300);
             return playtimeData;
         } catch (error) {
             logger.error('Error calculating playtime metrics:', error);

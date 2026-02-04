@@ -18,7 +18,6 @@ import type {
   ActiveUserPoint, 
   RetentionPoint, 
   PlaytimePoint, 
-  PlayerJourneyData,
   DashboardSummary 
 } from '../types/analytics';
 import { useTheme } from '../contexts/ThemeContext';
@@ -131,7 +130,6 @@ const Dashboard: React.FC<DashboardProps> = ({ gameInfo, isCollapsed = false }) 
   const [activeUsers, setActiveUsers] = useState<ActiveUserPoint[]>([]);
   const [retention, setRetention] = useState<RetentionPoint[]>([]);
   const [playtime, setPlaytime] = useState<PlaytimePoint[]>([]);
-  const [playerJourney, setPlayerJourney] = useState<PlayerJourneyData[]>([]);
   const [apiKeyCopied, setApiKeyCopied] = useState(false);
   const [summary, setSummary] = useState<DashboardSummary | null>(null);
   const [loading, setLoading] = useState(true);
@@ -206,14 +204,13 @@ const Dashboard: React.FC<DashboardProps> = ({ gameInfo, isCollapsed = false }) 
       }
 
       // Fetch chart data
-        const [activeUsersResult, playtimeResult, playerJourneyResult] = await Promise.allSettled([
+        const [activeUsersResult, playtimeResult] = await Promise.allSettled([
           AnalyticsService.getActiveUsers(currentGame.id, startDateStr, endDateStr),
           fetchPlaytime(new URLSearchParams({
             gameId: currentGame.id,
             startDate: startDateStr,
             endDate: endDateStr
-          })),
-          AnalyticsService.getPlayerJourney(currentGame.id, startDateStr, endDateStr)
+          }))
         ]);
       
       if (activeUsersResult.status === 'fulfilled') {
@@ -222,10 +219,6 @@ const Dashboard: React.FC<DashboardProps> = ({ gameInfo, isCollapsed = false }) 
       
       if (playtimeResult.status === 'fulfilled') {
         setPlaytime(playtimeResult.value || []);
-      }
-
-      if (playerJourneyResult.status === 'fulfilled') {
-        setPlayerJourney(playerJourneyResult.value || []);
       }
 
       setLastUpdated(new Date());
@@ -363,13 +356,10 @@ const Dashboard: React.FC<DashboardProps> = ({ gameInfo, isCollapsed = false }) 
       const playtimePromise = fetchPlaytime(playtimeParams);
       
       // Fetch player journey with date range
-      const playerJourneyPromise = AnalyticsService.getPlayerJourney(currentGame.id, startDateStr, endDateStr);
-      
       // Wait for all data fetches to complete
-      const [activeUsersResult, playtimeResult, playerJourneyResult] = await Promise.allSettled([
+      const [activeUsersResult, playtimeResult] = await Promise.allSettled([
         activeUsersPromise,
-        playtimePromise,
-        playerJourneyPromise
+        playtimePromise
       ]);
       
       if (activeUsersResult.status === 'fulfilled') {
@@ -384,13 +374,6 @@ const Dashboard: React.FC<DashboardProps> = ({ gameInfo, isCollapsed = false }) 
         setPlaytime(playtimeResult.value || []);
       } else {
         console.error('Failed to fetch playtime:', playtimeResult.reason);
-      }
-
-      if (playerJourneyResult.status === 'fulfilled') {
-        console.log('Player Journey Data:', playerJourneyResult.value);
-        setPlayerJourney(playerJourneyResult.value || []);
-      } else {
-        console.error('Failed to fetch player journey:', playerJourneyResult.reason);
       }
 
       setLastUpdated(new Date());
@@ -849,91 +832,6 @@ const Dashboard: React.FC<DashboardProps> = ({ gameInfo, isCollapsed = false }) 
               />
             </LineChart>
           </ResponsiveContainer>
-        </ChartContainer>
-
-        {/* Player Journey Flow Chart */}
-        <ChartContainer 
-          title="Player Journey Flow" 
-          className="chart-large"
-          description="Shows user progression through key checkpoints or milestones in your application with completion rates"
-        >
-          <div style={{ padding: '20px', height: '300px', overflowY: 'auto' }}>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-              {playerJourney.length > 0 ? (
-                playerJourney.map((checkpoint) => (
-                  <div key={checkpoint.checkpointName} style={{
-                    display: 'flex',
-                    alignItems: 'center',
-                    padding: '12px 16px',
-                    backgroundColor: isDarkMode ? 
-                      (checkpoint.completionRate >= 50 ? '#064e3b' : 
-                       checkpoint.completionRate >= 25 ? '#451a03' : '#450a0a') :
-                      (checkpoint.completionRate >= 50 ? '#f0fdf4' : 
-                       checkpoint.completionRate >= 25 ? '#fffbeb' : '#fef2f2'),
-                    borderRadius: '8px',
-                    border: `2px solid ${checkpoint.completionRate >= 50 ? '#22c55e' : 
-                                         checkpoint.completionRate >= 25 ? '#f59e0b' : '#ef4444'}`
-                  }}>
-                    <div style={{ 
-                      width: '12px', 
-                      height: '12px', 
-                      borderRadius: '50%', 
-                      backgroundColor: checkpoint.completionRate >= 50 ? '#22c55e' : 
-                                     checkpoint.completionRate >= 25 ? '#f59e0b' : '#ef4444',
-                      marginRight: '12px'
-                    }} />
-                    
-                    <div style={{ flex: 1 }}>
-                      <div style={{ 
-                        fontWeight: '600', 
-                        fontSize: '14px',
-                        textTransform: 'capitalize',
-                        color: chartColors.text
-                      }}>
-                        {checkpoint.checkpointName.replace(/_/g, ' ')}
-                      </div>
-                      <div style={{ 
-                        fontSize: '12px', 
-                        color: isDarkMode ? '#94a3b8' : '#64748b',
-                        marginTop: '2px'
-                      }}>
-                        {checkpoint.completedUsers} of {checkpoint.totalUsers} players completed this
-                      </div>
-                    </div>
-                    
-                    <div style={{ 
-                      textAlign: 'right',
-                      marginLeft: '16px'
-                    }}>
-                      <div style={{ 
-                        fontSize: '16px', 
-                        fontWeight: 'bold', 
-                        color: checkpoint.completionRate >= 50 ? '#16a34a' : 
-                               checkpoint.completionRate >= 25 ? '#d97706' : '#dc2626'
-                      }}>
-                        {checkpoint.completionRate.toFixed(1)}%
-                      </div>
-                      <div style={{ 
-                        fontSize: '11px', 
-                        color: isDarkMode ? '#94a3b8' : '#64748b'
-                      }}>
-                        completion rate
-                      </div>
-                    </div>
-                  </div>
-                ))
-              ) : (
-                <div style={{ 
-                  textAlign: 'center', 
-                  color: chartColors.text, 
-                  padding: '40px',
-                  fontStyle: 'italic'
-                }}>
-                  No player journey data available for the selected date range
-                </div>
-              )}
-            </div>
-          </div>
         </ChartContainer>
 
         {/* User Distribution Pie Chart */}

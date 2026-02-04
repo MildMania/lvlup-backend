@@ -129,6 +129,8 @@ model Event {
   game    Game     @relation(fields: [gameId], references: [id], onDelete: Cascade)
 
   @@index([userId, timestamp])
+  @@index([gameId, timestamp])
+  @@index([gameId, userId, timestamp])
   @@index([gameId, appVersion, timestamp])
   @@map("events")
 }

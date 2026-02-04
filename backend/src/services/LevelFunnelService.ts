@@ -283,29 +283,42 @@ export class LevelFunnelService {
             }
         }
 
-        if (filters.levelFunnel && filters.levelFunnelVersion) {
+        // Handle levelFunnel and levelFunnelVersion filtering
+        if (filters.levelFunnel) {
             const funnels = filters.levelFunnel.split(',').map(f => f.trim()).filter(f => f);
-            const versions = filters.levelFunnelVersion.toString().split(',').map(v => parseInt(v.trim())).filter(v => !isNaN(v));
             
-            if (funnels.length === 1 && versions.length === 1) {
-                // Single funnel+version pair - simple equality
-                whereClause.levelFunnel = funnels[0];
-                whereClause.levelFunnelVersion = versions[0];
-            } else if (funnels.length > 0 && versions.length > 0 && funnels.length === versions.length) {
-                // Multiple funnel+version pairs - use OR condition for exact pairs
-                whereClause.OR = funnels.map((funnel, idx) => ({
-                    levelFunnel: funnel,
-                    levelFunnelVersion: versions[idx]
-                }));
-            }
-        } else if (filters.levelFunnel) {
-            const funnels = filters.levelFunnel.split(',').map(f => f.trim()).filter(f => f);
-            if (funnels.length > 1) {
-                whereClause.levelFunnel = { in: funnels };
-            } else if (funnels.length === 1) {
-                whereClause.levelFunnel = funnels[0];
+            if (filters.levelFunnelVersion) {
+                // Both funnel and version provided - try to pair them
+                const versions = filters.levelFunnelVersion.toString().split(',').map(v => parseInt(v.trim())).filter(v => !isNaN(v));
+                
+                if (funnels.length === 1 && versions.length === 1) {
+                    // Single funnel+version pair - simple equality
+                    whereClause.levelFunnel = funnels[0];
+                    whereClause.levelFunnelVersion = versions[0];
+                } else if (funnels.length > 0 && versions.length > 0 && funnels.length === versions.length) {
+                    // Multiple funnel+version pairs with matching counts - use OR condition for exact pairs
+                    whereClause.OR = funnels.map((funnel, idx) => ({
+                        levelFunnel: funnel,
+                        levelFunnelVersion: versions[idx]
+                    }));
+                } else {
+                    // Mismatched funnel and version counts - filter by funnel only
+                    if (funnels.length > 1) {
+                        whereClause.levelFunnel = { in: funnels };
+                    } else if (funnels.length === 1) {
+                        whereClause.levelFunnel = funnels[0];
+                    }
+                }
+            } else {
+                // Only funnel provided - filter by funnel
+                if (funnels.length > 1) {
+                    whereClause.levelFunnel = { in: funnels };
+                } else if (funnels.length === 1) {
+                    whereClause.levelFunnel = funnels[0];
+                }
             }
         } else if (filters.levelFunnelVersion) {
+            // Only version provided - filter by version
             const versions = filters.levelFunnelVersion.toString().split(',').map(v => parseInt(v.trim())).filter(v => !isNaN(v));
             if (versions.length > 1) {
                 whereClause.levelFunnelVersion = { in: versions };
@@ -444,29 +457,42 @@ export class LevelFunnelService {
             }
         }
 
-        if (filters.levelFunnel && filters.levelFunnelVersion) {
+        // Handle levelFunnel and levelFunnelVersion filtering
+        if (filters.levelFunnel) {
             const funnels = filters.levelFunnel.split(',').map(f => f.trim()).filter(f => f);
-            const versions = filters.levelFunnelVersion.toString().split(',').map(v => parseInt(v.trim())).filter(v => !isNaN(v));
             
-            if (funnels.length === 1 && versions.length === 1) {
-                // Single funnel+version pair - simple equality
-                whereClause.levelFunnel = funnels[0];
-                whereClause.levelFunnelVersion = versions[0];
-            } else if (funnels.length > 0 && versions.length > 0 && funnels.length === versions.length) {
-                // Multiple funnel+version pairs - use OR condition for exact pairs
-                whereClause.OR = funnels.map((funnel, idx) => ({
-                    levelFunnel: funnel,
-                    levelFunnelVersion: versions[idx]
-                }));
-            }
-        } else if (filters.levelFunnel) {
-            const funnels = filters.levelFunnel.split(',').map(f => f.trim()).filter(f => f);
-            if (funnels.length > 1) {
-                whereClause.levelFunnel = { in: funnels };
-            } else if (funnels.length === 1) {
-                whereClause.levelFunnel = funnels[0];
+            if (filters.levelFunnelVersion) {
+                // Both funnel and version provided - try to pair them
+                const versions = filters.levelFunnelVersion.toString().split(',').map(v => parseInt(v.trim())).filter(v => !isNaN(v));
+                
+                if (funnels.length === 1 && versions.length === 1) {
+                    // Single funnel+version pair - simple equality
+                    whereClause.levelFunnel = funnels[0];
+                    whereClause.levelFunnelVersion = versions[0];
+                } else if (funnels.length > 0 && versions.length > 0 && funnels.length === versions.length) {
+                    // Multiple funnel+version pairs with matching counts - use OR condition for exact pairs
+                    whereClause.OR = funnels.map((funnel, idx) => ({
+                        levelFunnel: funnel,
+                        levelFunnelVersion: versions[idx]
+                    }));
+                } else {
+                    // Mismatched funnel and version counts - filter by funnel only
+                    if (funnels.length > 1) {
+                        whereClause.levelFunnel = { in: funnels };
+                    } else if (funnels.length === 1) {
+                        whereClause.levelFunnel = funnels[0];
+                    }
+                }
+            } else {
+                // Only funnel provided - filter by funnel
+                if (funnels.length > 1) {
+                    whereClause.levelFunnel = { in: funnels };
+                } else if (funnels.length === 1) {
+                    whereClause.levelFunnel = funnels[0];
+                }
             }
         } else if (filters.levelFunnelVersion) {
+            // Only version provided - filter by version
             const versions = filters.levelFunnelVersion.toString().split(',').map(v => parseInt(v.trim())).filter(v => !isNaN(v));
             if (versions.length > 1) {
                 whereClause.levelFunnelVersion = { in: versions };
@@ -584,29 +610,42 @@ export class LevelFunnelService {
             }
         }
 
-        if (filters.levelFunnel && filters.levelFunnelVersion) {
+        // Handle levelFunnel and levelFunnelVersion filtering
+        if (filters.levelFunnel) {
             const funnels = filters.levelFunnel.split(',').map(f => f.trim()).filter(f => f);
-            const versions = filters.levelFunnelVersion.toString().split(',').map(v => parseInt(v.trim())).filter(v => !isNaN(v));
             
-            if (funnels.length === 1 && versions.length === 1) {
-                // Single funnel+version pair - simple equality
-                whereClause.levelFunnel = funnels[0];
-                whereClause.levelFunnelVersion = versions[0];
-            } else if (funnels.length > 0 && versions.length > 0 && funnels.length === versions.length) {
-                // Multiple funnel+version pairs - use OR condition for exact pairs
-                whereClause.OR = funnels.map((funnel, idx) => ({
-                    levelFunnel: funnel,
-                    levelFunnelVersion: versions[idx]
-                }));
-            }
-        } else if (filters.levelFunnel) {
-            const funnels = filters.levelFunnel.split(',').map(f => f.trim()).filter(f => f);
-            if (funnels.length > 1) {
-                whereClause.levelFunnel = { in: funnels };
-            } else if (funnels.length === 1) {
-                whereClause.levelFunnel = funnels[0];
+            if (filters.levelFunnelVersion) {
+                // Both funnel and version provided - try to pair them
+                const versions = filters.levelFunnelVersion.toString().split(',').map(v => parseInt(v.trim())).filter(v => !isNaN(v));
+                
+                if (funnels.length === 1 && versions.length === 1) {
+                    // Single funnel+version pair - simple equality
+                    whereClause.levelFunnel = funnels[0];
+                    whereClause.levelFunnelVersion = versions[0];
+                } else if (funnels.length > 0 && versions.length > 0 && funnels.length === versions.length) {
+                    // Multiple funnel+version pairs with matching counts - use OR condition for exact pairs
+                    whereClause.OR = funnels.map((funnel, idx) => ({
+                        levelFunnel: funnel,
+                        levelFunnelVersion: versions[idx]
+                    }));
+                } else {
+                    // Mismatched funnel and version counts - filter by funnel only
+                    if (funnels.length > 1) {
+                        whereClause.levelFunnel = { in: funnels };
+                    } else if (funnels.length === 1) {
+                        whereClause.levelFunnel = funnels[0];
+                    }
+                }
+            } else {
+                // Only funnel provided - filter by funnel
+                if (funnels.length > 1) {
+                    whereClause.levelFunnel = { in: funnels };
+                } else if (funnels.length === 1) {
+                    whereClause.levelFunnel = funnels[0];
+                }
             }
         } else if (filters.levelFunnelVersion) {
+            // Only version provided - filter by version
             const versions = filters.levelFunnelVersion.toString().split(',').map(v => parseInt(v.trim())).filter(v => !isNaN(v));
             if (versions.length > 1) {
                 whereClause.levelFunnelVersion = { in: versions };

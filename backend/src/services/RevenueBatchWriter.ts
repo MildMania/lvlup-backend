@@ -116,6 +116,22 @@ export class RevenueBatchWriter {
             return;
         }
 
+        // 🔍 DEBUG: Log the problematic transaction
+        if (revenue.userId === 'cml309nf02xvrn065x3npcbd5' && revenue.timestamp.getTime() === new Date('2026-02-02T11:30:54.164Z').getTime()) {
+            logger.warn(`🔴 [CRITICAL] Problematic transaction being enqueued AGAIN!`, {
+                userId: revenue.userId,
+                timestamp: revenue.timestamp,
+                revenueType: revenue.revenueType,
+                revenueUSD: revenue.revenueUSD,
+                transactionId: revenue.transactionId,
+                adImpressionId: revenue.adImpressionId,
+                bufferSize: this.buffer.length,
+                totalFlushed: this.totalFlushed,
+                totalFailed: this.totalFailed,
+                stack: new Error().stack,
+            });
+        }
+
         // Enforce buffer limit to prevent unbounded memory growth
         if (this.buffer.length >= MAX_BUFFER_SIZE) {
             logger.error(`RevenueBatchWriter buffer full (${MAX_BUFFER_SIZE} records), dropping revenue record to prevent memory exhaustion`);
@@ -183,6 +199,23 @@ export class RevenueBatchWriter {
         // Take snapshot of current buffer and clear it
         const revenueToFlush = this.buffer.slice();
         this.buffer = [];
+
+        // 🔍 DEBUG: Check if problematic transaction is in this batch
+        const hasProblematicTx = revenueToFlush.some(r => 
+            r.userId === 'cml309nf02xvrn065x3npcbd5' && 
+            r.timestamp.getTime() === new Date('2026-02-02T11:30:54.164Z').getTime()
+        );
+        
+        if (hasProblematicTx) {
+            const count = revenueToFlush.filter(r => 
+                r.userId === 'cml309nf02xvrn065x3npcbd5' && 
+                r.timestamp.getTime() === new Date('2026-02-02T11:30:54.164Z').getTime()
+            ).length;
+            logger.warn(`🔴 [CRITICAL] Flushing batch with ${count} instances of problematic transaction!`, {
+                batchSize: revenueToFlush.length,
+                problematicCount: count,
+            });
+        }
         
         const startTime = Date.now();
         
@@ -196,6 +229,14 @@ export class RevenueBatchWriter {
             const flushDuration = Date.now() - startTime;
             this.totalFlushed += revenueToFlush.length;
             
+            if (hasProblematicTx) {
+                logger.warn(`🟢 [SUCCESS] Flushed problematic transaction batch successfully!`, {
+                    batchSize: revenueToFlush.length,
+                    flushDuration,
+                    totalFlushed: this.totalFlushed,
+                });
+            }
+            
             logger.info(`[RevenueBatchWriter] Flushed ${revenueToFlush.length} revenue records in ${flushDuration}ms`, {
                 batchSize: revenueToFlush.length,
                 flushDuration,
@@ -204,6 +245,18 @@ export class RevenueBatchWriter {
             
         } catch (error: any) {
             const flushDuration = Date.now() - startTime;
+            
+            if (hasProblematicTx) {
+                logger.error(`🔴 [CRITICAL] Flush FAILED for problematic transaction batch!`, {
+                    batchSize: revenueToFlush.length,
+                    flushDuration,
+                    error: error.message,
+                    code: error.code,
+                    meta: error.meta,
+                    stack: error.stack,
+                });
+            }
+            
             logger.error(`[RevenueBatchWriter] Flush failed, retrying once...`, {
                 batchSize: revenueToFlush.length,
                 flushDuration,
@@ -220,6 +273,12 @@ export class RevenueBatchWriter {
                 const retryDuration = Date.now() - startTime;
                 this.totalFlushed += revenueToFlush.length;
                 
+                if (hasProblematicTx) {
+                    logger.warn(`🟢 [SUCCESS] Retry successful for problematic transaction batch!`, {
+                        retryDuration,
+                    });
+                }
+                
                 logger.info(`[RevenueBatchWriter] Retry successful, flushed ${revenueToFlush.length} revenue records in ${retryDuration}ms`);
                 
             } catch (retryError: any) {
@@ -227,6 +286,18 @@ export class RevenueBatchWriter {
                 // Do not block indefinitely or accumulate failed batches
                 this.totalFailed++;
                 this.totalDropped += revenueToFlush.length;
+                
+                if (hasProblematicTx) {
+                    logger.error(`🔴 [CRITICAL] RETRY ALSO FAILED for problematic transaction batch!`, {
+                        batchSize: revenueToFlush.length,
+                        totalFailed: this.totalFailed,
+                        totalDropped: this.totalDropped,
+                        retryError: retryError.message,
+                        code: retryError.code,
+                        meta: retryError.meta,
+                        stack: retryError.stack,
+                    });
+                }
                 
                 logger.error(`[RevenueBatchWriter] Retry failed, dropping ${revenueToFlush.length} revenue records`, {
                     batchSize: revenueToFlush.length,

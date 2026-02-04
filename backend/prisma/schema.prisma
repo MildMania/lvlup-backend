@@ -201,8 +201,10 @@ model Revenue {
   // Essential indexes only (minimized for storage efficiency)
   @@index([gameId, revenueType, timestamp]) // Covers most revenue queries + time-series
   @@index([userId, timestamp]) // User revenue history & LTV
-  @@index([adImpressionId]) // Ad deduplication
-  @@index([transactionId]) // IAP deduplication & receipt validation
+  
+  // Unique constraints for deduplication (prevent duplicate sends)
+  @@unique([gameId, transactionId], name: "unique_transaction_id") // IAP deduplication
+  @@unique([gameId, adImpressionId], name: "unique_ad_impression_id") // AD deduplication
   
   @@map("revenue")
 }

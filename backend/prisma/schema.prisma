@@ -203,6 +203,7 @@ model Revenue {
   @@index([userId, timestamp]) // User revenue history & LTV
   
   // Unique constraints for deduplication (prevent duplicate sends)
+  // NOTE: Duplicates are cleaned up in migration 20260204_cleanup_duplicate_revenue
   @@unique([gameId, transactionId], name: "unique_transaction_id") // IAP deduplication
   @@unique([gameId, adImpressionId], name: "unique_ad_impression_id") // AD deduplication
   

@@ -1,10 +1,5 @@
 -- Migration: Drop redundant Event table columns
-ORDER BY ordinal_position;
-WHERE table_name = 'Event' 
-FROM information_schema.columns 
-SELECT column_name, data_type 
--- Verify the changes
-
+-- Drop app metadata fields
 ALTER TABLE "Event" DROP COLUMN IF EXISTS "channelId";
 ALTER TABLE "Event" DROP COLUMN IF EXISTS "appSignature";
 ALTER TABLE "Event" DROP COLUMN IF EXISTS "engineVersion";

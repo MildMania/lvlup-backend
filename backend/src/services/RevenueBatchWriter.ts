@@ -190,7 +190,7 @@ export class RevenueBatchWriter {
             // Single INSERT for entire batch
             await this.prisma.revenue.createMany({
                 data: revenueToFlush,
-                skipDuplicates: false, // We want to know if there are duplicates
+                skipDuplicates: true,  // ✅ FIXED: Skip duplicates to handle idempotent retries
             });
             
             const flushDuration = Date.now() - startTime;
@@ -214,7 +214,7 @@ export class RevenueBatchWriter {
             try {
                 await this.prisma.revenue.createMany({
                     data: revenueToFlush,
-                    skipDuplicates: false,
+                    skipDuplicates: true,  // ✅ FIXED: Skip duplicates on retry to prevent double-insertion
                 });
                 
                 const retryDuration = Date.now() - startTime;

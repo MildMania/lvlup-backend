@@ -4,6 +4,7 @@ import logger from '../utils/logger';
 import prisma from '../prisma';
 import { convertToUSD } from '../utils/currencyConverter';
 import { revenueBatchWriter } from './RevenueBatchWriter';
+import { createHash } from 'crypto';
 
 export class RevenueService {
     private prisma: PrismaClient;
@@ -88,6 +89,22 @@ export class RevenueService {
 
             // Add type-specific fields
             if (revenueData.revenueType === RevenueType.AD_IMPRESSION) {
+                // Generate deterministic adImpressionId using hash of transaction data
+                // Same data = same hash, so retries will have identical IDs
+                const adImpressionId = revenueData.adImpressionId || (() => {
+                    const hashData = JSON.stringify({
+                        userId,
+                        gameId,
+                        adNetworkName: revenueData.adNetworkName,
+                        adFormat: revenueData.adFormat,
+                        adPlacement: revenueData.adPlacement,
+                        timestamp: revenueData.timestamp,
+                        revenue: revenueData.revenue,
+                    });
+                    const hash = createHash('sha256').update(hashData).digest('hex').substring(0, 16);
+                    return `ad_${hash}`;
+                })();
+                
                 Object.assign(revenueRecord, {
                     adNetworkName: revenueData.adNetworkName || null,
                     adFormat: revenueData.adFormat || null,
@@ -95,17 +112,32 @@ export class RevenueService {
                     adUnitName: revenueData.adUnitName || null,
                     adPlacement: revenueData.adPlacement || null,
                     adCreativeId: revenueData.adCreativeId || null,
-                    adImpressionId: revenueData.adImpressionId || null,
+                    adImpressionId: adImpressionId,  // Deterministic hash
                     adNetworkPlacement: revenueData.adNetworkPlacement || null,
                 });
                 
-                logger.info(`Ad impression enqueued: ${revenueData.adNetworkName} ${revenueData.adFormat} - $${revenueData.revenue}`);
+                logger.info(`Ad impression enqueued: ${revenueData.adNetworkName} ${revenueData.adFormat} - $${revenueData.revenue} - ad: ${adImpressionId}`);
             } else if (revenueData.revenueType === RevenueType.IN_APP_PURCHASE) {
+                // Generate deterministic transactionId using hash of purchase data
+                // Same purchase data = same hash, so retries will have identical IDs
+                const transactionId = revenueData.transactionId || (() => {
+                    const hashData = JSON.stringify({
+                        userId,
+                        gameId,
+                        productId: revenueData.productId,
+                        store: revenueData.store,
+                        revenue: revenueData.revenue,
+                        timestamp: revenueData.timestamp,
+                    });
+                    const hash = createHash('sha256').update(hashData).digest('hex').substring(0, 16);
+                    return `txn_${hash}`;
+                })();
+                
                 Object.assign(revenueRecord, {
                     productId: revenueData.productId || null,
                     productName: revenueData.productName || null,
                     productType: revenueData.productType || null,
-                    transactionId: revenueData.transactionId || null,
+                    transactionId: transactionId,  // Deterministic hash
                     orderId: revenueData.orderId || null,
                     purchaseToken: revenueData.purchaseToken || null,
                     store: revenueData.store || null,
@@ -116,7 +148,7 @@ export class RevenueService {
                     subscriptionPeriod: revenueData.subscriptionPeriod || null,
                 });
                 
-                logger.info(`IAP enqueued: ${revenueData.productId} - $${revenueData.revenue} (${revenueData.store})`);
+                logger.info(`IAP enqueued: ${revenueData.productId} - $${revenueData.revenue} (${revenueData.store}) - txn: ${transactionId}`);
             }
 
             // Enqueue revenue record for batched insertion (non-blocking)

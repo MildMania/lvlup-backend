@@ -47,7 +47,7 @@ export class LevelFunnelController {
                 version: version as string | undefined,
                 abTestId: abTestId as string | undefined,
                 levelFunnel: levelFunnel as string | undefined,
-                levelFunnelVersion: levelFunnelVersion ? parseInt(levelFunnelVersion as string) : undefined,
+                levelFunnelVersion: levelFunnelVersion as string | undefined, // Keep as string to support comma-separated versions
                 levelLimit: levelLimit ? parseInt(levelLimit as string) : 100 // Default to 100
             };
 

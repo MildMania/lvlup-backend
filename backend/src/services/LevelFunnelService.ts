@@ -11,8 +11,8 @@ interface LevelFunnelFilters {
     version?: string | undefined;
     abTestId?: string | undefined;
     variantId?: string | undefined; // For filtering by specific AB test variant
-    levelFunnel?: string | undefined; // e.g., "live_v1"
-    levelFunnelVersion?: number | undefined; // e.g., 1, 2, 3
+    levelFunnel?: string | undefined; // e.g., "live_v1" or "live_v1,live_v2"
+    levelFunnelVersion?: string | number | undefined; // e.g., 15 or "15,16" for paired selections
     levelLimit?: number | undefined; // Maximum number of levels to return (default: 100)
 }
 
@@ -238,7 +238,7 @@ export class LevelFunnelService {
             platform?: string;
             version?: string;
             levelFunnel?: string;
-            levelFunnelVersion?: number;
+            levelFunnelVersion?: string | number;
         }
     ): Promise<Map<number, {
         startedPlayers: number;
@@ -418,7 +418,7 @@ export class LevelFunnelService {
             platform?: string;
             version?: string;
             levelFunnel?: string;
-            levelFunnelVersion?: number;
+            levelFunnelVersion?: string | number;
         }
     ): Promise<any[]> {
         const whereClause: any = {
@@ -573,7 +573,7 @@ export class LevelFunnelService {
             platform?: string;
             version?: string;
             levelFunnel?: string;
-            levelFunnelVersion?: number;
+            levelFunnelVersion?: string | number;
         }
     ): Promise<any[]> {
         const whereClause: any = {

@@ -353,7 +353,15 @@ export class AnalyticsController {
                 });
             }
 
-            const data = await analyticsService.getAnalytics(gameId, startDate, endDate);
+            const includeRetention = req.query.includeRetention !== 'false';
+            const includeActiveUsersToday = req.query.includeActiveUsersToday !== 'false';
+            const includeTopEvents = req.query.includeTopEvents !== 'false';
+
+            const data = await analyticsService.getAnalytics(gameId, startDate, endDate, {
+                includeRetention,
+                includeActiveUsersToday,
+                includeTopEvents
+            });
 
             res.status(200).json({
                 success: true,

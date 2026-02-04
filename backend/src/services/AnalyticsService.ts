@@ -462,10 +462,33 @@ export class AnalyticsService {
     }
 
     // Get analytics data (for dashboard)
-    async getAnalytics(gameId: string, startDate: Date, endDate: Date): Promise<AnalyticsData> {
+    async getAnalytics(
+        gameId: string,
+        startDate: Date,
+        endDate: Date,
+        options?: {
+            includeRetention?: boolean;
+            includeActiveUsersToday?: boolean;
+            includeTopEvents?: boolean;
+        }
+    ): Promise<AnalyticsData> {
         try {
+            const includeRetention = options?.includeRetention !== false;
+            const includeActiveUsersToday = options?.includeActiveUsersToday !== false;
+            const includeTopEvents = options?.includeTopEvents !== false;
+
             // Generate cache key based on game ID and date range
-            const cacheKey = generateCacheKey('analytics', gameId, startDate.toISOString(), endDate.toISOString());
+            const cacheKey = generateCacheKey(
+                'analytics',
+                gameId,
+                startDate.toISOString(),
+                endDate.toISOString(),
+                JSON.stringify({
+                    includeRetention,
+                    includeActiveUsersToday,
+                    includeTopEvents
+                })
+            );
             
             // Try to get from cache first (5 minute TTL)
             const cached = cache.get(cacheKey) as AnalyticsData | undefined;
@@ -564,25 +587,27 @@ export class AnalyticsService {
                 }),
 
                 // Top events
-                this.prisma.event.groupBy({
-                    by: ['eventName'],
-                    where: {
-                        gameId: gameId,
-                        timestamp: {
-                            gte: startDate,
-                            lte: endDate
-                        }
-                    },
-                    _count: {
-                        eventName: true
-                    },
-                    orderBy: {
+                includeTopEvents
+                    ? this.prisma.event.groupBy({
+                        by: ['eventName'],
+                        where: {
+                            gameId: gameId,
+                            timestamp: {
+                                gte: startDate,
+                                lte: endDate
+                            }
+                        },
                         _count: {
-                            eventName: 'desc'
-                        }
-                    },
-                    take: 10
-                })
+                            eventName: true
+                        },
+                        orderBy: {
+                            _count: {
+                                eventName: 'desc'
+                            }
+                        },
+                        take: 10
+                    })
+                    : Promise.resolve([])
             ]);
 
             // Calculate average sessions per user
@@ -609,53 +634,61 @@ export class AnalyticsService {
             const avgPlaytimeDuration = totalActiveUsers > 0 ?
                 Math.round((totalSessionDuration._sum.duration || 0) / totalActiveUsers) : 0;
 
-            // Calculate real retention rates using AnalyticsMetricsService
-            const { AnalyticsMetricsService } = await import('./AnalyticsMetricsService');
-            const metricsService = new AnalyticsMetricsService();
+            let retentionDay1 = 0;
+            let retentionDay7 = 0;
 
-            const retentionData = await metricsService.calculateRetention(
-                gameId,
-                startDate,
-                endDate,
-                { retentionDays: [1, 7] }
-            );
+            if (includeRetention) {
+                // Calculate real retention rates using AnalyticsMetricsService
+                const { AnalyticsMetricsService } = await import('./AnalyticsMetricsService');
+                const metricsService = new AnalyticsMetricsService();
 
-            const retentionDay1 = retentionData.find(r => r.day === 1)?.percentage || 0;
-            const retentionDay7 = retentionData.find(r => r.day === 7)?.percentage || 0;
+                const retentionData = await metricsService.calculateRetention(
+                    gameId,
+                    startDate,
+                    endDate,
+                    { retentionDays: [1, 7] }
+                );
+
+                retentionDay1 = retentionData.find(r => r.day === 1)?.percentage || 0;
+                retentionDay7 = retentionData.find(r => r.day === 7)?.percentage || 0;
+            }
 
             // Active users today (users with events today)
-            const today = new Date();
-            today.setHours(0, 0, 0, 0);
-            const tomorrow = new Date(today);
-            tomorrow.setDate(tomorrow.getDate() + 1);
+            let activeUsersToday = 0;
+            if (includeActiveUsersToday) {
+                const today = new Date();
+                today.setHours(0, 0, 0, 0);
+                const tomorrow = new Date(today);
+                tomorrow.setDate(tomorrow.getDate() + 1);
 
-            const activeUsersToday = await this.prisma.user.count({
-                where: {
-                    gameId: gameId,
-                    OR: [
-                        {
-                            events: {
-                                some: {
-                                    timestamp: {
-                                        gte: today,
-                                        lt: tomorrow
+                activeUsersToday = await this.prisma.user.count({
+                    where: {
+                        gameId: gameId,
+                        OR: [
+                            {
+                                events: {
+                                    some: {
+                                        timestamp: {
+                                            gte: today,
+                                            lt: tomorrow
+                                        }
+                                    }
+                                }
+                            },
+                            {
+                                sessions: {
+                                    some: {
+                                        startTime: {
+                                            gte: today,
+                                            lt: tomorrow
+                                        }
                                     }
                                 }
                             }
-                        },
-                        {
-                            sessions: {
-                                some: {
-                                    startTime: {
-                                        gte: today,
-                                        lt: tomorrow
-                                    }
-                                }
-                            }
-                        }
-                    ]
-                }
-            });
+                        ]
+                    }
+                });
+            }
 
             const result = {
                 totalUsers: totalActiveUsers, // Frontend expects totalUsers

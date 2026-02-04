@@ -45,7 +45,9 @@ export class AnalyticsService {
   // Dashboard Overview
   static async getDashboardSummary(gameId: string, startDate?: string, endDate?: string): Promise<DashboardSummary> {
     try {
-      const params = startDate && endDate ? { gameId, startDate, endDate } : { gameId };
+      const params = startDate && endDate
+        ? { gameId, startDate, endDate, includeRetention: 'false', includeActiveUsersToday: 'false', includeTopEvents: 'false' }
+        : { gameId, includeRetention: 'false', includeActiveUsersToday: 'false', includeTopEvents: 'false' };
       const response = await apiClient.get<ApiResponse<DashboardSummary>>('/analytics/dashboard', {
         params,
         timeout: DEFAULT_TIMEOUT_MS

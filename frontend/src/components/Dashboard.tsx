@@ -143,6 +143,22 @@ const Dashboard: React.FC<DashboardProps> = ({ gameInfo, isCollapsed = false }) 
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
   const datePickerRef = useRef<HTMLDivElement>(null);
   const { isDarkMode } = useTheme();
+  const applyRetentionToSummary = (retentionPoints: RetentionPoint[]) => {
+    if (!retentionPoints.length) return;
+
+    const day1 = retentionPoints.find((r) => r.day === 1)?.percentage ?? 0;
+    const day7 = retentionPoints.find((r) => r.day === 7)?.percentage ?? 0;
+
+    setSummary((prev) =>
+      prev
+        ? {
+            ...prev,
+            retentionDay1: day1,
+            retentionDay7: day7
+          }
+        : prev
+    );
+  };
 
   // Theme-aware chart colors
   const chartColors = {
@@ -197,10 +213,14 @@ const Dashboard: React.FC<DashboardProps> = ({ gameInfo, isCollapsed = false }) 
       // Handle successful responses
       if (summaryData.status === 'fulfilled' && summaryData.value) {
         setSummary(summaryData.value);
+        if (retention.length > 0) {
+          applyRetentionToSummary(retention);
+        }
       }
 
       if (retentionData.status === 'fulfilled') {
         setRetention(retentionData.value || []);
+        applyRetentionToSummary(retentionData.value || []);
       }
 
       // Fetch chart data
@@ -337,11 +357,15 @@ const Dashboard: React.FC<DashboardProps> = ({ gameInfo, isCollapsed = false }) 
       // Handle successful responses
       if (summaryData.status === 'fulfilled' && summaryData.value) {
         setSummary(summaryData.value);
+        if (retention.length > 0) {
+          applyRetentionToSummary(retention);
+        }
       }
 
       if (retentionData.status === 'fulfilled') {
         console.log('Retention Data:', retentionData.value);
         setRetention(retentionData.value || []);
+        applyRetentionToSummary(retentionData.value || []);
       }
 
       // Fetch data with date range parameters

@@ -1,7 +1,4 @@
--- Migration: Clean up duplicate revenue records before adding unique constraints
--- This removes duplicate transactionIds and adImpressionIds, keeping the oldest record
-
--- Step 1: Delete duplicate transactionIds (keep oldest, delete the rest)
+-- Step 1: Delete duplicate transactionIds (keep oldest, delete newer copies)
 DELETE FROM "revenue"
 WHERE id IN (
   SELECT id FROM (
@@ -14,7 +11,7 @@ WHERE id IN (
   WHERE rn > 1
 );
 
--- Step 2: Delete duplicate adImpressionIds (keep oldest, delete the rest)
+-- Step 2: Delete duplicate adImpressionIds (keep oldest, delete newer copies)
 DELETE FROM "revenue"
 WHERE id IN (
   SELECT id FROM (
@@ -26,4 +23,10 @@ WHERE id IN (
   ) ranked
   WHERE rn > 1
 );
+
+-- Step 3: Create unique constraint for transactionId
+CREATE UNIQUE INDEX "unique_transaction_id" ON "revenue"("gameId", "transactionId") WHERE "transactionId" IS NOT NULL;
+
+-- Step 4: Create unique constraint for adImpressionId
+CREATE UNIQUE INDEX "unique_ad_impression_id" ON "revenue"("gameId", "adImpressionId") WHERE "adImpressionId" IS NOT NULL;
 

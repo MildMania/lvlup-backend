@@ -127,7 +127,6 @@ interface DashboardProps {
 
 const Dashboard: React.FC<DashboardProps> = ({ gameInfo, isCollapsed = false }) => {
   const { currentGame } = useGame();
-  const [activeUsers] = useState<ActiveUserPoint[]>([]);
   const [retention, setRetention] = useState<RetentionPoint[]>([]);
   const [playtime, setPlaytime] = useState<PlaytimePoint[]>([]);
   const [apiKeyCopied, setApiKeyCopied] = useState(false);

@@ -84,8 +84,7 @@ export class LevelFunnelService {
             const isMultipleDays = daysDifference > 1;
             
             const useTodayRaw = includeTodayRaw && queryIncludesToday;
-            logger.warn(`[LevelFunnelFast] dates: start=${start.toISOString()} end=${end.toISOString()} today=${today.toISOString()} includesToday=${queryIncludesToday} days=${daysDifference} useTodayRaw=${useTodayRaw} includeTodayRaw=${includeTodayRaw}`);
-            logger.warn(`[LevelFunnelFast] filters: country=${country} platform=${platform} version=${version} levelFunnel=${levelFunnel} levelFunnelVersion=${levelFunnelVersion}`);
+            
 
             // Ensure today's aggregation exists when range includes today
             if (queryIncludesToday) {
@@ -104,7 +103,7 @@ export class LevelFunnelService {
                 levelFunnel,
                 levelFunnelVersion
             });
-            logger.warn(`[LevelFunnelFast] aggregatedMetrics rows=${aggregatedMetrics.length} aggregatedEnd=${aggregatedEnd.toISOString()}`);
+            
 
             // Get accurate unique user counts from daily user rows (exact across days)
             let userCountsByLevel: Map<number, {
@@ -189,7 +188,7 @@ export class LevelFunnelService {
                     levelFunnel,
                     levelFunnelVersion
                 });
-                logger.warn(`[LevelFunnelFast] todayRaw rows=${todayRaw.length}`);
+                
                 mergedData = this.mergeHistoricalAndTodayMetrics(
                     Array.from(grouped.values()),
                     todayRaw

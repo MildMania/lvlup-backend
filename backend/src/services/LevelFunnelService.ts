@@ -57,7 +57,7 @@ export class LevelFunnelService {
             // Determine date ranges
             const now = new Date();
             const today = new Date(now);
-            today.setHours(0, 0, 0, 0);
+            today.setUTCHours(0, 0, 0, 0);
             
             const start = startDate || new Date(0);
             const end = endDate || new Date();
@@ -567,7 +567,7 @@ export class LevelFunnelService {
      */
     private async queryTodayRawEvents(
         gameId: string,
-        today: Date,
+        todayUtcStart: Date,
         filters: {
             country?: string;
             platform?: string;
@@ -576,10 +576,16 @@ export class LevelFunnelService {
             levelFunnelVersion?: string | number;
         }
     ): Promise<any[]> {
+        const todayUtcEnd = new Date(todayUtcStart);
+        todayUtcEnd.setUTCDate(todayUtcEnd.getUTCDate() + 1);
+
         const whereClause: any = {
             gameId,
             eventName: { in: ['level_start', 'level_complete', 'level_failed'] },
-            timestamp: { gte: today }
+            timestamp: {
+                gte: todayUtcStart,
+                lt: todayUtcEnd
+            }
         };
 
         // Apply same filters as main query
@@ -661,8 +667,7 @@ export class LevelFunnelService {
                 eventName: true,
                 properties: true,
                 timestamp: true
-            },
-            orderBy: { timestamp: 'asc' }
+            }
         });
 
         // Group by level and aggregate (same logic as original)
@@ -1503,4 +1508,3 @@ export class LevelFunnelService {
 }
 
 export default new LevelFunnelService();
-

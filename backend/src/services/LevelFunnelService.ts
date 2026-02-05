@@ -83,7 +83,7 @@ export class LevelFunnelService {
             const daysDifference = Math.ceil((end.getTime() - start.getTime()) / (24 * 60 * 60 * 1000));
             const isMultipleDays = daysDifference > 1;
             
-            const useTodayRaw = includeTodayRaw && !isMultipleDays && queryIncludesToday;
+            const useTodayRaw = includeTodayRaw && queryIncludesToday;
             logger.warn(`[LevelFunnelFast] dates: start=${start.toISOString()} end=${end.toISOString()} today=${today.toISOString()} includesToday=${queryIncludesToday} days=${daysDifference} useTodayRaw=${useTodayRaw} includeTodayRaw=${includeTodayRaw}`);
             logger.warn(`[LevelFunnelFast] filters: country=${country} platform=${platform} version=${version} levelFunnel=${levelFunnel} levelFunnelVersion=${levelFunnelVersion}`);
 
@@ -114,14 +114,24 @@ export class LevelFunnelService {
                 egpUsers: number;
             }> | null = null;
 
-            if (isMultipleDays || (queryIncludesToday && !useTodayRaw)) {
-                userCountsByLevel = await this.queryDailyUserCounts(gameId, start, aggregatedEnd, {
-                    country,
-                    platform,
-                    version,
-                    levelFunnel,
-                    levelFunnelVersion
-                });
+            if (isMultipleDays) {
+                if (useTodayRaw) {
+                    userCountsByLevel = await this.queryDailyUserCountsWithTodayRaw(gameId, start, aggregatedEnd, today, {
+                        country,
+                        platform,
+                        version,
+                        levelFunnel,
+                        levelFunnelVersion
+                    });
+                } else {
+                    userCountsByLevel = await this.queryDailyUserCounts(gameId, start, aggregatedEnd, {
+                        country,
+                        platform,
+                        version,
+                        levelFunnel,
+                        levelFunnelVersion
+                    });
+                }
             }
 
             // Group by levelId and sum event counts from aggregated data
@@ -169,19 +179,6 @@ export class LevelFunnelService {
                 }
             }
             
-            // Replace user counts with accurate raw event counts for multi-day queries
-            if (userCountsByLevel) {
-                for (const [levelId, counts] of userCountsByLevel.entries()) {
-                    const group = grouped.get(levelId);
-                    if (group) {
-                        group.startedPlayers = counts.startedPlayers;
-                        group.completedPlayers = counts.completedPlayers;
-                        group.boosterUsers = counts.boosterUsers;
-                        group.egpUsers = counts.egpUsers;
-                    }
-                }
-            }
-
             // Merge in today's raw data when requested
             let mergedData = grouped;
             if (useTodayRaw) {
@@ -197,6 +194,19 @@ export class LevelFunnelService {
                     Array.from(grouped.values()),
                     todayRaw
                 );
+            }
+
+            // Replace user counts with accurate raw event counts for multi-day queries
+            if (userCountsByLevel) {
+                for (const [levelId, counts] of userCountsByLevel.entries()) {
+                    const group = mergedData.get(levelId);
+                    if (group) {
+                        group.startedPlayers = counts.startedPlayers;
+                        group.completedPlayers = counts.completedPlayers;
+                        group.boosterUsers = counts.boosterUsers;
+                        group.egpUsers = counts.egpUsers;
+                    }
+                }
             }
 
             // Calculate derived metrics
@@ -305,6 +315,296 @@ export class LevelFunnelService {
                 boosterUsers: Number(row.booster || 0),
                 egpUsers: Number(row.egp || 0)
             });
+        }
+
+        return result;
+    }
+
+    /**
+     * Query daily user rows for historical days and merge with today's raw events
+     * to get exact unique user counts across the range.
+     */
+    private async queryDailyUserCountsWithTodayRaw(
+        gameId: string,
+        startDate: Date,
+        endDate: Date,
+        todayUtcStart: Date,
+        filters: {
+            country?: string;
+            platform?: string;
+            version?: string;
+            levelFunnel?: string;
+            levelFunnelVersion?: string | number;
+        }
+    ): Promise<Map<number, {
+        startedPlayers: number;
+        completedPlayers: number;
+        boosterUsers: number;
+        egpUsers: number;
+    }>> {
+        // Historical rows (excluding today) -> build per-level user sets
+        const countries = filters.country
+            ? filters.country.split(',').map(c => c.trim()).filter(c => c)
+            : [];
+        const platforms = filters.platform
+            ? filters.platform.split(',').map(p => p.trim()).filter(p => p)
+            : [];
+        const versions = filters.version
+            ? filters.version.split(',').map(v => v.trim()).filter(v => v)
+            : [];
+
+        let funnelClauses: any = Prisma.sql``;
+        if (filters.levelFunnel) {
+            const funnels = filters.levelFunnel.split(',').map(f => f.trim()).filter(f => f);
+            if (filters.levelFunnelVersion) {
+                const funnelVersions = filters.levelFunnelVersion.toString().split(',').map(v => parseInt(v.trim())).filter(v => !isNaN(v));
+                if (funnels.length === 1 && funnelVersions.length === 1) {
+                    funnelClauses = Prisma.sql`AND "levelFunnel" = ${funnels[0]} AND "levelFunnelVersion" = ${funnelVersions[0]}`;
+                } else if (funnels.length > 0 && funnelVersions.length > 0 && funnels.length === funnelVersions.length) {
+                    const pairs = funnels.map((funnel, idx) => Prisma.sql`("levelFunnel" = ${funnel} AND "levelFunnelVersion" = ${funnelVersions[idx]})`);
+                    funnelClauses = Prisma.sql`AND (${Prisma.join(pairs, ' OR ')})`;
+                } else if (funnels.length > 0) {
+                    funnelClauses = Prisma.sql`AND "levelFunnel" IN (${Prisma.join(funnels)})`;
+                }
+            } else if (funnels.length > 0) {
+                funnelClauses = Prisma.sql`AND "levelFunnel" IN (${Prisma.join(funnels)})`;
+            }
+        } else if (filters.levelFunnelVersion) {
+            const funnelVersions = filters.levelFunnelVersion.toString().split(',').map(v => parseInt(v.trim())).filter(v => !isNaN(v));
+            if (funnelVersions.length > 0) {
+                funnelClauses = Prisma.sql`AND "levelFunnelVersion" IN (${Prisma.join(funnelVersions)})`;
+            }
+        }
+
+        const historicalRows = await prisma.$queryRaw<
+            Array<{
+                levelId: number;
+                userId: string;
+                started: boolean;
+                completed: boolean;
+                boosterUsed: boolean;
+                egpUsed: boolean;
+            }>
+        >(Prisma.sql`
+            SELECT
+                "levelId" AS "levelId",
+                "userId" AS "userId",
+                "started" AS "started",
+                "completed" AS "completed",
+                "boosterUsed" AS "boosterUsed",
+                "egpUsed" AS "egpUsed"
+            FROM "level_metrics_daily_users"
+            WHERE "gameId" = ${gameId}
+              AND "date" >= ${startDate}
+              AND "date" <= ${endDate}
+              ${countries.length ? Prisma.sql`AND "countryCode" IN (${Prisma.join(countries)})` : Prisma.sql``}
+              ${platforms.length ? Prisma.sql`AND "platform" IN (${Prisma.join(platforms)})` : Prisma.sql``}
+              ${versions.length ? Prisma.sql`AND "appVersion" IN (${Prisma.join(versions)})` : Prisma.sql``}
+              ${funnelClauses}
+        `);
+
+        const startedByLevel = new Map<number, Set<string>>();
+        const completedByLevel = new Map<number, Set<string>>();
+        const boosterByLevel = new Map<number, Set<string>>();
+        const egpByLevel = new Map<number, Set<string>>();
+
+        const ensureSet = (map: Map<number, Set<string>>, levelId: number) => {
+            if (!map.has(levelId)) map.set(levelId, new Set());
+            return map.get(levelId)!;
+        };
+
+        for (const row of historicalRows) {
+            if (row.started) ensureSet(startedByLevel, row.levelId).add(row.userId);
+            if (row.completed) ensureSet(completedByLevel, row.levelId).add(row.userId);
+            if (row.boosterUsed) ensureSet(boosterByLevel, row.levelId).add(row.userId);
+            if (row.egpUsed) ensureSet(egpByLevel, row.levelId).add(row.userId);
+        }
+
+        // Merge with today's raw user sets
+        const todayUserSets = await this.queryTodayRawUserSets(gameId, todayUtcStart, filters);
+        for (const [levelId, sets] of todayUserSets.entries()) {
+            ensureSet(startedByLevel, levelId);
+            ensureSet(completedByLevel, levelId);
+            ensureSet(boosterByLevel, levelId);
+            ensureSet(egpByLevel, levelId);
+
+            sets.started.forEach(u => startedByLevel.get(levelId)!.add(u));
+            sets.completed.forEach(u => completedByLevel.get(levelId)!.add(u));
+            sets.booster.forEach(u => boosterByLevel.get(levelId)!.add(u));
+            sets.egp.forEach(u => egpByLevel.get(levelId)!.add(u));
+        }
+
+        const result = new Map<number, {
+            startedPlayers: number;
+            completedPlayers: number;
+            boosterUsers: number;
+            egpUsers: number;
+        }>();
+
+        const levelIds = new Set<number>([
+            ...startedByLevel.keys(),
+            ...completedByLevel.keys(),
+            ...boosterByLevel.keys(),
+            ...egpByLevel.keys()
+        ]);
+
+        for (const levelId of levelIds) {
+            result.set(levelId, {
+                startedPlayers: startedByLevel.get(levelId)?.size || 0,
+                completedPlayers: completedByLevel.get(levelId)?.size || 0,
+                boosterUsers: boosterByLevel.get(levelId)?.size || 0,
+                egpUsers: egpByLevel.get(levelId)?.size || 0
+            });
+        }
+
+        return result;
+    }
+
+    /**
+     * Build per-level user sets for today's raw events
+     */
+    private async queryTodayRawUserSets(
+        gameId: string,
+        todayUtcStart: Date,
+        filters: {
+            country?: string;
+            platform?: string;
+            version?: string;
+            levelFunnel?: string;
+            levelFunnelVersion?: string | number;
+        }
+    ): Promise<Map<number, {
+        started: Set<string>;
+        completed: Set<string>;
+        booster: Set<string>;
+        egp: Set<string>;
+    }>> {
+        const todayUtcEnd = new Date(todayUtcStart);
+        todayUtcEnd.setUTCDate(todayUtcEnd.getUTCDate() + 1);
+
+        const whereClause: any = {
+            gameId,
+            eventName: { in: ['level_start', 'level_complete', 'level_failed'] },
+            timestamp: {
+                gte: todayUtcStart,
+                lt: todayUtcEnd
+            }
+        };
+
+        if (filters.country) {
+            const countries = filters.country.split(',').map(c => c.trim()).filter(c => c);
+            if (countries.length > 1) {
+                whereClause.countryCode = { in: countries };
+            } else if (countries.length === 1) {
+                whereClause.countryCode = countries[0];
+            }
+        }
+
+        if (filters.platform) {
+            const platforms = filters.platform.split(',').map(p => p.trim()).filter(p => p);
+            if (platforms.length > 1) {
+                whereClause.platform = { in: platforms };
+            } else if (platforms.length === 1) {
+                whereClause.platform = platforms[0];
+            }
+        }
+
+        if (filters.version) {
+            const versions = filters.version.split(',').map(v => v.trim()).filter(v => v);
+            if (versions.length > 1) {
+                whereClause.appVersion = { in: versions };
+            } else if (versions.length === 1) {
+                whereClause.appVersion = versions[0];
+            }
+        }
+
+        if (filters.levelFunnel) {
+            const funnels = filters.levelFunnel.split(',').map(f => f.trim()).filter(f => f);
+            if (filters.levelFunnelVersion) {
+                const versions = filters.levelFunnelVersion.toString().split(',').map(v => parseInt(v.trim())).filter(v => !isNaN(v));
+                if (funnels.length === 1 && versions.length === 1) {
+                    whereClause.levelFunnel = funnels[0];
+                    whereClause.levelFunnelVersion = versions[0];
+                } else if (funnels.length > 0 && versions.length > 0 && funnels.length === versions.length) {
+                    whereClause.OR = funnels.map((funnel, idx) => ({
+                        levelFunnel: funnel,
+                        levelFunnelVersion: versions[idx]
+                    }));
+                } else if (funnels.length > 1) {
+                    whereClause.levelFunnel = { in: funnels };
+                } else if (funnels.length === 1) {
+                    whereClause.levelFunnel = funnels[0];
+                }
+            } else if (funnels.length > 1) {
+                whereClause.levelFunnel = { in: funnels };
+            } else if (funnels.length === 1) {
+                whereClause.levelFunnel = funnels[0];
+            }
+        } else if (filters.levelFunnelVersion) {
+            const versions = filters.levelFunnelVersion.toString().split(',').map(v => parseInt(v.trim())).filter(v => !isNaN(v));
+            if (versions.length > 1) {
+                whereClause.levelFunnelVersion = { in: versions };
+            } else if (versions.length === 1) {
+                whereClause.levelFunnelVersion = versions[0];
+            }
+        }
+
+        const events = await prisma.event.findMany({
+            where: whereClause,
+            select: {
+                userId: true,
+                eventName: true,
+                properties: true
+            }
+        });
+
+        const result = new Map<number, {
+            started: Set<string>;
+            completed: Set<string>;
+            booster: Set<string>;
+            egp: Set<string>;
+        }>();
+
+        const ensure = (levelId: number) => {
+            if (!result.has(levelId)) {
+                result.set(levelId, {
+                    started: new Set(),
+                    completed: new Set(),
+                    booster: new Set(),
+                    egp: new Set()
+                });
+            }
+            return result.get(levelId)!;
+        };
+
+        for (const event of events) {
+            const props = event.properties as any;
+            const levelId = props?.levelId;
+            if (levelId === undefined || levelId === null || typeof levelId !== 'number') continue;
+
+            const group = ensure(levelId);
+
+            if (event.eventName === 'level_start') {
+                group.started.add(event.userId);
+            } else if (event.eventName === 'level_complete') {
+                group.completed.add(event.userId);
+
+                if (props?.boosters && typeof props.boosters === 'object' && Object.keys(props.boosters).length > 0) {
+                    group.booster.add(event.userId);
+                }
+                const egpValue = props?.egp ?? props?.endGamePurchase;
+                if ((typeof egpValue === 'number' && egpValue > 0) || egpValue === true) {
+                    group.egp.add(event.userId);
+                }
+            } else if (event.eventName === 'level_failed') {
+                if (props?.boosters && typeof props.boosters === 'object' && Object.keys(props.boosters).length > 0) {
+                    group.booster.add(event.userId);
+                }
+                const egpValue = props?.egp ?? props?.endGamePurchase;
+                if ((typeof egpValue === 'number' && egpValue > 0) || egpValue === true) {
+                    group.egp.add(event.userId);
+                }
+            }
         }
 
         return result;

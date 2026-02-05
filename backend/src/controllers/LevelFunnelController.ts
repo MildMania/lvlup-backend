@@ -37,7 +37,9 @@ export class LevelFunnelController {
                 levelFunnel,
                 levelFunnelVersion,
                 levelLimit,
-                useFast
+                useFast,
+                includeTodayRaw,
+                includeRawUserCounts
             } = req.query;
 
             if (!gameId) {
@@ -61,7 +63,9 @@ export class LevelFunnelController {
                 abTestId: abTestId as string | undefined,
                 levelFunnel: levelFunnel as string | undefined,
                 levelFunnelVersion: levelFunnelVersion as string | undefined, // Keep as string to support comma-separated versions
-                levelLimit: levelLimit ? parseInt(levelLimit as string) : 100 // Default to 100
+                levelLimit: levelLimit ? parseInt(levelLimit as string) : 100, // Default to 100
+                includeTodayRaw: includeTodayRaw === 'true',
+                includeRawUserCounts: includeRawUserCounts === 'true'
             };
 
             // Check if AB test breakdown is requested

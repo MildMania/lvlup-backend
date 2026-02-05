@@ -72,6 +72,10 @@ export class EngagementMetricsController {
             });
         } catch (error) {
             logger.error('Error in getSessionCounts controller:', error);
+            console.error('[EngagementMetrics] getSessionCounts failed', {
+                query: req.query,
+                error: error instanceof Error ? { message: error.message, stack: error.stack } : error
+            });
             res.status(500).json({
                 success: false,
                 error: 'Failed to get session count metrics'
@@ -138,6 +142,10 @@ export class EngagementMetricsController {
             });
         } catch (error) {
             logger.error('Error in getSessionLengths controller:', error);
+            console.error('[EngagementMetrics] getSessionLengths failed', {
+                query: req.query,
+                error: error instanceof Error ? { message: error.message, stack: error.stack } : error
+            });
             res.status(500).json({
                 success: false,
                 error: 'Failed to get session length metrics'

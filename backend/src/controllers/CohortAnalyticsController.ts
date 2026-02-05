@@ -70,6 +70,10 @@ export class CohortAnalyticsController {
             });
         } catch (error) {
             console.error('Error getting cohort retention:', error);
+            console.error('[CohortAnalytics] getCohortRetention failed', {
+                query: req.query,
+                error: error instanceof Error ? { message: error.message, stack: error.stack } : error
+            });
             res.status(500).json({
                 success: false,
                 error: 'Failed to retrieve cohort retention data'
@@ -112,6 +116,10 @@ export class CohortAnalyticsController {
             res.status(200).json({ success: true, data });
         } catch (error) {
             console.error('Error getting cohort playtime:', error);
+            console.error('[CohortAnalytics] getCohortPlaytime failed', {
+                query: req.query,
+                error: error instanceof Error ? { message: error.message, stack: error.stack } : error
+            });
             res.status(500).json({ success: false, error: 'Failed to retrieve cohort playtime data' });
         }
     }
@@ -151,6 +159,10 @@ export class CohortAnalyticsController {
             res.status(200).json({ success: true, data });
         } catch (error) {
             console.error('Error getting cohort session count:', error);
+            console.error('[CohortAnalytics] getCohortSessionCount failed', {
+                query: req.query,
+                error: error instanceof Error ? { message: error.message, stack: error.stack } : error
+            });
             res.status(500).json({ success: false, error: 'Failed to retrieve cohort session count data' });
         }
     }
@@ -190,6 +202,10 @@ export class CohortAnalyticsController {
             res.status(200).json({ success: true, data });
         } catch (error) {
             console.error('Error getting cohort session length:', error);
+            console.error('[CohortAnalytics] getCohortSessionLength failed', {
+                query: req.query,
+                error: error instanceof Error ? { message: error.message, stack: error.stack } : error
+            });
             res.status(500).json({ success: false, error: 'Failed to retrieve cohort session length data' });
         }
     }
@@ -233,6 +249,10 @@ export class CohortAnalyticsController {
             res.status(200).json({ success: true, data });
         } catch (error) {
             console.error('Error getting average completed levels:', error);
+            console.error('[CohortAnalytics] getAvgCompletedLevels failed', {
+                query: req.query,
+                error: error instanceof Error ? { message: error.message, stack: error.stack } : error
+            });
             res.status(500).json({ success: false, error: 'Failed to retrieve average completed levels data' });
         }
     }
@@ -276,6 +296,10 @@ export class CohortAnalyticsController {
             res.status(200).json({ success: true, data });
         } catch (error) {
             console.error('Error getting average reached level:', error);
+            console.error('[CohortAnalytics] getAvgReachedLevel failed', {
+                query: req.query,
+                error: error instanceof Error ? { message: error.message, stack: error.stack } : error
+            });
             res.status(500).json({ success: false, error: 'Failed to retrieve average reached level data' });
         }
     }

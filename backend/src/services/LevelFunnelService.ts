@@ -14,6 +14,8 @@ interface LevelFunnelFilters {
     levelFunnel?: string | undefined; // e.g., "live_v1" or "live_v1,live_v2"
     levelFunnelVersion?: string | number | undefined; // e.g., 15 or "15,16" for paired selections
     levelLimit?: number | undefined; // Maximum number of levels to return (default: 100)
+    includeTodayRaw?: boolean | undefined; // Include raw events for today (can be expensive)
+    includeRawUserCounts?: boolean | undefined; // Include raw user counts for multi-day ranges (expensive)
 }
 
 interface LevelMetrics {
@@ -49,7 +51,19 @@ export class LevelFunnelService {
      */
     async getLevelFunnelDataFast(filters: LevelFunnelFilters): Promise<LevelMetrics[]> {
         try {
-            const { gameId, startDate, endDate, country, platform, version, levelFunnel, levelFunnelVersion, levelLimit = 100 } = filters;
+            const {
+                gameId,
+                startDate,
+                endDate,
+                country,
+                platform,
+                version,
+                levelFunnel,
+                levelFunnelVersion,
+                levelLimit = 100,
+                includeTodayRaw = false,
+                includeRawUserCounts = false
+            } = filters;
 
             logger.info(`Starting FAST level funnel query (hybrid) for game ${gameId}`);
             const queryStart = Date.now();
@@ -71,7 +85,7 @@ export class LevelFunnelService {
             
             // For performance, only query raw events for date ranges ≤ 90 days
             // Longer ranges use aggregated data (faster but approximate user counts)
-            const useRawEventsForUserCounts = isMultipleDays && daysDifference <= 90;
+            const useRawEventsForUserCounts = includeRawUserCounts && isMultipleDays && daysDifference <= 90;
 
             // Query pre-aggregated data for event counts (all days except today)
             const aggregatedEnd = queryIncludesToday ? new Date(today.getTime() - 1) : end;
@@ -85,7 +99,7 @@ export class LevelFunnelService {
 
             // Query today's raw events if the date range includes today
             let todayMetrics: any[] = [];
-            if (queryIncludesToday) {
+            if (queryIncludesToday && includeTodayRaw) {
                 logger.info('Query includes today - fetching raw events for current day');
                 todayMetrics = await this.queryTodayRawEvents(gameId, today, {
                     country,

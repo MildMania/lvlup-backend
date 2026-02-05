@@ -35,6 +35,7 @@ model Game {
   gameAccesses      GameAccess[]
   revenueEvents     Revenue[]
   levelMetricsDaily LevelMetricsDaily[]
+  levelMetricsDailyUsers LevelMetricsDailyUser[]
 
   @@map("games")
 }
@@ -864,4 +865,35 @@ model LevelMetricsDaily {
   // Unique constraint to prevent duplicates (empty strings for nulls)
   @@unique([gameId, date, levelId, levelFunnel, levelFunnelVersion, platform, countryCode, appVersion], name: "unique_daily_metrics")
   @@map("level_metrics_daily")
+}
+
+model LevelMetricsDailyUser {
+  id        String   @id @default(cuid())
+  gameId    String
+  date      DateTime // Daily aggregation (date only, time set to 00:00:00)
+  levelId   Int
+
+  // Filter dimensions (indexed for fast queries)
+  levelFunnel        String  @default("")
+  levelFunnelVersion Int     @default(0)
+  platform           String  @default("") // iOS, Android, etc.
+  countryCode        String  @default("") // US, TR, etc.
+  appVersion         String  @default("") // 0.1, 0.2, etc.
+
+  userId      String
+  started     Boolean @default(false)
+  completed   Boolean @default(false)
+  boosterUsed Boolean @default(false)
+  egpUsed     Boolean @default(false)
+
+  createdAt DateTime @default(now())
+
+  game Game @relation(fields: [gameId], references: [id], onDelete: Cascade)
+
+  @@index([gameId, date])
+  @@index([gameId, date, levelId])
+  @@index([gameId, levelFunnel, levelFunnelVersion, date])
+  @@index([userId])
+  @@unique([gameId, date, levelId, levelFunnel, levelFunnelVersion, platform, countryCode, appVersion, userId], name: "unique_daily_level_user")
+  @@map("level_metrics_daily_users")
 }

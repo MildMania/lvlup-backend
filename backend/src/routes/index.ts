@@ -21,6 +21,7 @@ import { HealthMetricsController } from '../controllers/HealthMetricsController'
 import { authenticateEither } from '../middleware/authenticateEither';
 import { truncateCrashData } from '../middleware/truncateCrashData';
 import { eventBatchWriter } from '../services/EventBatchWriter';
+import { cache } from '../utils/simpleCache';
 
 const router = Router();
 const healthController = new HealthMetricsController();
@@ -42,6 +43,31 @@ router.get('/metrics/batch-writer', (req, res) => {
         status: 'ok',
         timestamp: new Date().toISOString(),
         batchWriter: metrics
+    });
+});
+
+// Memory and cache metrics endpoint (for monitoring)
+router.get('/metrics/memory', (req, res) => {
+    const memory = process.memoryUsage();
+    const cacheStats = cache.getStats();
+
+    res.status(200).json({
+        status: 'ok',
+        timestamp: new Date().toISOString(),
+        uptimeSeconds: Math.round(process.uptime()),
+        memory: {
+            rss: memory.rss,
+            heapTotal: memory.heapTotal,
+            heapUsed: memory.heapUsed,
+            external: memory.external,
+            arrayBuffers: memory.arrayBuffers
+        },
+        cache: {
+            size: cacheStats.size,
+            totalBytes: cacheStats.totalBytes,
+            maxEntries: cacheStats.maxEntries,
+            maxBytes: cacheStats.maxBytes
+        }
     });
 });
 

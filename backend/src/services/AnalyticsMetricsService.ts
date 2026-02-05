@@ -170,72 +170,68 @@ export class AnalyticsMetricsService {
 
             logger.debug(`Cache miss for active users: ${cacheKey}, calculating...`);
 
-            // Get daily active users for each day in the range
-            const dailyData: ActiveUserData[] = [];
+            const countries = filters?.country
+                ? (Array.isArray(filters.country) ? filters.country : [filters.country])
+                : [];
+            const platforms = filters?.platform
+                ? (Array.isArray(filters.platform) ? filters.platform : [filters.platform])
+                : [];
+            const versions = filters?.version
+                ? (Array.isArray(filters.version) ? filters.version : [filters.version])
+                : [];
 
-            // Clone dates to avoid modifying the originals
-            const currentDate = new Date(startDate);
-            const endDateValue = new Date(endDate);
-
-            while (currentDate <= endDateValue) {
-                const dayStart = new Date(currentDate);
-                const dayEnd = new Date(currentDate);
-                dayEnd.setHours(23, 59, 59, 999);
-
-                // Weekly range (7 days before current day)
-                const weekStart = new Date(currentDate);
-                weekStart.setDate(weekStart.getDate() - 6); // 7 days including current
-                weekStart.setHours(0, 0, 0, 0);
-
-                // Monthly range (30 days before current day)
-                const monthStart = new Date(currentDate);
-                monthStart.setDate(monthStart.getDate() - 29); // 30 days including current
-                monthStart.setHours(0, 0, 0, 0);
-
-                // Build base filters for events
-                const countries = filters?.country
-                    ? (Array.isArray(filters.country) ? filters.country : [filters.country])
-                    : [];
-                const platforms = filters?.platform
-                    ? (Array.isArray(filters.platform) ? filters.platform : [filters.platform])
-                    : [];
-                const versions = filters?.version
-                    ? (Array.isArray(filters.version) ? filters.version : [filters.version])
-                    : [];
-
-                const countDistinctUsers = async (timeStart: Date, timeEnd: Date) => {
-                    const result = await this.prisma.$queryRaw<{ count: bigint }[]>(Prisma.sql`
-                        SELECT COUNT(DISTINCT e."userId") AS count
+            const rows = await this.prisma.$queryRaw<
+                Array<{ day: Date; dau: bigint; wau: bigint; mau: bigint }>
+            >(Prisma.sql`
+                WITH days AS (
+                    SELECT generate_series(
+                        date_trunc('day', ${startDate}::timestamptz),
+                        date_trunc('day', ${endDate}::timestamptz),
+                        interval '1 day'
+                    ) AS day
+                )
+                SELECT
+                    d.day AS day,
+                    (
+                        SELECT COUNT(DISTINCT e."userId")
                         FROM "events" e
                         WHERE e."gameId" = ${gameId}
-                          AND e."timestamp" >= ${timeStart}
-                          AND e."timestamp" <= ${timeEnd}
+                          AND e."timestamp" >= d.day
+                          AND e."timestamp" < d.day + interval '1 day'
                           ${countries.length ? Prisma.sql`AND e."countryCode" IN (${Prisma.join(countries)})` : Prisma.sql``}
                           ${platforms.length ? Prisma.sql`AND e."platform" IN (${Prisma.join(platforms)})` : Prisma.sql``}
                           ${versions.length ? Prisma.sql`AND e."appVersion" IN (${Prisma.join(versions)})` : Prisma.sql``}
-                    `);
-                    return Number(result[0]?.count || 0);
-                };
+                    ) AS dau,
+                    (
+                        SELECT COUNT(DISTINCT e."userId")
+                        FROM "events" e
+                        WHERE e."gameId" = ${gameId}
+                          AND e."timestamp" >= d.day - interval '6 day'
+                          AND e."timestamp" < d.day + interval '1 day'
+                          ${countries.length ? Prisma.sql`AND e."countryCode" IN (${Prisma.join(countries)})` : Prisma.sql``}
+                          ${platforms.length ? Prisma.sql`AND e."platform" IN (${Prisma.join(platforms)})` : Prisma.sql``}
+                          ${versions.length ? Prisma.sql`AND e."appVersion" IN (${Prisma.join(versions)})` : Prisma.sql``}
+                    ) AS wau,
+                    (
+                        SELECT COUNT(DISTINCT e."userId")
+                        FROM "events" e
+                        WHERE e."gameId" = ${gameId}
+                          AND e."timestamp" >= d.day - interval '29 day'
+                          AND e."timestamp" < d.day + interval '1 day'
+                          ${countries.length ? Prisma.sql`AND e."countryCode" IN (${Prisma.join(countries)})` : Prisma.sql``}
+                          ${platforms.length ? Prisma.sql`AND e."platform" IN (${Prisma.join(platforms)})` : Prisma.sql``}
+                          ${versions.length ? Prisma.sql`AND e."appVersion" IN (${Prisma.join(versions)})` : Prisma.sql``}
+                    ) AS mau
+                FROM days d
+                ORDER BY d.day ASC
+            `);
 
-                const [dau, wau, mau] = await Promise.all([
-                    countDistinctUsers(dayStart, dayEnd),
-                    countDistinctUsers(weekStart, dayEnd),
-                    countDistinctUsers(monthStart, dayEnd)
-                ]);
-
-                // Format date as ISO string (YYYY-MM-DD)
-                const dateString = currentDate.toISOString().split('T')[0];
-
-                dailyData.push({
-                    date: dateString || '',
-                    dau,
-                    wau,
-                    mau
-                });
-
-                // Move to next day
-                currentDate.setDate(currentDate.getDate() + 1);
-            }
+            const dailyData: ActiveUserData[] = rows.map((row) => ({
+                date: row.day.toISOString().split('T')[0] || '',
+                dau: Number(row.dau || 0),
+                wau: Number(row.wau || 0),
+                mau: Number(row.mau || 0)
+            }));
 
             // Cache for 5 minutes (300 seconds)
             cache.set(cacheKey, dailyData, 300);
@@ -274,88 +270,77 @@ export class AnalyticsMetricsService {
 
             logger.debug(`Cache miss for playtime: ${cacheKey}, calculating...`);
 
-            // Get daily playtime data for each day in the range
-            const playtimeData: PlaytimeData[] = [];
+            const countries = filters?.country
+                ? (Array.isArray(filters.country) ? filters.country : [filters.country])
+                : [];
+            const platforms = filters?.platform
+                ? (Array.isArray(filters.platform) ? filters.platform : [filters.platform])
+                : [];
+            const versions = filters?.version
+                ? (Array.isArray(filters.version) ? filters.version : [filters.version])
+                : [];
 
-            // Clone dates to avoid modifying the originals
-            const currentDate = new Date(startDate);
-            const endDateValue = new Date(endDate);
+            const rows = await this.prisma.$queryRaw<
+                Array<{ day: Date; total_sessions: bigint; unique_users: bigint; total_duration: bigint }>
+            >(Prisma.sql`
+                WITH days AS (
+                    SELECT generate_series(
+                        date_trunc('day', ${startDate}::timestamptz),
+                        date_trunc('day', ${endDate}::timestamptz),
+                        interval '1 day'
+                    ) AS day
+                ),
+                session_agg AS (
+                    SELECT
+                        date_trunc('day', s."startTime") AS day,
+                        COUNT(*) AS total_sessions,
+                        COUNT(DISTINCT s."userId") AS unique_users,
+                        COALESCE(SUM(s."duration"), 0) AS total_duration
+                    FROM "sessions" s
+                    WHERE s."gameId" = ${gameId}
+                      AND s."startTime" >= ${startDate}
+                      AND s."startTime" <= ${endDate}
+                      AND s."endTime" IS NOT NULL
+                      AND s."duration" IS NOT NULL
+                      AND s."duration" > 0
+                      ${platforms.length ? Prisma.sql`AND s."platform" IN (${Prisma.join(platforms)})` : Prisma.sql``}
+                      ${versions.length ? Prisma.sql`AND s."version" IN (${Prisma.join(versions)})` : Prisma.sql``}
+                      ${
+                          countries.length
+                              ? Prisma.sql`AND EXISTS (
+                                    SELECT 1 FROM "events" e
+                                    WHERE e."sessionId" = s."id"
+                                      AND e."countryCode" IN (${Prisma.join(countries)})
+                                )`
+                              : Prisma.sql``
+                      }
+                    GROUP BY date_trunc('day', s."startTime")
+                )
+                SELECT
+                    d.day AS day,
+                    COALESCE(sa.total_sessions, 0) AS total_sessions,
+                    COALESCE(sa.unique_users, 0) AS unique_users,
+                    COALESCE(sa.total_duration, 0) AS total_duration
+                FROM days d
+                LEFT JOIN session_agg sa ON sa.day = d.day
+                ORDER BY d.day ASC
+            `);
 
-            while (currentDate <= endDateValue) {
-                const dayStart = new Date(currentDate);
-                const dayEnd = new Date(currentDate);
-                dayEnd.setHours(23, 59, 59, 999);
-
-                // Build session filters
-                const sessionFilters: any = {
-                    gameId: gameId,
-                    startTime: {
-                        gte: dayStart,
-                        lte: dayEnd
-                    },
-                    // Only include sessions that have ended and have duration
-                    endTime: { not: null },
-                    duration: { not: null, gt: 0 }
-                };
-
-                // Apply optional filters
-                if (filters?.platform) {
-                    sessionFilters.platform = Array.isArray(filters.platform)
-                        ? { in: filters.platform }
-                        : filters.platform;
-                }
-
-                if (filters?.version) {
-                    sessionFilters.version = Array.isArray(filters.version)
-                        ? { in: filters.version }
-                        : filters.version;
-                }
-
-                if (filters?.country) {
-                    // Filter sessions by events with matching countryCode
-                    // We need to use a subquery approach or filter events after
-                    // For now, we'll add this to the session filter via events
-                    sessionFilters.events = {
-                        some: {
-                            countryCode: Array.isArray(filters.country)
-                                ? { in: filters.country }
-                                : filters.country
-                        }
-                    };
-                }
-
-                // Get session data for this day
-                const sessions = await this.prisma.session.findMany({
-                    where: sessionFilters,
-                    select: {
-                        userId: true,
-                        duration: true
-                    }
-                });
-
-                // Calculate metrics
-                const uniqueUsers = new Set(sessions.map((s: any) => s.userId)).size;
-                const totalSessions = sessions.length;
-                const totalDuration = sessions.reduce((sum: number, session: any) => sum + (session.duration || 0), 0);
+            const playtimeData: PlaytimeData[] = rows.map((row) => {
+                const totalSessions = Number(row.total_sessions || 0);
+                const uniqueUsers = Number(row.unique_users || 0);
+                const totalDuration = Number(row.total_duration || 0);
                 const avgSessionDuration = totalSessions > 0 ? totalDuration / totalSessions : 0;
                 const sessionsPerUser = uniqueUsers > 0 ? totalSessions / uniqueUsers : 0;
+                const totalPlaytime = uniqueUsers > 0 ? totalDuration / uniqueUsers : 0;
 
-                // Total playtime per user = avg sessions per user * avg session duration
-                const totalPlaytimePerUser = sessionsPerUser * avgSessionDuration;
-
-                // Format date as ISO string (YYYY-MM-DD)
-                const dateString = currentDate.toISOString().split('T')[0];
-
-                playtimeData.push({
-                    date: dateString || '',
+                return {
+                    date: row.day.toISOString().split('T')[0] || '',
                     avgSessionDuration,
-                    totalPlaytime: totalPlaytimePerUser,
+                    totalPlaytime,
                     sessionsPerUser
-                });
-
-                // Move to next day
-                currentDate.setDate(currentDate.getDate() + 1);
-            }
+                };
+            });
 
             logger.info(`Calculated playtime metrics for game ${gameId}`);
             // Cache for 5 minutes (300 seconds)

@@ -83,7 +83,7 @@ export class LevelFunnelService {
             const daysDifference = Math.ceil((end.getTime() - start.getTime()) / (24 * 60 * 60 * 1000));
             const isMultipleDays = daysDifference > 1;
             
-            const useTodayRaw = includeTodayRaw && !isMultipleDays;
+            const useTodayRaw = includeTodayRaw && !isMultipleDays && queryIncludesToday;
 
             // Ensure today's aggregation exists when range includes today
             if (queryIncludesToday) {
@@ -91,7 +91,10 @@ export class LevelFunnelService {
             }
 
             // Query pre-aggregated data for event counts (all days)
-            const aggregatedEnd = end;
+            // If using raw events for today, exclude today's date from aggregated query
+            const aggregatedEnd = useTodayRaw
+                ? new Date(new Date(today).setUTCDate(today.getUTCDate() - 1))
+                : end;
             const aggregatedMetrics = await this.queryAggregatedMetrics(gameId, start, aggregatedEnd, {
                 country,
                 platform,
@@ -108,7 +111,7 @@ export class LevelFunnelService {
                 egpUsers: number;
             }> | null = null;
 
-            if (isMultipleDays || queryIncludesToday) {
+            if (isMultipleDays || (queryIncludesToday && !useTodayRaw)) {
                 userCountsByLevel = await this.queryDailyUserCounts(gameId, start, aggregatedEnd, {
                     country,
                     platform,
@@ -176,8 +179,24 @@ export class LevelFunnelService {
                 }
             }
 
+            // Merge in today's raw data when requested
+            let mergedData = grouped;
+            if (useTodayRaw) {
+                const todayRaw = await this.queryTodayRawEvents(gameId, today, {
+                    country,
+                    platform,
+                    version,
+                    levelFunnel,
+                    levelFunnelVersion
+                });
+                mergedData = this.mergeHistoricalAndTodayMetrics(
+                    Array.from(grouped.values()),
+                    todayRaw
+                );
+            }
+
             // Calculate derived metrics
-            const levelMetrics = this.calculateDerivedMetrics(grouped, levelLimit);
+            const levelMetrics = this.calculateDerivedMetrics(mergedData, levelLimit);
 
             const totalDuration = Date.now() - queryStart;
             logger.info(`FAST level funnel query completed in ${totalDuration}ms (${levelMetrics.length} levels, ${daysDifference} days, includes today: ${queryIncludesToday}, today raw: ${useTodayRaw})`);

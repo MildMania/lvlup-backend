@@ -7,12 +7,22 @@ import { ApiResponse, BatchEventData, EventData, SessionData, UserProfile } from
 import { requireGameId } from '../utils/gameIdHelper';
 import logger from '../utils/logger';
 import prisma from '../prisma';
+import { cache } from '../utils/simpleCache';
 
 const analyticsService = new AnalyticsService();
 const monetizationCohortService = new MonetizationCohortService();
 const revenueService = new RevenueService();
 
 export class AnalyticsController {
+    private logMemory(label: string) {
+        const mem = process.memoryUsage();
+        logger.warn(`[AnalyticsMetrics] ${label}`, {
+            rss: mem.rss,
+            heapUsed: mem.heapUsed,
+            heapTotal: mem.heapTotal,
+            external: mem.external
+        });
+    }
     // Track a single event
     async trackEvent(req: AuthenticatedRequest, res: Response<ApiResponse>) {
         try {
@@ -311,6 +321,9 @@ export class AnalyticsController {
     // Get analytics data (for dashboard)
     async getAnalytics(req: AuthenticatedRequest, res: Response<ApiResponse>) {
         try {
+            const startTime = Date.now();
+            this.logMemory('dashboard summary start');
+
             const gameId = requireGameId(req);
             const startDateStr = req.query.startDate as string || '';
             const endDateStr = req.query.endDate as string || '';
@@ -362,6 +375,9 @@ export class AnalyticsController {
                 includeActiveUsersToday,
                 includeTopEvents
             });
+
+            this.logMemory('dashboard summary end');
+            logger.warn(`[AnalyticsMetrics] dashboard summary duration: ${Date.now() - startTime}ms`);
 
             res.status(200).json({
                 success: true,

@@ -1,4 +1,4 @@
-import { PrismaClient } from '@prisma/client';
+import { Prisma, PrismaClient } from '@prisma/client';
 import { EventData, BatchEventData, UserProfile, SessionData, AnalyticsData } from '../types/api';
 import { RevenueType } from '../types/revenue';
 import logger from '../utils/logger';
@@ -530,33 +530,22 @@ export class AnalyticsService {
                 }),
 
                 // Total active users (had activity in date range)
-                this.prisma.user.count({
-                    where: {
-                        gameId: gameId,
-                        OR: [
-                            {
-                                events: {
-                                    some: {
-                                        timestamp: {
-                                            gte: startDate,
-                                            lte: endDate
-                                        }
-                                    }
-                                }
-                            },
-                            {
-                                sessions: {
-                                    some: {
-                                        startTime: {
-                                            gte: startDate,
-                                            lte: endDate
-                                        }
-                                    }
-                                }
-                            }
-                        ]
-                    }
-                }),
+                this.prisma.$queryRaw<{ count: bigint }[]>(Prisma.sql`
+                    SELECT COUNT(DISTINCT user_id) AS count
+                    FROM (
+                        SELECT "userId" AS user_id
+                        FROM "events"
+                        WHERE "gameId" = ${gameId}
+                          AND "timestamp" >= ${startDate}
+                          AND "timestamp" <= ${endDate}
+                        UNION
+                        SELECT "userId" AS user_id
+                        FROM "sessions"
+                        WHERE "gameId" = ${gameId}
+                          AND "startTime" >= ${startDate}
+                          AND "startTime" <= ${endDate}
+                    ) AS active_users
+                `).then((rows) => Number(rows[0]?.count || 0)),
 
                 // Total sessions
                 this.prisma.session.count({

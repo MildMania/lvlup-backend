@@ -207,13 +207,12 @@ export class AnalyticsMetricsService {
                     const result = await this.prisma.$queryRaw<{ count: bigint }[]>(Prisma.sql`
                         SELECT COUNT(DISTINCT e."userId") AS count
                         FROM "events" e
-                        LEFT JOIN "sessions" s ON s."id" = e."sessionId"
                         WHERE e."gameId" = ${gameId}
                           AND e."timestamp" >= ${timeStart}
                           AND e."timestamp" <= ${timeEnd}
                           ${countries.length ? Prisma.sql`AND e."countryCode" IN (${Prisma.join(countries)})` : Prisma.sql``}
-                          ${platforms.length ? Prisma.sql`AND s."platform" IN (${Prisma.join(platforms)})` : Prisma.sql``}
-                          ${versions.length ? Prisma.sql`AND s."version" IN (${Prisma.join(versions)})` : Prisma.sql``}
+                          ${platforms.length ? Prisma.sql`AND e."platform" IN (${Prisma.join(platforms)})` : Prisma.sql``}
+                          ${versions.length ? Prisma.sql`AND e."appVersion" IN (${Prisma.join(versions)})` : Prisma.sql``}
                     `);
                     return Number(result[0]?.count || 0);
                 };

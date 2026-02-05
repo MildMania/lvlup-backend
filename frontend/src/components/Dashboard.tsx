@@ -127,7 +127,7 @@ interface DashboardProps {
 
 const Dashboard: React.FC<DashboardProps> = ({ gameInfo, isCollapsed = false }) => {
   const { currentGame } = useGame();
-  const [activeUsers, setActiveUsers] = useState<ActiveUserPoint[]>([]);
+  const [activeUsers] = useState<ActiveUserPoint[]>([]);
   const [retention, setRetention] = useState<RetentionPoint[]>([]);
   const [playtime, setPlaytime] = useState<PlaytimePoint[]>([]);
   const [apiKeyCopied, setApiKeyCopied] = useState(false);
@@ -224,18 +224,13 @@ const Dashboard: React.FC<DashboardProps> = ({ gameInfo, isCollapsed = false }) 
       }
 
       // Fetch chart data
-        const [activeUsersResult, playtimeResult] = await Promise.allSettled([
-          AnalyticsService.getActiveUsers(currentGame.id, startDateStr, endDateStr),
+        const [playtimeResult] = await Promise.allSettled([
           fetchPlaytime(new URLSearchParams({
             gameId: currentGame.id,
             startDate: startDateStr,
             endDate: endDateStr
           }))
         ]);
-      
-      if (activeUsersResult.status === 'fulfilled') {
-        setActiveUsers(activeUsersResult.value || []);
-      }
       
       if (playtimeResult.status === 'fulfilled') {
         setPlaytime(playtimeResult.value || []);
@@ -369,8 +364,6 @@ const Dashboard: React.FC<DashboardProps> = ({ gameInfo, isCollapsed = false }) 
       }
 
       // Fetch data with date range parameters
-      const activeUsersPromise = AnalyticsService.getActiveUsers(currentGame.id, startDateStr, endDateStr);
-      
       const playtimeParams = new URLSearchParams({
         gameId: currentGame.id,
         startDate: startDateStr,
@@ -381,17 +374,7 @@ const Dashboard: React.FC<DashboardProps> = ({ gameInfo, isCollapsed = false }) 
       
       // Fetch player journey with date range
       // Wait for all data fetches to complete
-      const [activeUsersResult, playtimeResult] = await Promise.allSettled([
-        activeUsersPromise,
-        playtimePromise
-      ]);
-      
-      if (activeUsersResult.status === 'fulfilled') {
-        console.log('Active Users Data:', activeUsersResult.value);
-        setActiveUsers(activeUsersResult.value || []);
-      } else {
-        console.error('Failed to fetch active users:', activeUsersResult.reason);
-      }
+      const [playtimeResult] = await Promise.allSettled([playtimePromise]);
       
       if (playtimeResult.status === 'fulfilled') {
         console.log('Playtime Data:', playtimeResult.value);
@@ -640,58 +623,22 @@ const Dashboard: React.FC<DashboardProps> = ({ gameInfo, isCollapsed = false }) 
 
       {/* Charts Grid */}
       <div className="charts-grid">
-        {/* Active Users Chart */}
+        {/* Active Users Chart (Temporarily Disabled) */}
         <ChartContainer 
-          title="Active Users Trend" 
+          title="Active Users Trend"
           className="chart-large"
-          description="Shows Daily Active Users (DAU), Weekly Active Users (WAU), and Monthly Active Users (MAU) trends over time"
+          description="Temporarily disabled while we migrate active user metrics to aggregates"
         >
-          <ResponsiveContainer width="100%" height={300}>
-            <LineChart data={activeUsers}>
-              <CartesianGrid strokeDasharray="3 3" stroke={chartColors.grid} />
-              <XAxis 
-                dataKey="date" 
-                stroke={chartColors.text}
-                fontSize={12}
-              />
-              <YAxis 
-                stroke={chartColors.text}
-                fontSize={12}
-              />
-              <Tooltip 
-                contentStyle={{
-                  backgroundColor: chartColors.background,
-                  border: `1px solid ${chartColors.grid}`,
-                  borderRadius: '8px',
-                  color: chartColors.text
-                }}
-              />
-              <Legend 
-                wrapperStyle={{ color: chartColors.text }}
-              />
-              <Line
-                type="monotone"
-                dataKey="dau"
-                stroke={chartColors.primary}
-                strokeWidth={2}
-                name="Daily Active Users"
-              />
-              <Line
-                type="monotone"
-                dataKey="wau"
-                stroke={chartColors.secondary}
-                strokeWidth={2}
-                name="Weekly Active Users"
-              />
-              <Line
-                type="monotone"
-                dataKey="mau"
-                stroke={chartColors.tertiary}
-                strokeWidth={2}
-                name="Monthly Active Users"
-              />
-            </LineChart>
-          </ResponsiveContainer>
+          <div style={{ 
+            display: 'flex', 
+            alignItems: 'center', 
+            justifyContent: 'center', 
+            height: '300px',
+            color: chartColors.text,
+            fontStyle: 'italic'
+          }}>
+            Active users trend is temporarily disabled
+          </div>
         </ChartContainer>
 
         {/* Retention Chart */}

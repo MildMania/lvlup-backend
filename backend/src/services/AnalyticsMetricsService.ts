@@ -136,7 +136,7 @@ export class AnalyticsMetricsService {
             cache.set(cacheKey, sortedData, 1800);
 
             const duration = Date.now() - startTime;
-            logger.info(`Calculated retention metrics for game ${gameId} in ${duration}ms (${newUsers.length} users, batch size: 500)`);
+            logger.info(`Calculated retention metrics for game ${gameId} in ${duration}ms`);
             return sortedData;
         } catch (error) {
             logger.error('Error calculating retention:', error);

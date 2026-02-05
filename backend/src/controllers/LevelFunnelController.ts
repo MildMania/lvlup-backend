@@ -4,6 +4,16 @@ import { ApiResponse } from '../types/api';
 import logger from '../utils/logger';
 
 export class LevelFunnelController {
+    private logMemory(label: string) {
+        const mem = process.memoryUsage();
+        logger.warn(`[AnalyticsMetrics] ${label}`, {
+            rss: mem.rss,
+            heapUsed: mem.heapUsed,
+            heapTotal: mem.heapTotal,
+            external: mem.external
+        });
+    }
+
     /**
      * Get level funnel data
      * GET /api/analytics/level-funnel
@@ -13,6 +23,9 @@ export class LevelFunnelController {
      */
     async getLevelFunnel(req: Request, res: Response<ApiResponse>) {
         try {
+            const startTime = Date.now();
+            this.logMemory('level funnel start');
+
             const {
                 gameId,
                 startDate,
@@ -78,6 +91,9 @@ export class LevelFunnelController {
                 ? await levelFunnelService.getLevelFunnelDataFast(filters)
                 : await levelFunnelService.getLevelFunnelData(filters);
 
+            this.logMemory('level funnel end');
+            logger.warn(`[AnalyticsMetrics] level funnel duration: ${Date.now() - startTime}ms`);
+
             res.json({
                 success: true,
                 data: {
@@ -112,6 +128,9 @@ export class LevelFunnelController {
      */
     async getLevelDetails(req: Request, res: Response<ApiResponse>) {
         try {
+            const startTime = Date.now();
+            this.logMemory('level details start');
+
             const { levelId } = req.params;
             const {
                 gameId,
@@ -152,6 +171,9 @@ export class LevelFunnelController {
                     error: 'Level not found'
                 });
             }
+
+            this.logMemory('level details end');
+            logger.warn(`[AnalyticsMetrics] level details duration: ${Date.now() - startTime}ms`);
 
             res.json({
                 success: true,
@@ -199,4 +221,3 @@ export class LevelFunnelController {
     }
 }
 export default new LevelFunnelController();
-

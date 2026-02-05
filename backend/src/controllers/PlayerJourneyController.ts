@@ -8,6 +8,15 @@ import logger from '../utils/logger';
 const playerJourneyService = new PlayerJourneyService();
 
 export class PlayerJourneyController {
+    private logMemory(label: string) {
+        const mem = process.memoryUsage();
+        logger.warn(`[AnalyticsMetrics] ${label}`, {
+            rss: mem.rss,
+            heapUsed: mem.heapUsed,
+            heapTotal: mem.heapTotal,
+            external: mem.external
+        });
+    }
     /**
      * Create a new checkpoint definition
      */
@@ -97,6 +106,9 @@ export class PlayerJourneyController {
      */
     async getJourneyProgress(req: AuthenticatedRequest, res: Response<ApiResponse>) {
         try {
+            const startTime = Date.now();
+            this.logMemory('journey progress start');
+
             const gameId = requireGameId(req);
 
             // Extract filter parameters
@@ -131,6 +143,9 @@ export class PlayerJourneyController {
             }
 
             const data = await playerJourneyService.getJourneyProgress(gameId, startDate, endDate, filters);
+
+            this.logMemory('journey progress end');
+            logger.warn(`[AnalyticsMetrics] journey progress duration: ${Date.now() - startTime}ms`);
 
             res.status(200).json({
                 success: true,

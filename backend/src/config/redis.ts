@@ -22,7 +22,11 @@ export async function initRedis(): Promise<any> {
       url: process.env.REDIS_URL || 'redis://localhost:6379',
       socket: {
         reconnectStrategy: (retries: number) => Math.min(retries * 50, 500),
+        connectTimeout: 10000, // 10 seconds
       },
+      // Prevent memory buildup in command queue
+      commandsQueueMaxLength: 1000,
+      database: 0,
     });
 
     client.on('error', (err) => {
@@ -38,7 +42,8 @@ export async function initRedis(): Promise<any> {
     return client;
   } catch (error) {
     logger.error('Failed to initialize Redis:', error);
-    throw error;
+    // Gracefully continue without Redis (fallback to no-cache)
+    return null;
   }
 }
 

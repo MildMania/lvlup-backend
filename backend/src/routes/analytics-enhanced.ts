@@ -35,7 +35,7 @@ router.get('/filters/options', analyticsFiltersController.getFilterOptions);
  * @query {string} days - Optional comma-separated list of days (e.g., "1,7,14,30")
  * @query {string} groupBy - Optional grouping: "day", "week", "month"
  */
-router.get('/metrics/session-count', engagementMetricsController.getSessionCounts);
+router.get('/metrics/session-count', engagementMetricsController.getSessionCounts.bind(engagementMetricsController));
 
 /**
  * GET /analytics/metrics/session-length - Get session length metrics
@@ -48,7 +48,7 @@ router.get('/metrics/session-count', engagementMetricsController.getSessionCount
  * @query {string} groupBy - Optional grouping: "day", "week", "month"
  * @query {string} durationType - Optional type: "average", "total", "distribution", "all"
  */
-router.get('/metrics/session-length', engagementMetricsController.getSessionLengths);
+router.get('/metrics/session-length', engagementMetricsController.getSessionLengths.bind(engagementMetricsController));
 
 // Cohort Analytics Endpoints
 /**
@@ -61,7 +61,7 @@ router.get('/metrics/session-length', engagementMetricsController.getSessionLeng
  * @query {string} abTestGroup - Optional A/B test group to filter by
  * @query {string} days - Optional comma-separated list of days (e.g., "0,1,3,7,14,30")
  */
-router.get('/cohort/retention', cohortAnalyticsController.getCohortRetention);
+router.get('/cohort/retention', cohortAnalyticsController.getCohortRetention.bind(cohortAnalyticsController));
 
 /**
  * GET /analytics/cohort/playtime - Get cohort playtime metrics
@@ -72,7 +72,7 @@ router.get('/cohort/retention', cohortAnalyticsController.getCohortRetention);
  * @query {string|string[]} version - Optional version or versions to filter by
  * @query {string} days - Optional comma-separated list of days (e.g., "0,1,3,7,14,30")
  */
-router.get('/cohort/playtime', cohortAnalyticsController.getCohortPlaytime);
+router.get('/cohort/playtime', cohortAnalyticsController.getCohortPlaytime.bind(cohortAnalyticsController));
 
 /**
  * GET /analytics/cohort/session-count - Get cohort session count metrics
@@ -83,7 +83,7 @@ router.get('/cohort/playtime', cohortAnalyticsController.getCohortPlaytime);
  * @query {string|string[]} version - Optional version or versions to filter by
  * @query {string} days - Optional comma-separated list of days (e.g., "0,1,3,7,14,30")
  */
-router.get('/cohort/session-count', cohortAnalyticsController.getCohortSessionCount);
+router.get('/cohort/session-count', cohortAnalyticsController.getCohortSessionCount.bind(cohortAnalyticsController));
 
 /**
  * GET /analytics/cohort/session-length - Get cohort session length metrics
@@ -94,7 +94,7 @@ router.get('/cohort/session-count', cohortAnalyticsController.getCohortSessionCo
  * @query {string|string[]} version - Optional version or versions to filter by
  * @query {string} days - Optional comma-separated list of days (e.g., "0,1,3,7,14,30")
  */
-router.get('/cohort/session-length', cohortAnalyticsController.getCohortSessionLength);
+router.get('/cohort/session-length', cohortAnalyticsController.getCohortSessionLength.bind(cohortAnalyticsController));
 
 /**
  * GET /analytics/cohort/avg-completed-levels - Get average completed level count per user by cohort
@@ -106,7 +106,7 @@ router.get('/cohort/session-length', cohortAnalyticsController.getCohortSessionL
  * @query {string|string[]} version - Optional version or versions to filter by
  * @query {string} days - Optional comma-separated list of days (e.g., "0,1,3,7,14,30")
  */
-router.get('/cohort/avg-completed-levels', cohortAnalyticsController.getAvgCompletedLevels);
+router.get('/cohort/avg-completed-levels', cohortAnalyticsController.getAvgCompletedLevels.bind(cohortAnalyticsController));
 
 /**
  * GET /analytics/cohort/avg-reached-level - Get average reached level (highest level) per user by cohort
@@ -118,25 +118,25 @@ router.get('/cohort/avg-completed-levels', cohortAnalyticsController.getAvgCompl
  * @query {string|string[]} version - Optional version or versions to filter by
  * @query {string} days - Optional comma-separated list of days (e.g., "0,1,3,7,14,30")
  */
-router.get('/cohort/avg-reached-level', cohortAnalyticsController.getAvgReachedLevel);
+router.get('/cohort/avg-reached-level', cohortAnalyticsController.getAvgReachedLevel.bind(cohortAnalyticsController));
 
 // Player Journey Endpoints
 /**
  * POST /analytics/journey/checkpoints - Create a new checkpoint
  * @body {Object} - Checkpoint data with name, description, type, tags, order
  */
-router.post('/journey/checkpoints', playerJourneyController.createCheckpoint);
+router.post('/journey/checkpoints', playerJourneyController.createCheckpoint.bind(playerJourneyController));
 
 /**
  * GET /analytics/journey/checkpoints - Get all checkpoints for a game
  */
-router.get('/journey/checkpoints', playerJourneyController.getCheckpoints);
+router.get('/journey/checkpoints', playerJourneyController.getCheckpoints.bind(playerJourneyController));
 
 /**
  * POST /analytics/journey/record - Record a player reaching a checkpoint
  * @body {Object} - Player checkpoint data with userId, checkpointId, metadata
  */
-router.post('/journey/record', playerJourneyController.recordCheckpoint);
+router.post('/journey/record', playerJourneyController.recordCheckpoint.bind(playerJourneyController));
 
 /**
  * GET /analytics/journey/progress - Get journey progress analytics
@@ -149,12 +149,12 @@ router.post('/journey/record', playerJourneyController.recordCheckpoint);
  * @query {string|string[]} tags - Optional tags to filter by
  * @query {string} format - Optional format: "funnel", "timeline", "completion"
  */
-router.get('/journey/progress', playerJourneyController.getJourneyProgress);
+router.get('/journey/progress', playerJourneyController.getJourneyProgress.bind(playerJourneyController));
 
 /**
  * GET /analytics/journey/user/:userId - Get journey data for a specific user
  * @param {string} userId - The user ID
  */
-router.get('/journey/user/:userId', playerJourneyController.getUserJourney);
+router.get('/journey/user/:userId', playerJourneyController.getUserJourney.bind(playerJourneyController));
 
 export default router;

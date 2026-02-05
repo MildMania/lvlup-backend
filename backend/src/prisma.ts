@@ -14,6 +14,40 @@ import logger from './utils/logger';
  * postgresql://user:pass@host:port/db?connection_limit=10&pool_timeout=20&connect_timeout=10
  */
 
+// Add connection pool limits if not already present (safety mechanism)
+function ensureConnectionLimits(databaseUrl: string): string {
+  if (!databaseUrl) {
+    logger.error('DATABASE_URL is not set');
+    return databaseUrl;
+  }
+
+  // Check if connection limits are already configured
+  if (databaseUrl.includes('connection_limit')) {
+    logger.info('Database connection limits already configured');
+    return databaseUrl;
+  }
+
+  // Add connection limits to the URL
+  try {
+    const url = new URL(databaseUrl);
+    url.searchParams.set('connection_limit', '10');
+    url.searchParams.set('pool_timeout', '20');
+    url.searchParams.set('connect_timeout', '10');
+    
+    const updatedUrl = url.toString();
+    logger.info('Added connection pool limits to DATABASE_URL');
+    return updatedUrl;
+  } catch (error) {
+    logger.error('Failed to parse DATABASE_URL, using as-is:', error);
+    return databaseUrl;
+  }
+}
+
+// Apply connection limits
+if (process.env.DATABASE_URL) {
+  process.env.DATABASE_URL = ensureConnectionLimits(process.env.DATABASE_URL);
+}
+
 // Prevent multiple instances in hot-reload scenarios (development)
 const globalForPrisma = global as unknown as { prisma: PrismaClient };
 

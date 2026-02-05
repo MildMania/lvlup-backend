@@ -8,11 +8,24 @@ import logger from '../utils/logger';
 const engagementMetricsService = new EngagementMetricsService();
 
 export class EngagementMetricsController {
+    private logMemory(label: string) {
+        const mem = process.memoryUsage();
+        logger.warn(`[AnalyticsMetrics] ${label}`, {
+            rss: mem.rss,
+            heapUsed: mem.heapUsed,
+            heapTotal: mem.heapTotal,
+            external: mem.external
+        });
+    }
+
     /**
      * Get session count metrics per user per day
      */
     async getSessionCounts(req: AuthenticatedRequest, res: Response<ApiResponse>) {
         try {
+            const startTime = Date.now();
+            this.logMemory('session count start');
+
             const gameId = requireGameId(req);
 
             // Extract filter parameters
@@ -50,12 +63,19 @@ export class EngagementMetricsController {
                 filters
             );
 
+            this.logMemory('session count end');
+            logger.warn(`[AnalyticsMetrics] session count duration: ${Date.now() - startTime}ms`);
+
             res.status(200).json({
                 success: true,
                 data
             });
         } catch (error) {
             logger.error('Error in getSessionCounts controller:', error);
+            console.error('[EngagementMetrics] getSessionCounts failed', {
+                query: req.query,
+                error: error instanceof Error ? { message: error.message, stack: error.stack } : error
+            });
             res.status(500).json({
                 success: false,
                 error: 'Failed to get session count metrics'
@@ -68,6 +88,9 @@ export class EngagementMetricsController {
      */
     async getSessionLengths(req: AuthenticatedRequest, res: Response<ApiResponse>) {
         try {
+            const startTime = Date.now();
+            this.logMemory('session length start');
+
             const gameId = requireGameId(req);
 
             // Extract filter parameters
@@ -110,12 +133,19 @@ export class EngagementMetricsController {
                 filters
             );
 
+            this.logMemory('session length end');
+            logger.warn(`[AnalyticsMetrics] session length duration: ${Date.now() - startTime}ms`);
+
             res.status(200).json({
                 success: true,
                 data
             });
         } catch (error) {
             logger.error('Error in getSessionLengths controller:', error);
+            console.error('[EngagementMetrics] getSessionLengths failed', {
+                query: req.query,
+                error: error instanceof Error ? { message: error.message, stack: error.stack } : error
+            });
             res.status(500).json({
                 success: false,
                 error: 'Failed to get session length metrics'

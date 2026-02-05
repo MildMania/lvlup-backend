@@ -6,9 +6,13 @@ import cookieParser from 'cookie-parser';
 import dotenv from 'dotenv';
 import apiRoutes from './routes';
 import logger from './utils/logger';
+import prismaInstance from './prisma';
 import { sessionHeartbeatService } from './services/SessionHeartbeatService';
 import dataRetentionService from './services/DataRetentionService';
 import { startLevelMetricsAggregationJob } from './jobs/levelMetricsAggregation';
+import { eventBatchWriter } from './services/EventBatchWriter';
+import { revenueBatchWriter } from './services/RevenueBatchWriter';
+import { sessionHeartbeatBatchWriter } from './services/SessionHeartbeatBatchWriter';
 
 // Load environment variables
 dotenv.config();
@@ -53,12 +57,58 @@ app.get('/health', (_req: Request, res: Response) => {
     });
 });
 
+// Memory metrics endpoint for monitoring
+app.get('/api/metrics', async (_req: Request, res: Response) => {
+    try {
+        const memUsage = process.memoryUsage();
+        
+        // Get database connection count (PostgreSQL only)
+        let dbConnections: any = null;
+        try {
+            if (process.env.DATABASE_URL?.includes('postgresql')) {
+                const result = await prismaInstance.$queryRaw`
+                    SELECT count(*) as count 
+                    FROM pg_stat_activity 
+                    WHERE datname = current_database()
+                `;
+                dbConnections = result;
+            }
+        } catch (error) {
+            logger.debug('Could not fetch DB connections:', error);
+        }
+        
+        res.json({
+            timestamp: new Date().toISOString(),
+            memory: {
+                rss: `${Math.round(memUsage.rss / 1024 / 1024)}MB`,
+                heapTotal: `${Math.round(memUsage.heapTotal / 1024 / 1024)}MB`,
+                heapUsed: `${Math.round(memUsage.heapUsed / 1024 / 1024)}MB`,
+                external: `${Math.round(memUsage.external / 1024 / 1024)}MB`,
+                arrayBuffers: `${Math.round(memUsage.arrayBuffers / 1024 / 1024)}MB`,
+            },
+            uptime: `${Math.round(process.uptime() / 60)} minutes`,
+            dbConnections: dbConnections,
+            batchWriters: {
+                events: eventBatchWriter.getMetrics(),
+                revenue: revenueBatchWriter.getMetrics(),
+                heartbeats: sessionHeartbeatBatchWriter.getMetrics(),
+            },
+            environment: process.env.NODE_ENV || 'development',
+            nodeVersion: process.version,
+        });
+    } catch (error) {
+        logger.error('Error fetching metrics:', error);
+        res.status(500).json({ error: 'Failed to fetch metrics' });
+    }
+});
+
 // Root endpoint - API info
 app.get('/', (_req: Request, res: Response) => {
     res.send(`
         <h1>LvlUp Backend API</h1>
         <p>Version: 1.0.0</p>
         <p>Health: <a href="/health">/health</a></p>
+        <p>Metrics: <a href="/api/metrics">/api/metrics</a></p>
         <p>API Documentation: <a href="/docs">View Docs</a></p>
     `);
 });
@@ -187,15 +237,31 @@ app.listen(PORT, '0.0.0.0', () => {
 });
 
 // Graceful shutdown
-process.on('SIGTERM', () => {
+process.on('SIGTERM', async () => {
     logger.info('SIGTERM signal received: closing HTTP server');
+    
+    // Flush remaining events, revenue records, and heartbeats before shutdown
+    await Promise.all([
+        eventBatchWriter.shutdown(),
+        revenueBatchWriter.shutdown(),
+        sessionHeartbeatBatchWriter.shutdown()
+    ]);
+    
     sessionHeartbeatService.stop();
     dataRetentionService.stop();
     process.exit(0);
 });
 
-process.on('SIGINT', () => {
+process.on('SIGINT', async () => {
     logger.info('SIGINT signal received: closing HTTP server');
+    
+    // Flush remaining events, revenue records, and heartbeats before shutdown
+    await Promise.all([
+        eventBatchWriter.shutdown(),
+        revenueBatchWriter.shutdown(),
+        sessionHeartbeatBatchWriter.shutdown()
+    ]);
+    
     sessionHeartbeatService.stop();
     dataRetentionService.stop();
     process.exit(0);

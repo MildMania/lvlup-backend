@@ -1,4 +1,4 @@
-import { PrismaClient } from '@prisma/client';
+import { Prisma, PrismaClient } from '@prisma/client';
 import { EventData, BatchEventData, UserProfile, SessionData, AnalyticsData } from '../types/api';
 import { RevenueType } from '../types/revenue';
 import logger from '../utils/logger';
@@ -6,6 +6,8 @@ import { v4 as uuidv4 } from 'uuid';
 import { cache, generateCacheKey } from '../utils/simpleCache';
 import prisma from '../prisma';
 import { RevenueService } from './RevenueService';
+import { eventBatchWriter } from './EventBatchWriter';
+import { sessionHeartbeatBatchWriter } from './SessionHeartbeatBatchWriter';
 
 export class AnalyticsService {
     private prisma: PrismaClient;
@@ -177,13 +179,12 @@ export class AnalyticsService {
             if (now < session.startTime) {
                 logger.warn(`Heartbeat timestamp (${now.toISOString()}) is before session startTime (${session.startTime.toISOString()}). Using startTime as heartbeat.`);
                 // Use startTime as fallback to prevent negative duration
-                await this.prisma.session.update({
-                    where: { id: sessionId },
-                    data: {
-                        lastHeartbeat: session.startTime,
-                        endTime: session.startTime,
-                        duration: 0
-                    }
+                sessionHeartbeatBatchWriter.enqueue({
+                    sessionId,
+                    lastHeartbeat: session.startTime,
+                    endTime: session.startTime,
+                    duration: 0,
+                    countryCode: countryCode || session.countryCode || null
                 });
                 return;
             }
@@ -196,27 +197,16 @@ export class AnalyticsService {
 
             const duration = Math.floor((now.getTime() - session.startTime.getTime()) / 1000);
 
-            // Prepare update data
-            const updateData: any = {
+            // Enqueue heartbeat for batched processing (non-blocking)
+            sessionHeartbeatBatchWriter.enqueue({
+                sessionId,
                 lastHeartbeat: now,
                 endTime: now,
-                duration: Math.max(duration, 0)
-            };
-
-            // Update countryCode only if:
-            // 1. New countryCode is provided in heartbeat
-            // 2. Session doesn't have a countryCode yet (is NULL)
-            if (countryCode && !session.countryCode) {
-                updateData.countryCode = countryCode;
-                logger.info(`Updated session ${sessionId} with countryCode: ${countryCode} from heartbeat`);
-            }
-
-            await this.prisma.session.update({
-                where: { id: sessionId },
-                data: updateData
+                duration: Math.max(duration, 0),
+                countryCode: countryCode || session.countryCode || null
             });
 
-            logger.debug(`Updated heartbeat, endTime, and duration (${duration}s) for session ${sessionId}`);
+            logger.debug(`Enqueued heartbeat update for session ${sessionId} (duration: ${duration}s)`);
         } catch (error) {
             logger.error('Error updating session heartbeat:', error);
             throw error;
@@ -245,61 +235,70 @@ export class AnalyticsService {
             const eventTimestamp = this.validateClientTimestamp(eventData.clientTs);
             const serverTime = new Date(); // Actual server receipt time
             
-            const event = await this.prisma.event.create({
-                data: {
-                    gameId: gameId,
-                    userId: userId,
-                    sessionId: sessionId,
-                    eventName: eventData.eventName,
-                    properties: properties,
-                    timestamp: eventTimestamp, // Use validated client timestamp
-                    
-                    // Event metadata
-                    eventUuid: eventData.eventUuid ?? null,
-                    // Store original client timestamp for reference
-                    clientTs: eventData.clientTs ? BigInt(eventData.clientTs) : 
-                              (eventData.timestamp ? BigInt(new Date(eventData.timestamp).getTime()) : null),
-                    serverReceivedAt: serverTime, // Track when server received the event
-                    
-                    // Device & Platform info
-                    platform: eventData.platform ?? null,
-                    osVersion: eventData.osVersion ?? null,
-                    manufacturer: eventData.manufacturer ?? null,
-                    device: eventData.device ?? null,
-                    deviceId: eventData.deviceId ?? null,
-                    
-                    // App info
-                    appVersion: eventData.appVersion ?? null,
-                    appBuild: eventData.appBuild ?? null,
-                    sdkVersion: eventData.sdkVersion ?? null,
-                    
-                    // Network & Additional
-                    connectionType: eventData.connectionType ?? null,
-                    sessionNum: eventData.sessionNum ?? null,
-                    
-                    // Geographic location (minimal)
-                    countryCode: eventData.countryCode ?? null,
-                    
-                    // Level funnel tracking (for AB testing level designs)
-                    // Extracted from properties (new SDK format) or top-level (backward compatibility)
-                    levelFunnel: levelFunnel,
-                    levelFunnelVersion: levelFunnelVersion,
-                }
-            });
+            // Prepare event data for batch writer
+            const eventRecord = {
+                gameId: gameId,
+                userId: userId,
+                sessionId: sessionId,
+                eventName: eventData.eventName,
+                properties: properties,
+                timestamp: eventTimestamp, // Use validated client timestamp
+                
+                // Event metadata
+                eventUuid: eventData.eventUuid ?? null,
+                // Store original client timestamp for reference
+                clientTs: eventData.clientTs ? BigInt(eventData.clientTs) : 
+                          (eventData.timestamp ? BigInt(new Date(eventData.timestamp).getTime()) : null),
+                serverReceivedAt: serverTime, // Track when server received the event
+                
+                // Device & Platform info
+                platform: eventData.platform ?? null,
+                osVersion: eventData.osVersion ?? null,
+                manufacturer: eventData.manufacturer ?? null,
+                device: eventData.device ?? null,
+                deviceId: eventData.deviceId ?? null,
+                
+                // App info
+                appVersion: eventData.appVersion ?? null,
+                appBuild: eventData.appBuild ?? null,
+                sdkVersion: eventData.sdkVersion ?? null,
+                
+                // Network & Additional
+                connectionType: eventData.connectionType ?? null,
+                sessionNum: eventData.sessionNum ?? null,
+                
+                // Geographic location (minimal)
+                countryCode: eventData.countryCode ?? null,
+                
+                // Level funnel tracking (for AB testing level designs)
+                // Extracted from properties (new SDK format) or top-level (backward compatibility)
+                levelFunnel: levelFunnel,
+                levelFunnelVersion: levelFunnelVersion,
+            };
+            
+            // Enqueue event for batched insertion (non-blocking)
+            eventBatchWriter.enqueue(eventRecord);
 
-            logger.debug(`Event ${eventData.eventName} tracked for user ${userId} with full metadata`);
+            logger.debug(`Event ${eventData.eventName} enqueued for batch write (user: ${userId})`);
             
             // Dual-write pattern: Create revenue record for monetization events
             if (eventData.eventName === 'ad_impression' || eventData.eventName === 'iap_purchase') {
                 try {
-                    await this.trackRevenueFromEvent(gameId, userId, sessionId, eventData, event.id);
+                    // Pass a synthetic event ID (we don't have the real one yet due to batching)
+                    // Revenue tracking will work independently
+                    await this.trackRevenueFromEvent(gameId, userId, sessionId, eventData, 'pending');
                 } catch (revenueError) {
                     // Don't fail the event tracking if revenue tracking fails
                     logger.error(`Failed to create revenue record for ${eventData.eventName}:`, revenueError);
                 }
             }
             
-            return event;
+            // Return a synthetic response (we don't have the DB-generated ID yet)
+            return {
+                id: 'batched', // Indicate this was batched
+                timestamp: eventTimestamp,
+                eventName: eventData.eventName,
+            } as any;
         } catch (error) {
             logger.error('Error tracking event:', error);
             throw error;
@@ -388,9 +387,9 @@ export class AnalyticsService {
             // Extract device info for easier access
             const deviceInfo = batchData.deviceInfo || {};
 
-            // Create events in batch with comprehensive metadata
+            // Enqueue all events for batched insertion
             // Prioritize event-level metadata over batch deviceInfo
-            const events = batchData.events.map(eventData => {
+            batchData.events.forEach(eventData => {
                 // Extract levelFunnel fields from properties (new SDK) or top-level (backward compatibility)
                 const properties = { ...(eventData.properties || {}) };
                 const levelFunnel = (properties as any).levelFunnel ?? eventData.levelFunnel ?? null;
@@ -410,7 +409,7 @@ export class AnalyticsService {
                 const eventTimestamp = this.validateClientTimestamp(eventData.clientTs);
                 const serverTime = new Date(); // Server receipt time
                 
-                return {
+                const eventRecord = {
                     gameId: gameId,
                     userId: user.id,
                     sessionId: batchData.sessionId || null,
@@ -447,14 +446,15 @@ export class AnalyticsService {
                     levelFunnel: levelFunnel,
                     levelFunnelVersion: levelFunnelVersion,
                 };
+                
+                // Enqueue each event for batched insertion
+                eventBatchWriter.enqueue(eventRecord);
             });
 
-            const createdEvents = await this.prisma.event.createMany({
-                data: events
-            });
-
-            logger.info(`Batch tracked ${createdEvents.count} events for user ${batchData.userId} with full device metadata`);
-            return createdEvents;
+            logger.info(`Batch enqueued ${batchData.events.length} events for user ${batchData.userId}`);
+            
+            // Return count of enqueued events
+            return { count: batchData.events.length };
         } catch (error) {
             logger.error('Error tracking batch events:', error);
             throw error;
@@ -462,10 +462,33 @@ export class AnalyticsService {
     }
 
     // Get analytics data (for dashboard)
-    async getAnalytics(gameId: string, startDate: Date, endDate: Date): Promise<AnalyticsData> {
+    async getAnalytics(
+        gameId: string,
+        startDate: Date,
+        endDate: Date,
+        options?: {
+            includeRetention?: boolean;
+            includeActiveUsersToday?: boolean;
+            includeTopEvents?: boolean;
+        }
+    ): Promise<AnalyticsData> {
         try {
+            const includeRetention = options?.includeRetention !== false;
+            const includeActiveUsersToday = options?.includeActiveUsersToday !== false;
+            const includeTopEvents = options?.includeTopEvents !== false;
+
             // Generate cache key based on game ID and date range
-            const cacheKey = generateCacheKey('analytics', gameId, startDate.toISOString(), endDate.toISOString());
+            const cacheKey = generateCacheKey(
+                'analytics',
+                gameId,
+                startDate.toISOString(),
+                endDate.toISOString(),
+                JSON.stringify({
+                    includeRetention,
+                    includeActiveUsersToday,
+                    includeTopEvents
+                })
+            );
             
             // Try to get from cache first (5 minute TTL)
             const cached = cache.get(cacheKey) as AnalyticsData | undefined;
@@ -507,33 +530,22 @@ export class AnalyticsService {
                 }),
 
                 // Total active users (had activity in date range)
-                this.prisma.user.count({
-                    where: {
-                        gameId: gameId,
-                        OR: [
-                            {
-                                events: {
-                                    some: {
-                                        timestamp: {
-                                            gte: startDate,
-                                            lte: endDate
-                                        }
-                                    }
-                                }
-                            },
-                            {
-                                sessions: {
-                                    some: {
-                                        startTime: {
-                                            gte: startDate,
-                                            lte: endDate
-                                        }
-                                    }
-                                }
-                            }
-                        ]
-                    }
-                }),
+                this.prisma.$queryRaw<{ count: bigint }[]>(Prisma.sql`
+                    SELECT COUNT(DISTINCT user_id) AS count
+                    FROM (
+                        SELECT "userId" AS user_id
+                        FROM "events"
+                        WHERE "gameId" = ${gameId}
+                          AND "timestamp" >= ${startDate}
+                          AND "timestamp" <= ${endDate}
+                        UNION
+                        SELECT "userId" AS user_id
+                        FROM "sessions"
+                        WHERE "gameId" = ${gameId}
+                          AND "startTime" >= ${startDate}
+                          AND "startTime" <= ${endDate}
+                    ) AS active_users
+                `).then((rows) => Number(rows[0]?.count || 0)),
 
                 // Total sessions
                 this.prisma.session.count({
@@ -564,25 +576,27 @@ export class AnalyticsService {
                 }),
 
                 // Top events
-                this.prisma.event.groupBy({
-                    by: ['eventName'],
-                    where: {
-                        gameId: gameId,
-                        timestamp: {
-                            gte: startDate,
-                            lte: endDate
-                        }
-                    },
-                    _count: {
-                        eventName: true
-                    },
-                    orderBy: {
+                includeTopEvents
+                    ? this.prisma.event.groupBy({
+                        by: ['eventName'],
+                        where: {
+                            gameId: gameId,
+                            timestamp: {
+                                gte: startDate,
+                                lte: endDate
+                            }
+                        },
                         _count: {
-                            eventName: 'desc'
-                        }
-                    },
-                    take: 10
-                })
+                            eventName: true
+                        },
+                        orderBy: {
+                            _count: {
+                                eventName: 'desc'
+                            }
+                        },
+                        take: 10
+                    })
+                    : Promise.resolve([])
             ]);
 
             // Calculate average sessions per user
@@ -609,53 +623,61 @@ export class AnalyticsService {
             const avgPlaytimeDuration = totalActiveUsers > 0 ?
                 Math.round((totalSessionDuration._sum.duration || 0) / totalActiveUsers) : 0;
 
-            // Calculate real retention rates using AnalyticsMetricsService
-            const { AnalyticsMetricsService } = await import('./AnalyticsMetricsService');
-            const metricsService = new AnalyticsMetricsService();
+            let retentionDay1 = 0;
+            let retentionDay7 = 0;
 
-            const retentionData = await metricsService.calculateRetention(
-                gameId,
-                startDate,
-                endDate,
-                { retentionDays: [1, 7] }
-            );
+            if (includeRetention) {
+                // Calculate real retention rates using AnalyticsMetricsService
+                const { AnalyticsMetricsService } = await import('./AnalyticsMetricsService');
+                const metricsService = new AnalyticsMetricsService();
 
-            const retentionDay1 = retentionData.find(r => r.day === 1)?.percentage || 0;
-            const retentionDay7 = retentionData.find(r => r.day === 7)?.percentage || 0;
+                const retentionData = await metricsService.calculateRetention(
+                    gameId,
+                    startDate,
+                    endDate,
+                    { retentionDays: [1, 7] }
+                );
+
+                retentionDay1 = retentionData.find(r => r.day === 1)?.percentage || 0;
+                retentionDay7 = retentionData.find(r => r.day === 7)?.percentage || 0;
+            }
 
             // Active users today (users with events today)
-            const today = new Date();
-            today.setHours(0, 0, 0, 0);
-            const tomorrow = new Date(today);
-            tomorrow.setDate(tomorrow.getDate() + 1);
+            let activeUsersToday = 0;
+            if (includeActiveUsersToday) {
+                const today = new Date();
+                today.setHours(0, 0, 0, 0);
+                const tomorrow = new Date(today);
+                tomorrow.setDate(tomorrow.getDate() + 1);
 
-            const activeUsersToday = await this.prisma.user.count({
-                where: {
-                    gameId: gameId,
-                    OR: [
-                        {
-                            events: {
-                                some: {
-                                    timestamp: {
-                                        gte: today,
-                                        lt: tomorrow
+                activeUsersToday = await this.prisma.user.count({
+                    where: {
+                        gameId: gameId,
+                        OR: [
+                            {
+                                events: {
+                                    some: {
+                                        timestamp: {
+                                            gte: today,
+                                            lt: tomorrow
+                                        }
+                                    }
+                                }
+                            },
+                            {
+                                sessions: {
+                                    some: {
+                                        startTime: {
+                                            gte: today,
+                                            lt: tomorrow
+                                        }
                                     }
                                 }
                             }
-                        },
-                        {
-                            sessions: {
-                                some: {
-                                    startTime: {
-                                        gte: today,
-                                        lt: tomorrow
-                                    }
-                                }
-                            }
-                        }
-                    ]
-                }
-            });
+                        ]
+                    }
+                });
+            }
 
             const result = {
                 totalUsers: totalActiveUsers, // Frontend expects totalUsers

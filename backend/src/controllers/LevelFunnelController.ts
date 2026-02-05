@@ -4,6 +4,16 @@ import { ApiResponse } from '../types/api';
 import logger from '../utils/logger';
 
 export class LevelFunnelController {
+    private logMemory(label: string) {
+        const mem = process.memoryUsage();
+        logger.warn(`[AnalyticsMetrics] ${label}`, {
+            rss: mem.rss,
+            heapUsed: mem.heapUsed,
+            heapTotal: mem.heapTotal,
+            external: mem.external
+        });
+    }
+
     /**
      * Get level funnel data
      * GET /api/analytics/level-funnel
@@ -13,6 +23,9 @@ export class LevelFunnelController {
      */
     async getLevelFunnel(req: Request, res: Response<ApiResponse>) {
         try {
+            const startTime = Date.now();
+            this.logMemory('level funnel start');
+
             const {
                 gameId,
                 startDate,
@@ -24,7 +37,9 @@ export class LevelFunnelController {
                 levelFunnel,
                 levelFunnelVersion,
                 levelLimit,
-                useFast
+                useFast,
+                includeTodayRaw,
+                includeRawUserCounts
             } = req.query;
 
             if (!gameId) {
@@ -47,8 +62,11 @@ export class LevelFunnelController {
                 version: version as string | undefined,
                 abTestId: abTestId as string | undefined,
                 levelFunnel: levelFunnel as string | undefined,
-                levelFunnelVersion: levelFunnelVersion ? parseInt(levelFunnelVersion as string) : undefined,
-                levelLimit: levelLimit ? parseInt(levelLimit as string) : 100 // Default to 100
+                levelFunnelVersion: levelFunnelVersion as string | undefined, // Keep as string to support comma-separated versions
+                levelLimit: levelLimit ? parseInt(levelLimit as string) : 100, // Default to 100
+                // Default to true when param not provided
+                includeTodayRaw: includeTodayRaw === undefined ? true : includeTodayRaw === 'true',
+                includeRawUserCounts: includeRawUserCounts === 'true'
             };
 
             // Check if AB test breakdown is requested
@@ -77,6 +95,9 @@ export class LevelFunnelController {
             const levels = shouldUseFast 
                 ? await levelFunnelService.getLevelFunnelDataFast(filters)
                 : await levelFunnelService.getLevelFunnelData(filters);
+
+            this.logMemory('level funnel end');
+            logger.warn(`[AnalyticsMetrics] level funnel duration: ${Date.now() - startTime}ms`);
 
             res.json({
                 success: true,
@@ -112,6 +133,9 @@ export class LevelFunnelController {
      */
     async getLevelDetails(req: Request, res: Response<ApiResponse>) {
         try {
+            const startTime = Date.now();
+            this.logMemory('level details start');
+
             const { levelId } = req.params;
             const {
                 gameId,
@@ -152,6 +176,9 @@ export class LevelFunnelController {
                     error: 'Level not found'
                 });
             }
+
+            this.logMemory('level details end');
+            logger.warn(`[AnalyticsMetrics] level details duration: ${Date.now() - startTime}ms`);
 
             res.json({
                 success: true,
@@ -199,4 +226,3 @@ export class LevelFunnelController {
     }
 }
 export default new LevelFunnelController();
-

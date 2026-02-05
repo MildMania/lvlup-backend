@@ -11,6 +11,8 @@ export class AnalyticsMetricsController {
     // Get retention data with filtering options
     async getRetention(req: AuthenticatedRequest, res: Response<ApiResponse>) {
         try {
+            const startTime = Date.now();
+            const memStart = process.memoryUsage();
             const gameId = requireGameId(req);
 
             // Extract filter parameters
@@ -43,6 +45,15 @@ export class AnalyticsMetricsController {
                 filters
             );
 
+            const memEnd = process.memoryUsage();
+            logger.warn('[AnalyticsMetrics] retention duration', {
+                durationMs: Date.now() - startTime,
+                rssStart: memStart.rss,
+                rssEnd: memEnd.rss,
+                heapUsedStart: memStart.heapUsed,
+                heapUsedEnd: memEnd.heapUsed
+            });
+
             res.status(200).json({
                 success: true,
                 data
@@ -59,6 +70,8 @@ export class AnalyticsMetricsController {
     // Get active users data with filtering options
     async getActiveUsers(req: AuthenticatedRequest, res: Response<ApiResponse>) {
         try {
+            const startTime = Date.now();
+            const memStart = process.memoryUsage();
             const gameId = requireGameId(req);
 
             // Extract filter parameters
@@ -85,6 +98,15 @@ export class AnalyticsMetricsController {
                 filters
             );
 
+            const memEnd = process.memoryUsage();
+            logger.warn('[AnalyticsMetrics] active users duration', {
+                durationMs: Date.now() - startTime,
+                rssStart: memStart.rss,
+                rssEnd: memEnd.rss,
+                heapUsedStart: memStart.heapUsed,
+                heapUsedEnd: memEnd.heapUsed
+            });
+
             res.status(200).json({
                 success: true,
                 data
@@ -101,6 +123,8 @@ export class AnalyticsMetricsController {
     // Get playtime metrics with filtering options
     async getPlaytimeMetrics(req: AuthenticatedRequest, res: Response<ApiResponse>) {
         try {
+            const startTime = Date.now();
+            const memStart = process.memoryUsage();
             const gameId = requireGameId(req);
 
             // Extract filter parameters
@@ -126,6 +150,15 @@ export class AnalyticsMetricsController {
                 endDate,
                 filters
             );
+
+            const memEnd = process.memoryUsage();
+            logger.warn('[AnalyticsMetrics] playtime duration', {
+                durationMs: Date.now() - startTime,
+                rssStart: memStart.rss,
+                rssEnd: memEnd.rss,
+                heapUsedStart: memStart.heapUsed,
+                heapUsedEnd: memEnd.heapUsed
+            });
 
             res.status(200).json({
                 success: true,

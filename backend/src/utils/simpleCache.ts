@@ -6,13 +6,21 @@
 interface CacheEntry<T> {
     data: T;
     expiresAt: number;
+    sizeBytes: number;
 }
 
 class SimpleCache {
     private cache: Map<string, CacheEntry<any>> = new Map();
     private cleanupInterval: NodeJS.Timeout;
+    private totalBytes: number = 0;
+    private maxEntries: number;
+    private maxBytes: number | null;
 
     constructor() {
+        this.maxEntries = parseInt(process.env.SIMPLE_CACHE_MAX_ENTRIES || '500', 10);
+        const maxBytesEnv = process.env.SIMPLE_CACHE_MAX_BYTES;
+        this.maxBytes = maxBytesEnv ? parseInt(maxBytesEnv, 10) : null;
+
         // Clean up expired entries every minute
         this.cleanupInterval = setInterval(() => {
             this.cleanup();
@@ -30,9 +38,13 @@ class SimpleCache {
         }
 
         if (Date.now() > entry.expiresAt) {
-            this.cache.delete(key);
+            this.removeEntry(key, entry);
             return null;
         }
+
+        // Mark as recently used (LRU)
+        this.cache.delete(key);
+        this.cache.set(key, entry);
 
         return entry.data as T;
     }
@@ -42,14 +54,27 @@ class SimpleCache {
      */
     set<T>(key: string, data: T, ttlSeconds: number): void {
         const expiresAt = Date.now() + (ttlSeconds * 1000);
-        this.cache.set(key, { data, expiresAt });
+        const sizeBytes = this.estimateSizeBytes(data);
+
+        const existing = this.cache.get(key);
+        if (existing) {
+            this.totalBytes -= existing.sizeBytes;
+            this.cache.delete(key);
+        }
+
+        this.cache.set(key, { data, expiresAt, sizeBytes });
+        this.totalBytes += sizeBytes;
+
+        this.evictIfNeeded();
     }
 
     /**
      * Delete a specific cache entry
      */
     delete(key: string): void {
-        this.cache.delete(key);
+        const entry = this.cache.get(key);
+        if (!entry) return;
+        this.removeEntry(key, entry);
     }
 
     /**
@@ -57,6 +82,7 @@ class SimpleCache {
      */
     clear(): void {
         this.cache.clear();
+        this.totalBytes = 0;
     }
 
     /**
@@ -66,7 +92,10 @@ class SimpleCache {
         const keys = Array.from(this.cache.keys());
         keys.forEach(key => {
             if (key.startsWith(pattern)) {
-                this.cache.delete(key);
+                const entry = this.cache.get(key);
+                if (entry) {
+                    this.removeEntry(key, entry);
+                }
             }
         });
     }
@@ -74,10 +103,13 @@ class SimpleCache {
     /**
      * Get cache statistics
      */
-    getStats(): { size: number; keys: string[] } {
+    getStats(): { size: number; keys: string[]; totalBytes: number; maxEntries: number; maxBytes: number | null } {
         return {
             size: this.cache.size,
-            keys: Array.from(this.cache.keys())
+            keys: Array.from(this.cache.keys()),
+            totalBytes: this.totalBytes,
+            maxEntries: this.maxEntries,
+            maxBytes: this.maxBytes
         };
     }
 
@@ -91,9 +123,51 @@ class SimpleCache {
         keys.forEach(key => {
             const entry = this.cache.get(key);
             if (entry && now > entry.expiresAt) {
-                this.cache.delete(key);
+                this.removeEntry(key, entry);
             }
         });
+    }
+
+    private estimateSizeBytes(data: unknown): number {
+        try {
+            return Buffer.byteLength(JSON.stringify(data), 'utf8');
+        } catch {
+            return 0;
+        }
+    }
+
+    private evictIfNeeded(): void {
+        while (this.cache.size > this.maxEntries) {
+            const oldestKey = this.cache.keys().next().value as string | undefined;
+            if (!oldestKey) break;
+            const entry = this.cache.get(oldestKey);
+            if (entry) {
+                this.removeEntry(oldestKey, entry);
+            } else {
+                this.cache.delete(oldestKey);
+            }
+        }
+
+        if (this.maxBytes !== null) {
+            while (this.totalBytes > this.maxBytes) {
+                const oldestKey = this.cache.keys().next().value as string | undefined;
+                if (!oldestKey) break;
+                const entry = this.cache.get(oldestKey);
+                if (entry) {
+                    this.removeEntry(oldestKey, entry);
+                } else {
+                    this.cache.delete(oldestKey);
+                }
+            }
+        }
+    }
+
+    private removeEntry(key: string, entry: CacheEntry<any>): void {
+        this.cache.delete(key);
+        this.totalBytes -= entry.sizeBytes;
+        if (this.totalBytes < 0) {
+            this.totalBytes = 0;
+        }
     }
 
     /**
@@ -102,6 +176,7 @@ class SimpleCache {
     destroy(): void {
         clearInterval(this.cleanupInterval);
         this.cache.clear();
+        this.totalBytes = 0;
     }
 }
 
@@ -112,4 +187,3 @@ export const cache = new SimpleCache();
 export const generateCacheKey = (...parts: (string | number | boolean | undefined)[]): string => {
     return parts.filter(p => p !== undefined).join(':');
 };
-

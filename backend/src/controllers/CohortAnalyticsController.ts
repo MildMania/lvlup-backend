@@ -10,11 +10,24 @@ const cohortAnalyticsService = new CohortAnalyticsService();
  * Controller for cohort-based analytics
  */
 export class CohortAnalyticsController {
+    private logMemory(label: string) {
+        const mem = process.memoryUsage();
+        console.warn(`[AnalyticsMetrics] ${label}`, {
+            rss: mem.rss,
+            heapUsed: mem.heapUsed,
+            heapTotal: mem.heapTotal,
+            external: mem.external
+        });
+    }
+
     /**
      * Get cohort retention table
      */
     async getCohortRetention(req: AuthenticatedRequest, res: Response<ApiResponse>) {
         try {
+            const startTime = Date.now();
+            this.logMemory('cohort retention start');
+
             const gameId = requireGameId(req);
 
             // Extract filter parameters and split comma-separated values
@@ -48,12 +61,19 @@ export class CohortAnalyticsController {
                 filters
             );
 
+            this.logMemory('cohort retention end');
+            console.warn(`[AnalyticsMetrics] cohort retention duration: ${Date.now() - startTime}ms`);
+
             res.status(200).json({
                 success: true,
                 data: data
             });
         } catch (error) {
             console.error('Error getting cohort retention:', error);
+            console.error('[CohortAnalytics] getCohortRetention failed', {
+                query: req.query,
+                error: error instanceof Error ? { message: error.message, stack: error.stack } : error
+            });
             res.status(500).json({
                 success: false,
                 error: 'Failed to retrieve cohort retention data'
@@ -66,6 +86,9 @@ export class CohortAnalyticsController {
      */
     async getCohortPlaytime(req: AuthenticatedRequest, res: Response<ApiResponse>) {
         try {
+            const startTime = Date.now();
+            this.logMemory('cohort playtime start');
+
             const gameId = requireGameId(req);
             const filters: any = {
                 startDate: req.query.startDate as string,
@@ -87,9 +110,16 @@ export class CohortAnalyticsController {
 
             const data = await cohortAnalyticsService.calculateCohortPlaytime(gameId, startDate, endDate, filters);
 
+            this.logMemory('cohort playtime end');
+            console.warn(`[AnalyticsMetrics] cohort playtime duration: ${Date.now() - startTime}ms`);
+
             res.status(200).json({ success: true, data });
         } catch (error) {
             console.error('Error getting cohort playtime:', error);
+            console.error('[CohortAnalytics] getCohortPlaytime failed', {
+                query: req.query,
+                error: error instanceof Error ? { message: error.message, stack: error.stack } : error
+            });
             res.status(500).json({ success: false, error: 'Failed to retrieve cohort playtime data' });
         }
     }
@@ -99,6 +129,9 @@ export class CohortAnalyticsController {
      */
     async getCohortSessionCount(req: AuthenticatedRequest, res: Response<ApiResponse>) {
         try {
+            const startTime = Date.now();
+            this.logMemory('cohort session count start');
+
             const gameId = requireGameId(req);
             const filters: any = {
                 startDate: req.query.startDate as string,
@@ -120,9 +153,16 @@ export class CohortAnalyticsController {
 
             const data = await cohortAnalyticsService.calculateCohortSessionCount(gameId, startDate, endDate, filters);
 
+            this.logMemory('cohort session count end');
+            console.warn(`[AnalyticsMetrics] cohort session count duration: ${Date.now() - startTime}ms`);
+
             res.status(200).json({ success: true, data });
         } catch (error) {
             console.error('Error getting cohort session count:', error);
+            console.error('[CohortAnalytics] getCohortSessionCount failed', {
+                query: req.query,
+                error: error instanceof Error ? { message: error.message, stack: error.stack } : error
+            });
             res.status(500).json({ success: false, error: 'Failed to retrieve cohort session count data' });
         }
     }
@@ -132,6 +172,9 @@ export class CohortAnalyticsController {
      */
     async getCohortSessionLength(req: AuthenticatedRequest, res: Response<ApiResponse>) {
         try {
+            const startTime = Date.now();
+            this.logMemory('cohort session length start');
+
             const gameId = requireGameId(req);
             const filters: any = {
                 startDate: req.query.startDate as string,
@@ -153,15 +196,25 @@ export class CohortAnalyticsController {
 
             const data = await cohortAnalyticsService.calculateCohortSessionLength(gameId, startDate, endDate, filters);
 
+            this.logMemory('cohort session length end');
+            console.warn(`[AnalyticsMetrics] cohort session length duration: ${Date.now() - startTime}ms`);
+
             res.status(200).json({ success: true, data });
         } catch (error) {
             console.error('Error getting cohort session length:', error);
+            console.error('[CohortAnalytics] getCohortSessionLength failed', {
+                query: req.query,
+                error: error instanceof Error ? { message: error.message, stack: error.stack } : error
+            });
             res.status(500).json({ success: false, error: 'Failed to retrieve cohort session length data' });
         }
     }
 
     async getAvgCompletedLevels(req: AuthenticatedRequest, res: Response<ApiResponse>) {
         try {
+            const startTime = Date.now();
+            this.logMemory('cohort avg completed levels start');
+
             // Get gameId from query parameter or from authenticated game
             const gameId = (req.query.gameId as string) || req.game?.id;
             
@@ -190,15 +243,25 @@ export class CohortAnalyticsController {
 
             const data = await cohortAnalyticsService.calculateAvgCompletedLevels(gameId, startDate, endDate, filters);
 
+            this.logMemory('cohort avg completed levels end');
+            console.warn(`[AnalyticsMetrics] cohort avg completed levels duration: ${Date.now() - startTime}ms`);
+
             res.status(200).json({ success: true, data });
         } catch (error) {
             console.error('Error getting average completed levels:', error);
+            console.error('[CohortAnalytics] getAvgCompletedLevels failed', {
+                query: req.query,
+                error: error instanceof Error ? { message: error.message, stack: error.stack } : error
+            });
             res.status(500).json({ success: false, error: 'Failed to retrieve average completed levels data' });
         }
     }
 
     async getAvgReachedLevel(req: AuthenticatedRequest, res: Response<ApiResponse>) {
         try {
+            const startTime = Date.now();
+            this.logMemory('cohort avg reached level start');
+
             // Get gameId from query parameter or from authenticated game
             const gameId = (req.query.gameId as string) || req.game?.id;
             
@@ -227,9 +290,16 @@ export class CohortAnalyticsController {
 
             const data = await cohortAnalyticsService.calculateAvgReachedLevel(gameId, startDate, endDate, filters);
 
+            this.logMemory('cohort avg reached level end');
+            console.warn(`[AnalyticsMetrics] cohort avg reached level duration: ${Date.now() - startTime}ms`);
+
             res.status(200).json({ success: true, data });
         } catch (error) {
             console.error('Error getting average reached level:', error);
+            console.error('[CohortAnalytics] getAvgReachedLevel failed', {
+                query: req.query,
+                error: error instanceof Error ? { message: error.message, stack: error.stack } : error
+            });
             res.status(500).json({ success: false, error: 'Failed to retrieve average reached level data' });
         }
     }

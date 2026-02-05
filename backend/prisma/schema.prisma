@@ -79,7 +79,6 @@ model Session {
 
   @@index([gameId, userId, startTime])
   @@index([gameId, startTime])
-  @@index([gameId, countryCode, startTime]) // Index for country-based analytics
   @@index([endTime, lastHeartbeat]) // Index for heartbeat cleanup queries
   @@map("sessions")
 }

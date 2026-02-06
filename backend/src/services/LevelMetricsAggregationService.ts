@@ -75,6 +75,28 @@ export class LevelMetricsAggregationService {
       // Group events by all dimensions and aggregate
       const groupedMetrics = this.groupAndAggregateEvents(events);
 
+      // Build daily unique user rows (exact) for multi-day accuracy
+      const dailyUserRows = this.buildDailyUserRows(gameId, normalizedDate, events);
+
+      // Replace daily user rows for this day (idempotent)
+      try {
+        await this.prisma.levelMetricsDailyUser.deleteMany({
+          where: {
+            gameId,
+            date: normalizedDate
+          }
+        });
+
+        if (dailyUserRows.length > 0) {
+          await this.prisma.levelMetricsDailyUser.createMany({
+            data: dailyUserRows,
+            skipDuplicates: true
+          });
+        }
+      } catch (userRowError) {
+        logger.error(`Failed to upsert daily user rows for ${dateStr}:`, userRowError);
+      }
+
       // Upsert aggregated data
       let upsertCount = 0;
       for (const [_key, metrics] of groupedMetrics.entries()) {
@@ -286,6 +308,118 @@ export class LevelMetricsAggregationService {
   }
 
   /**
+   * Build daily unique user rows (one row per user per day per dimension)
+   * Used to compute exact multi-day unique users without raw scans.
+   */
+  private buildDailyUserRows(
+    gameId: string,
+    date: Date,
+    events: any[]
+  ): Array<{
+    gameId: string;
+    date: Date;
+    levelId: number;
+    levelFunnel: string;
+    levelFunnelVersion: number;
+    platform: string;
+    countryCode: string;
+    appVersion: string;
+    userId: string;
+    started: boolean;
+    completed: boolean;
+    boosterUsed: boolean;
+    egpUsed: boolean;
+  }> {
+    const userLevelDimensions = new Map<string, {
+      levelId: number;
+      levelFunnel: string;
+      levelFunnelVersion: number;
+      platform: string;
+      countryCode: string;
+      appVersion: string;
+    }>();
+
+    const userRows = new Map<string, {
+      gameId: string;
+      date: Date;
+      levelId: number;
+      levelFunnel: string;
+      levelFunnelVersion: number;
+      platform: string;
+      countryCode: string;
+      appVersion: string;
+      userId: string;
+      started: boolean;
+      completed: boolean;
+      boosterUsed: boolean;
+      egpUsed: boolean;
+    }>();
+
+    for (const event of events) {
+      const props = event.properties as any;
+      const levelId = props?.levelId;
+      if (levelId === undefined || levelId === null) continue;
+
+      const userLevelKey = `${event.userId}:${levelId}`;
+      if (!userLevelDimensions.has(userLevelKey)) {
+        userLevelDimensions.set(userLevelKey, {
+          levelId,
+          levelFunnel: event.levelFunnel || '',
+          levelFunnelVersion: event.levelFunnelVersion || 0,
+          platform: event.platform || '',
+          countryCode: event.countryCode || '',
+          appVersion: event.appVersion || ''
+        });
+      }
+
+      const dims = userLevelDimensions.get(userLevelKey)!;
+      const rowKey = `${dims.levelId}:${dims.levelFunnel}:${dims.levelFunnelVersion}:${dims.platform}:${dims.countryCode}:${dims.appVersion}:${event.userId}`;
+
+      if (!userRows.has(rowKey)) {
+        userRows.set(rowKey, {
+          gameId,
+          date,
+          levelId: dims.levelId,
+          levelFunnel: dims.levelFunnel,
+          levelFunnelVersion: dims.levelFunnelVersion,
+          platform: dims.platform,
+          countryCode: dims.countryCode,
+          appVersion: dims.appVersion,
+          userId: event.userId,
+          started: false,
+          completed: false,
+          boosterUsed: false,
+          egpUsed: false
+        });
+      }
+
+      const row = userRows.get(rowKey)!;
+
+      if (event.eventName === 'level_start') {
+        row.started = true;
+      } else if (event.eventName === 'level_complete') {
+        row.completed = true;
+      } else if (event.eventName === 'level_failed') {
+        // No completion flag; keep as-is
+      }
+
+      // Booster usage
+      if (event.eventName === 'level_complete' || event.eventName === 'level_failed') {
+        if (props?.boosters && typeof props.boosters === 'object' && Object.keys(props.boosters).length > 0) {
+          row.boosterUsed = true;
+        }
+
+        const egpValue = props?.egp ?? props?.endGamePurchase;
+        if ((typeof egpValue === 'number' && egpValue > 0) || egpValue === true) {
+          row.egpUsed = true;
+        }
+      }
+    }
+
+    return Array.from(userRows.values());
+  }
+
+  /**
    * Process a single event and update group metrics
    * Matches logic from LevelFunnelService.calculateLevelMetrics()
    */
@@ -457,4 +591,3 @@ export class LevelMetricsAggregationService {
 }
 
 export default new LevelMetricsAggregationService();
-

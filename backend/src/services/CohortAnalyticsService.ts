@@ -227,69 +227,12 @@ export class CohortAnalyticsService {
         filters?: CohortAnalyticsParams
     ): Promise<CohortData[]> {
         const rows = await this.getRetentionRowsForRollups(gameId, startDate, endDate, days, filters);
-        const byInstall = new Map<string, Map<number, typeof rows[number]>>();
-        for (const row of rows) {
-            const key = row.installDate.toISOString().split('T')[0];
-            if (!key) continue;
-            if (!byInstall.has(key)) byInstall.set(key, new Map());
-            byInstall.get(key)!.set(row.dayIndex, row);
-        }
-
-        const now = new Date();
-        const todayStart = new Date();
-        todayStart.setUTCHours(0, 0, 0, 0);
-        const result: CohortData[] = [];
-
-        for (const [installDate, dayMap] of byInstall.entries()) {
-            const installDateObj = new Date(installDate + 'T00:00:00.000Z');
-            const retentionByDay: { [day: number]: number } = {};
-            const userCountByDay: { [day: number]: number } = {};
-            const cohortSize = Number(dayMap.values().next().value?.cohortSize || 0);
-
-            if (installDateObj.getTime() === todayStart.getTime()) {
-                for (const day of days) {
-                    retentionByDay[day] = -1;
-                    userCountByDay[day] = 0;
-                }
-                result.push({
-                    installDate,
-                    installCount: cohortSize,
-                    retentionByDay,
-                    userCountByDay
-                });
-                continue;
-            }
-
-            for (const day of days) {
-                const target = new Date(installDateObj);
-                target.setUTCDate(target.getUTCDate() + day);
-                const targetStart = new Date(target);
-                targetStart.setUTCHours(0, 0, 0, 0);
-                if (targetStart > now) {
-                    retentionByDay[day] = -1;
-                    userCountByDay[day] = 0;
-                    continue;
-                }
-
-                const row = dayMap.get(day);
-                const retainedUsers = Number(row?.retainedUsers || 0);
-                const completes = Number(row?.retainedLevelCompletes || 0);
-                const avg = retainedUsers > 0 ? completes / retainedUsers : 0;
-
-                retentionByDay[day] = Math.round(avg * 10) / 10;
-                userCountByDay[day] = retainedUsers;
-            }
-
-            result.push({
-                installDate,
-                installCount: cohortSize,
-                retentionByDay,
-                userCountByDay
-            });
-        }
-
-        result.sort((a, b) => a.installDate.localeCompare(b.installDate));
-        return result;
+        return this.buildCohortDataFromRollups(rows, days, (row) => {
+            const retainedUsers = row.retainedUsers;
+            const completes = row.retainedLevelCompletes;
+            const avg = retainedUsers > 0 ? completes / retainedUsers : 0;
+            return { value: Math.round(avg * 10) / 10, userCount: retainedUsers };
+        });
     }
 
     private async getCohortAvgReachedFromRollups(
@@ -309,8 +252,6 @@ export class CohortAnalyticsService {
         }
 
         const now = new Date();
-        const todayStart = new Date();
-        todayStart.setUTCHours(0, 0, 0, 0);
         const result: CohortData[] = [];
 
         for (const [installDate, dayMap] of byInstall.entries()) {
@@ -318,20 +259,6 @@ export class CohortAnalyticsService {
             const retentionByDay: { [day: number]: number } = {};
             const userCountByDay: { [day: number]: number } = {};
             const cohortSize = Number(dayMap.values().next().value?.cohortSize || 0);
-
-            if (installDateObj.getTime() === todayStart.getTime()) {
-                for (const day of days) {
-                    retentionByDay[day] = -1;
-                    userCountByDay[day] = 0;
-                }
-                result.push({
-                    installDate,
-                    installCount: cohortSize,
-                    retentionByDay,
-                    userCountByDay
-                });
-                continue;
-            }
 
             const dailyAvg: Record<number, number> = {};
             for (const day of days) {
@@ -351,12 +278,14 @@ export class CohortAnalyticsService {
                 dailyAvg[day] = retainedUsers > 0 ? completes / retainedUsers : 0;
 
                 let cumulative = 0;
+                let count = 0;
                 for (const d of days) {
                     if (d <= day && dailyAvg[d] !== undefined) {
                         cumulative += dailyAvg[d];
+                        count++;
                     }
                 }
-                retentionByDay[day] = cumulative > 0 ? Math.round(cumulative * 10) / 10 : 0;
+                retentionByDay[day] = count > 0 ? Math.round((cumulative / count) * 10) / 10 : 0;
                 userCountByDay[day] = retainedUsers;
             }
 

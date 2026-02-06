@@ -5,6 +5,7 @@ import logger from '../utils/logger';
 
 export class ActiveUsersAggregationService {
   private prisma: PrismaClient;
+  private readonly batchSize = 50000;
 
   constructor(prismaClient?: PrismaClient) {
     this.prisma = prismaClient || prisma;
@@ -59,38 +60,53 @@ export class ActiveUsersAggregationService {
     );
 
     // HLL rollups for approximate WAU/MAU (computed in app, stored as BYTEA)
-    const rows = await this.prisma.event.findMany({
-      where: {
-        gameId,
-        timestamp: {
-          gte: dayStart,
-          lt: dayEnd
-        }
-      },
-      select: {
-        userId: true,
-        platform: true,
-        countryCode: true,
-        appVersion: true
-      }
-    });
-
     const hllMap = new Map<string, {
       platform: string;
       countryCode: string;
       appVersion: string;
       hll: HLL;
     }>();
+    let lastId: string | null = null;
+    let processed = 0;
 
-    for (const row of rows) {
-      const platform = row.platform || '';
-      const countryCode = row.countryCode || '';
-      const appVersion = row.appVersion || '';
-      const key = `${platform}::${countryCode}::${appVersion}`;
-      if (!hllMap.has(key)) {
-        hllMap.set(key, { platform, countryCode, appVersion, hll: new HLL() });
+    while (true) {
+      const rows = await this.prisma.event.findMany({
+        where: {
+          gameId,
+          timestamp: {
+            gte: dayStart,
+            lt: dayEnd
+          },
+          ...(lastId ? { id: { gt: lastId } } : {})
+        },
+        select: {
+          id: true,
+          userId: true,
+          platform: true,
+          countryCode: true,
+          appVersion: true
+        },
+        orderBy: { id: 'asc' },
+        take: this.batchSize
+      });
+
+      if (rows.length === 0) {
+        break;
       }
-      hllMap.get(key)!.hll.add(row.userId);
+
+      for (const row of rows) {
+        const platform = row.platform || '';
+        const countryCode = row.countryCode || '';
+        const appVersion = row.appVersion || '';
+        const key = `${platform}::${countryCode}::${appVersion}`;
+        if (!hllMap.has(key)) {
+          hllMap.set(key, { platform, countryCode, appVersion, hll: new HLL() });
+        }
+        hllMap.get(key)!.hll.add(row.userId);
+      }
+
+      processed += rows.length;
+      lastId = rows[rows.length - 1].id;
     }
 
     if (hllMap.size > 0) {

@@ -387,9 +387,11 @@ export class CohortAnalyticsService {
                 userCountByDay[day] = mapped.userCount;
             }
 
+            const installCount = userCountByDay[0] !== undefined ? userCountByDay[0] : cohortSize;
+
             result.push({
                 installDate,
-                installCount: cohortSize,
+                installCount,
                 retentionByDay,
                 userCountByDay
             });

@@ -112,23 +112,33 @@ export class CohortAggregationService {
     const rows = await this.prisma.$queryRaw<
       Array<{ platform: string | null; countryCode: string | null; appVersion: string | null; count: bigint }>
     >(Prisma.sql`
-      WITH cohort AS (
+      WITH cohort_users AS (
         SELECT u."id"
         FROM "users" u
         WHERE u."gameId" = ${gameId}
           AND u."createdAt" >= ${installStart}
           AND u."createdAt" < ${installEnd}
+      ),
+      first_event AS (
+        SELECT DISTINCT ON (e."userId")
+          e."userId" AS "userId",
+          e."platform" AS "platform",
+          e."countryCode" AS "countryCode",
+          e."appVersion" AS "appVersion"
+        FROM "events" e
+        JOIN cohort_users cu ON cu."id" = e."userId"
+        WHERE e."gameId" = ${gameId}
+          AND e."timestamp" >= ${installStart}
+          AND e."timestamp" < ${installEnd}
+        ORDER BY e."userId", e."timestamp" ASC
       )
       SELECT
-        COALESCE(e."platform",'') AS "platform",
-        COALESCE(e."countryCode",'') AS "countryCode",
-        COALESCE(e."appVersion",'') AS "appVersion",
-        COUNT(DISTINCT e."userId")::bigint AS "count"
-      FROM "events" e
-      JOIN cohort c ON c."id" = e."userId"
-      WHERE e."gameId" = ${gameId}
-        AND e."timestamp" >= ${installStart}
-        AND e."timestamp" < ${installEnd}
+        COALESCE(f."platform",'') AS "platform",
+        COALESCE(f."countryCode",'') AS "countryCode",
+        COALESCE(f."appVersion",'') AS "appVersion",
+        COUNT(*)::bigint AS "count"
+      FROM cohort_users cu
+      LEFT JOIN first_event f ON f."userId" = cu."id"
       GROUP BY 1,2,3
     `);
 
@@ -153,20 +163,33 @@ export class CohortAggregationService {
     const result = await this.prisma.$queryRaw<
       Array<{ retained_users: bigint; retained_level_completes: bigint }>
     >(Prisma.sql`
-      WITH cohort AS (
+      WITH cohort_users AS (
         SELECT u."id"
         FROM "users" u
-        JOIN "events" e ON e."userId" = u."id"
         WHERE u."gameId" = ${gameId}
           AND u."createdAt" >= ${installStart}
           AND u."createdAt" < ${installEnd}
-          AND e."gameId" = ${gameId}
+      ),
+      first_event AS (
+        SELECT DISTINCT ON (e."userId")
+          e."userId" AS "userId",
+          e."platform" AS "platform",
+          e."countryCode" AS "countryCode",
+          e."appVersion" AS "appVersion"
+        FROM "events" e
+        JOIN cohort_users cu ON cu."id" = e."userId"
+        WHERE e."gameId" = ${gameId}
           AND e."timestamp" >= ${installStart}
           AND e."timestamp" < ${installEnd}
-          AND COALESCE(e."platform",'') = ${platform}
-          AND COALESCE(e."countryCode",'') = ${countryCode}
-          AND COALESCE(e."appVersion",'') = ${appVersion}
-        GROUP BY u."id"
+        ORDER BY e."userId", e."timestamp" ASC
+      ),
+      cohort AS (
+        SELECT cu."id"
+        FROM cohort_users cu
+        LEFT JOIN first_event f ON f."userId" = cu."id"
+        WHERE COALESCE(f."platform",'') = ${platform}
+          AND COALESCE(f."countryCode",'') = ${countryCode}
+          AND COALESCE(f."appVersion",'') = ${appVersion}
       ),
       retained AS (
         SELECT DISTINCT e."userId"
@@ -175,9 +198,6 @@ export class CohortAggregationService {
         WHERE e."gameId" = ${gameId}
           AND e."timestamp" >= ${targetStart}
           AND e."timestamp" < ${targetEnd}
-          AND COALESCE(e."platform",'') = ${platform}
-          AND COALESCE(e."countryCode",'') = ${countryCode}
-          AND COALESCE(e."appVersion",'') = ${appVersion}
       )
       SELECT
         (SELECT COUNT(*) FROM retained)::bigint AS "retained_users",
@@ -189,9 +209,6 @@ export class CohortAggregationService {
             AND e."eventName" = 'level_complete'
             AND e."timestamp" >= ${targetStart}
             AND e."timestamp" < ${targetEnd}
-            AND COALESCE(e."platform",'') = ${platform}
-            AND COALESCE(e."countryCode",'') = ${countryCode}
-            AND COALESCE(e."appVersion",'') = ${appVersion}
         ) AS "retained_level_completes"
     `);
     return {
@@ -213,20 +230,33 @@ export class CohortAggregationService {
     const result = await this.prisma.$queryRaw<
       Array<{ session_users: bigint; total_sessions: bigint; total_duration: bigint }>
     >(Prisma.sql`
-      WITH cohort AS (
+      WITH cohort_users AS (
         SELECT u."id"
         FROM "users" u
-        JOIN "events" e ON e."userId" = u."id"
         WHERE u."gameId" = ${gameId}
           AND u."createdAt" >= ${installStart}
           AND u."createdAt" < ${installEnd}
-          AND e."gameId" = ${gameId}
+      ),
+      first_event AS (
+        SELECT DISTINCT ON (e."userId")
+          e."userId" AS "userId",
+          e."platform" AS "platform",
+          e."countryCode" AS "countryCode",
+          e."appVersion" AS "appVersion"
+        FROM "events" e
+        JOIN cohort_users cu ON cu."id" = e."userId"
+        WHERE e."gameId" = ${gameId}
           AND e."timestamp" >= ${installStart}
           AND e."timestamp" < ${installEnd}
-          AND COALESCE(e."platform",'') = ${platform}
-          AND COALESCE(e."countryCode",'') = ${countryCode}
-          AND COALESCE(e."appVersion",'') = ${appVersion}
-        GROUP BY u."id"
+        ORDER BY e."userId", e."timestamp" ASC
+      ),
+      cohort AS (
+        SELECT cu."id"
+        FROM cohort_users cu
+        LEFT JOIN first_event f ON f."userId" = cu."id"
+        WHERE COALESCE(f."platform",'') = ${platform}
+          AND COALESCE(f."countryCode",'') = ${countryCode}
+          AND COALESCE(f."appVersion",'') = ${appVersion}
       ),
       sessions_base AS (
         SELECT
@@ -242,9 +272,6 @@ export class CohortAggregationService {
         WHERE s."gameId" = ${gameId}
           AND s."startTime" >= ${targetStart}
           AND s."startTime" < ${targetEnd}
-          AND COALESCE(s."platform",'') = ${platform}
-          AND COALESCE(s."countryCode",'') = ${countryCode}
-          AND COALESCE(s."version",'') = ${appVersion}
       )
       SELECT
         COUNT(*) FILTER (WHERE duration_sec > 0)::bigint AS "total_sessions",

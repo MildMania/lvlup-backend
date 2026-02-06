@@ -75,52 +75,28 @@ export class AnalyticsMetricsService {
                     ? (Array.isArray(filters.version) ? filters.version : [filters.version])
                     : [];
 
-                // Eligible users: users created in range whose Day N has passed
-                const eligibleResult = await this.prisma.$queryRaw<{ count: bigint }[]>(Prisma.sql`
-                    SELECT COUNT(*) AS count
-                    FROM "users" u
-                    WHERE u."gameId" = ${gameId}
-                      AND u."createdAt" >= ${startDate}
-                      AND u."createdAt" <= ${endDate}
-                      AND u."createdAt" + (${day} || ' days')::interval <= ${endDate}
-                      ${platforms.length ? Prisma.sql`AND u."platform" IN (${Prisma.join(platforms)})` : Prisma.sql``}
-                      ${versions.length ? Prisma.sql`AND u."version" IN (${Prisma.join(versions)})` : Prisma.sql``}
-                      ${
-                          countries.length
-                              ? Prisma.sql`AND EXISTS (
-                                    SELECT 1 FROM "events" e
-                                    WHERE e."userId" = u."id"
-                                      AND e."gameId" = ${gameId}
-                                      AND e."countryCode" IN (${Prisma.join(countries)})
-                                )`
-                              : Prisma.sql``
-                      }
+                const eligibleEnd = new Date(endDate);
+                eligibleEnd.setUTCDate(eligibleEnd.getUTCDate() - day);
+
+                const result = await this.prisma.$queryRaw<
+                    Array<{ cohort_size: bigint; retained_users: bigint }>
+                >(Prisma.sql`
+                    SELECT
+                        COALESCE(SUM(CASE WHEN "dayIndex" = 0 THEN "cohortSize" ELSE 0 END), 0)::bigint AS "cohort_size",
+                        COALESCE(SUM(CASE WHEN "dayIndex" = ${day} THEN "retainedUsers" ELSE 0 END), 0)::bigint AS "retained_users"
+                    FROM "cohort_retention_daily"
+                    WHERE "gameId" = ${gameId}
+                      AND "installDate" >= ${startDate}
+                      AND "installDate" <= ${eligibleEnd}
+                      AND "dayIndex" IN (0, ${day})
+                      ${platforms.length ? Prisma.sql`AND "platform" IN (${Prisma.join(platforms)})` : Prisma.sql``}
+                      ${countries.length ? Prisma.sql`AND "countryCode" IN (${Prisma.join(countries)})` : Prisma.sql``}
+                      ${versions.length ? Prisma.sql`AND "appVersion" IN (${Prisma.join(versions)})` : Prisma.sql``}
                 `);
-                const eligibleUsersCount = Number(eligibleResult[0]?.count || 0);
 
-                if (eligibleUsersCount === 0) {
-                    return { day, count: 0, percentage: 0 };
-                }
-
-                // Retained users: users whose event day matches createdAt + N days
-                const retainedResult = await this.prisma.$queryRaw<{ count: bigint }[]>(Prisma.sql`
-                    SELECT COUNT(DISTINCT e."userId") AS count
-                    FROM "events" e
-                    JOIN "users" u ON u."id" = e."userId"
-                    WHERE u."gameId" = ${gameId}
-                      AND u."createdAt" >= ${startDate}
-                      AND u."createdAt" <= ${endDate}
-                      AND e."gameId" = ${gameId}
-                      AND e."timestamp" >= ${startDate}
-                      AND e."timestamp" <= ${endDate}
-                      AND date_trunc('day', e."timestamp") = date_trunc('day', u."createdAt") + (${day} || ' days')::interval
-                      ${countries.length ? Prisma.sql`AND e."countryCode" IN (${Prisma.join(countries)})` : Prisma.sql``}
-                      ${platforms.length ? Prisma.sql`AND u."platform" IN (${Prisma.join(platforms)})` : Prisma.sql``}
-                      ${versions.length ? Prisma.sql`AND u."version" IN (${Prisma.join(versions)})` : Prisma.sql``}
-                `);
-                const retainedCount = Number(retainedResult[0]?.count || 0);
-
-                const percentage = eligibleUsersCount > 0 ? (retainedCount / eligibleUsersCount) * 100 : 0;
+                const cohortSize = Number(result[0]?.cohort_size || 0);
+                const retainedCount = Number(result[0]?.retained_users || 0);
+                const percentage = cohortSize > 0 ? (retainedCount / cohortSize) * 100 : 0;
 
                 return {
                     day,
@@ -332,29 +308,18 @@ export class AnalyticsMetricsService {
                 ),
                 session_agg AS (
                     SELECT
-                        date_trunc('day', s."startTime") AS day,
-                        COUNT(*) AS total_sessions,
-                        COUNT(DISTINCT s."userId") AS unique_users,
-                        COALESCE(SUM(s."duration"), 0) AS total_duration
-                    FROM "sessions" s
-                    WHERE s."gameId" = ${gameId}
-                      AND s."startTime" >= ${startDate}
-                      AND s."startTime" <= ${endDate}
-                      AND s."endTime" IS NOT NULL
-                      AND s."duration" IS NOT NULL
-                      AND s."duration" > 0
-                      ${platforms.length ? Prisma.sql`AND s."platform" IN (${Prisma.join(platforms)})` : Prisma.sql``}
-                      ${versions.length ? Prisma.sql`AND s."version" IN (${Prisma.join(versions)})` : Prisma.sql``}
-                      ${
-                          countries.length
-                              ? Prisma.sql`AND EXISTS (
-                                    SELECT 1 FROM "events" e
-                                    WHERE e."sessionId" = s."id"
-                                      AND e."countryCode" IN (${Prisma.join(countries)})
-                                )`
-                              : Prisma.sql``
-                      }
-                    GROUP BY date_trunc('day', s."startTime")
+                        date_trunc('day', ("installDate" + ("dayIndex" || ' days')::interval)) AS day,
+                        SUM("totalSessions") AS total_sessions,
+                        SUM("sessionUsers") AS unique_users,
+                        SUM("totalDurationSec") AS total_duration
+                    FROM "cohort_session_metrics_daily"
+                    WHERE "gameId" = ${gameId}
+                      AND ("installDate" + ("dayIndex" || ' days')::interval) >= ${startDate}
+                      AND ("installDate" + ("dayIndex" || ' days')::interval) <= ${endDate}
+                      ${platforms.length ? Prisma.sql`AND "platform" IN (${Prisma.join(platforms)})` : Prisma.sql``}
+                      ${versions.length ? Prisma.sql`AND "appVersion" IN (${Prisma.join(versions)})` : Prisma.sql``}
+                      ${countries.length ? Prisma.sql`AND "countryCode" IN (${Prisma.join(countries)})` : Prisma.sql``}
+                    GROUP BY date_trunc('day', ("installDate" + ("dayIndex" || ' days')::interval))
                 )
                 SELECT
                     d.day AS day,

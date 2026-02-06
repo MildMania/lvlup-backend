@@ -947,8 +947,12 @@ model CohortRetentionDaily {
   gameId      String
   installDate DateTime // Cohort install date (UTC date only)
   dayIndex    Int      // Day offset from install date
+  platform    String   @default("")
+  countryCode String   @default("")
+  appVersion  String   @default("")
   cohortSize  Int      @default(0)
   retainedUsers Int    @default(0)
+  retainedLevelCompletes Int @default(0)
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -957,7 +961,8 @@ model CohortRetentionDaily {
 
   @@index([gameId, installDate])
   @@index([gameId, dayIndex])
-  @@unique([gameId, installDate, dayIndex], name: "unique_cohort_retention_daily")
+  @@index([gameId, installDate, platform, countryCode, appVersion])
+  @@unique([gameId, installDate, dayIndex, platform, countryCode, appVersion], name: "unique_cohort_retention_daily")
   @@map("cohort_retention_daily")
 }
 
@@ -966,6 +971,9 @@ model CohortSessionMetricsDaily {
   gameId      String
   installDate DateTime // Cohort install date (UTC date only)
   dayIndex    Int      // Day offset from install date
+  platform    String   @default("")
+  countryCode String   @default("")
+  appVersion  String   @default("")
   cohortSize  Int      @default(0)
   sessionUsers Int     @default(0)
   totalSessions Int    @default(0)
@@ -978,6 +986,7 @@ model CohortSessionMetricsDaily {
 
   @@index([gameId, installDate])
   @@index([gameId, dayIndex])
-  @@unique([gameId, installDate, dayIndex], name: "unique_cohort_session_metrics_daily")
+  @@index([gameId, installDate, platform, countryCode, appVersion])
+  @@unique([gameId, installDate, dayIndex, platform, countryCode, appVersion], name: "unique_cohort_session_metrics_daily")
   @@map("cohort_session_metrics_daily")
 }

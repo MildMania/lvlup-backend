@@ -26,22 +26,55 @@ export class CohortAggregationService {
       const installEnd = new Date(installDate);
       installEnd.setUTCDate(installEnd.getUTCDate() + 1);
 
-      const cohortSize = await this.getCohortSize(gameId, installDate, installEnd);
-      if (cohortSize === 0) continue;
+      const cohorts = await this.getCohortSizesByDimensions(gameId, installDate, installEnd);
+      if (cohorts.length === 0) continue;
 
-      const retainedUsers = await this.getRetainedUsers(gameId, installDate, installEnd, target, targetEnd);
-      await this.upsertRetention(gameId, installDate, dayIndex, cohortSize, retainedUsers);
+      for (const cohort of cohorts) {
+        const retention = await this.getRetentionAndCompletesByDimensions(
+          gameId,
+          installDate,
+          installEnd,
+          target,
+          targetEnd,
+          cohort.platform,
+          cohort.countryCode,
+          cohort.appVersion
+        );
+        await this.upsertRetention(
+          gameId,
+          installDate,
+          dayIndex,
+          cohort.platform,
+          cohort.countryCode,
+          cohort.appVersion,
+          cohort.cohortSize,
+          retention.retainedUsers,
+          retention.retainedLevelCompletes
+        );
 
-      const sessionMetrics = await this.getSessionMetrics(gameId, installDate, installEnd, target, targetEnd);
-      await this.upsertSessionMetrics(
-        gameId,
-        installDate,
-        dayIndex,
-        cohortSize,
-        sessionMetrics.sessionUsers,
-        sessionMetrics.totalSessions,
-        sessionMetrics.totalDurationSec
-      );
+        const sessionMetrics = await this.getSessionMetricsByDimensions(
+          gameId,
+          installDate,
+          installEnd,
+          target,
+          targetEnd,
+          cohort.platform,
+          cohort.countryCode,
+          cohort.appVersion
+        );
+        await this.upsertSessionMetrics(
+          gameId,
+          installDate,
+          dayIndex,
+          cohort.platform,
+          cohort.countryCode,
+          cohort.appVersion,
+          cohort.cohortSize,
+          sessionMetrics.sessionUsers,
+          sessionMetrics.totalSessions,
+          sessionMetrics.totalDurationSec
+        );
+      }
     }
   }
 
@@ -71,54 +104,129 @@ export class CohortAggregationService {
     return results.map((r) => r.gameId);
   }
 
-  private async getCohortSize(gameId: string, installStart: Date, installEnd: Date): Promise<number> {
-    const result = await this.prisma.$queryRaw<{ count: bigint }[]>(Prisma.sql`
-      SELECT COUNT(*)::bigint AS "count"
-      FROM "users"
-      WHERE "gameId" = ${gameId}
-        AND "createdAt" >= ${installStart}
-        AND "createdAt" < ${installEnd}
-    `);
-    return Number(result[0]?.count || 0);
-  }
-
-  private async getRetainedUsers(
+  private async getCohortSizesByDimensions(
     gameId: string,
     installStart: Date,
-    installEnd: Date,
-    targetStart: Date,
-    targetEnd: Date
-  ): Promise<number> {
-    const result = await this.prisma.$queryRaw<{ count: bigint }[]>(Prisma.sql`
-      SELECT COUNT(DISTINCT e."userId")::bigint AS "count"
+    installEnd: Date
+  ): Promise<Array<{ platform: string; countryCode: string; appVersion: string; cohortSize: number }>> {
+    const rows = await this.prisma.$queryRaw<
+      Array<{ platform: string | null; countryCode: string | null; appVersion: string | null; count: bigint }>
+    >(Prisma.sql`
+      WITH cohort AS (
+        SELECT u."id"
+        FROM "users" u
+        WHERE u."gameId" = ${gameId}
+          AND u."createdAt" >= ${installStart}
+          AND u."createdAt" < ${installEnd}
+      )
+      SELECT
+        COALESCE(e."platform",'') AS "platform",
+        COALESCE(e."countryCode",'') AS "countryCode",
+        COALESCE(e."appVersion",'') AS "appVersion",
+        COUNT(DISTINCT e."userId")::bigint AS "count"
       FROM "events" e
-      JOIN "users" u ON u."id" = e."userId"
+      JOIN cohort c ON c."id" = e."userId"
       WHERE e."gameId" = ${gameId}
-        AND u."gameId" = ${gameId}
-        AND u."createdAt" >= ${installStart}
-        AND u."createdAt" < ${installEnd}
-        AND e."timestamp" >= ${targetStart}
-        AND e."timestamp" < ${targetEnd}
+        AND e."timestamp" >= ${installStart}
+        AND e."timestamp" < ${installEnd}
+      GROUP BY 1,2,3
     `);
-    return Number(result[0]?.count || 0);
+
+    return rows.map((row) => ({
+      platform: row.platform || '',
+      countryCode: row.countryCode || '',
+      appVersion: row.appVersion || '',
+      cohortSize: Number(row.count || 0)
+    }));
   }
 
-  private async getSessionMetrics(
+  private async getRetentionAndCompletesByDimensions(
     gameId: string,
     installStart: Date,
     installEnd: Date,
     targetStart: Date,
-    targetEnd: Date
+    targetEnd: Date,
+    platform: string,
+    countryCode: string,
+    appVersion: string
+  ): Promise<{ retainedUsers: number; retainedLevelCompletes: number }> {
+    const result = await this.prisma.$queryRaw<
+      Array<{ retained_users: bigint; retained_level_completes: bigint }>
+    >(Prisma.sql`
+      WITH cohort AS (
+        SELECT u."id"
+        FROM "users" u
+        JOIN "events" e ON e."userId" = u."id"
+        WHERE u."gameId" = ${gameId}
+          AND u."createdAt" >= ${installStart}
+          AND u."createdAt" < ${installEnd}
+          AND e."gameId" = ${gameId}
+          AND e."timestamp" >= ${installStart}
+          AND e."timestamp" < ${installEnd}
+          AND COALESCE(e."platform",'') = ${platform}
+          AND COALESCE(e."countryCode",'') = ${countryCode}
+          AND COALESCE(e."appVersion",'') = ${appVersion}
+        GROUP BY u."id"
+      ),
+      retained AS (
+        SELECT DISTINCT e."userId"
+        FROM "events" e
+        JOIN cohort c ON c."id" = e."userId"
+        WHERE e."gameId" = ${gameId}
+          AND e."timestamp" >= ${targetStart}
+          AND e."timestamp" < ${targetEnd}
+          AND COALESCE(e."platform",'') = ${platform}
+          AND COALESCE(e."countryCode",'') = ${countryCode}
+          AND COALESCE(e."appVersion",'') = ${appVersion}
+      )
+      SELECT
+        (SELECT COUNT(*) FROM retained)::bigint AS "retained_users",
+        (
+          SELECT COUNT(*)::bigint
+          FROM "events" e
+          JOIN retained r ON r."userId" = e."userId"
+          WHERE e."gameId" = ${gameId}
+            AND e."eventName" = 'level_complete'
+            AND e."timestamp" >= ${targetStart}
+            AND e."timestamp" < ${targetEnd}
+            AND COALESCE(e."platform",'') = ${platform}
+            AND COALESCE(e."countryCode",'') = ${countryCode}
+            AND COALESCE(e."appVersion",'') = ${appVersion}
+        ) AS "retained_level_completes"
+    `);
+    return {
+      retainedUsers: Number(result[0]?.retained_users || 0),
+      retainedLevelCompletes: Number(result[0]?.retained_level_completes || 0)
+    };
+  }
+
+  private async getSessionMetricsByDimensions(
+    gameId: string,
+    installStart: Date,
+    installEnd: Date,
+    targetStart: Date,
+    targetEnd: Date,
+    platform: string,
+    countryCode: string,
+    appVersion: string
   ): Promise<{ sessionUsers: number; totalSessions: number; totalDurationSec: number }> {
     const result = await this.prisma.$queryRaw<
       Array<{ session_users: bigint; total_sessions: bigint; total_duration: bigint }>
     >(Prisma.sql`
       WITH cohort AS (
-        SELECT "id"
-        FROM "users"
-        WHERE "gameId" = ${gameId}
-          AND "createdAt" >= ${installStart}
-          AND "createdAt" < ${installEnd}
+        SELECT u."id"
+        FROM "users" u
+        JOIN "events" e ON e."userId" = u."id"
+        WHERE u."gameId" = ${gameId}
+          AND u."createdAt" >= ${installStart}
+          AND u."createdAt" < ${installEnd}
+          AND e."gameId" = ${gameId}
+          AND e."timestamp" >= ${installStart}
+          AND e."timestamp" < ${installEnd}
+          AND COALESCE(e."platform",'') = ${platform}
+          AND COALESCE(e."countryCode",'') = ${countryCode}
+          AND COALESCE(e."appVersion",'') = ${appVersion}
+        GROUP BY u."id"
       ),
       sessions_base AS (
         SELECT
@@ -134,6 +242,9 @@ export class CohortAggregationService {
         WHERE s."gameId" = ${gameId}
           AND s."startTime" >= ${targetStart}
           AND s."startTime" < ${targetEnd}
+          AND COALESCE(s."platform",'') = ${platform}
+          AND COALESCE(s."countryCode",'') = ${countryCode}
+          AND COALESCE(s."version",'') = ${appVersion}
       )
       SELECT
         COUNT(*) FILTER (WHERE duration_sec > 0)::bigint AS "total_sessions",
@@ -154,26 +265,35 @@ export class CohortAggregationService {
     gameId: string,
     installDate: Date,
     dayIndex: number,
+    platform: string,
+    countryCode: string,
+    appVersion: string,
     cohortSize: number,
-    retainedUsers: number
+    retainedUsers: number,
+    retainedLevelCompletes: number
   ): Promise<void> {
     await this.prisma.$executeRaw`
       INSERT INTO "cohort_retention_daily"
-        ("id","gameId","installDate","dayIndex","cohortSize","retainedUsers","createdAt","updatedAt")
+        ("id","gameId","installDate","dayIndex","platform","countryCode","appVersion","cohortSize","retainedUsers","retainedLevelCompletes","createdAt","updatedAt")
       VALUES (
-        ${this.buildId('crd', gameId, installDate, dayIndex)},
+        ${this.buildId('crd', gameId, installDate, dayIndex, platform, countryCode, appVersion)},
         ${gameId},
         ${installDate},
         ${dayIndex},
+        ${platform},
+        ${countryCode},
+        ${appVersion},
         ${cohortSize},
         ${retainedUsers},
+        ${retainedLevelCompletes},
         now(),
         now()
       )
-      ON CONFLICT ("gameId","installDate","dayIndex")
+      ON CONFLICT ("gameId","installDate","dayIndex","platform","countryCode","appVersion")
       DO UPDATE SET
         "cohortSize" = EXCLUDED."cohortSize",
         "retainedUsers" = EXCLUDED."retainedUsers",
+        "retainedLevelCompletes" = EXCLUDED."retainedLevelCompletes",
         "updatedAt" = now()
     `;
   }
@@ -182,6 +302,9 @@ export class CohortAggregationService {
     gameId: string,
     installDate: Date,
     dayIndex: number,
+    platform: string,
+    countryCode: string,
+    appVersion: string,
     cohortSize: number,
     sessionUsers: number,
     totalSessions: number,
@@ -189,12 +312,15 @@ export class CohortAggregationService {
   ): Promise<void> {
     await this.prisma.$executeRaw`
       INSERT INTO "cohort_session_metrics_daily"
-        ("id","gameId","installDate","dayIndex","cohortSize","sessionUsers","totalSessions","totalDurationSec","createdAt","updatedAt")
+        ("id","gameId","installDate","dayIndex","platform","countryCode","appVersion","cohortSize","sessionUsers","totalSessions","totalDurationSec","createdAt","updatedAt")
       VALUES (
-        ${this.buildId('csd', gameId, installDate, dayIndex)},
+        ${this.buildId('csd', gameId, installDate, dayIndex, platform, countryCode, appVersion)},
         ${gameId},
         ${installDate},
         ${dayIndex},
+        ${platform},
+        ${countryCode},
+        ${appVersion},
         ${cohortSize},
         ${sessionUsers},
         ${totalSessions},
@@ -202,7 +328,7 @@ export class CohortAggregationService {
         now(),
         now()
       )
-      ON CONFLICT ("gameId","installDate","dayIndex")
+      ON CONFLICT ("gameId","installDate","dayIndex","platform","countryCode","appVersion")
       DO UPDATE SET
         "cohortSize" = EXCLUDED."cohortSize",
         "sessionUsers" = EXCLUDED."sessionUsers",
@@ -212,9 +338,9 @@ export class CohortAggregationService {
     `;
   }
 
-  private buildId(prefix: string, gameId: string, installDate: Date, dayIndex: number): string {
+  private buildId(prefix: string, gameId: string, installDate: Date, dayIndex: number, platform: string, countryCode: string, appVersion: string): string {
     const date = installDate.toISOString().split('T')[0] || '';
-    return `${prefix}_${gameId}_${date}_${dayIndex}`;
+    return `${prefix}_${gameId}_${date}_${dayIndex}_${platform}_${countryCode}_${appVersion}`;
   }
 }
 

@@ -88,7 +88,7 @@ export class LevelFunnelController {
             }
 
             // Use fast query by default (unless explicitly disabled)
-            const shouldUseFast = useFast === undefined || useFast === 'true';
+            const shouldUseFast = true;
             const levels = shouldUseFast 
                 ? await levelFunnelService.getLevelFunnelDataFast(filters)
                 : await levelFunnelService.getLevelFunnelData(filters);

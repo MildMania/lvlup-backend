@@ -2,11 +2,12 @@ import { Request, Response } from 'express';
 import levelFunnelService from '../services/LevelFunnelService';
 import { ApiResponse } from '../types/api';
 import logger from '../utils/logger';
+import { logAnalyticsMetrics } from '../utils/analyticsDebug';
 
 export class LevelFunnelController {
     private logMemory(label: string) {
         const mem = process.memoryUsage();
-        logger.warn(`[AnalyticsMetrics] ${label}`, {
+        logAnalyticsMetrics(`[AnalyticsMetrics] ${label}`, {
             rss: mem.rss,
             heapUsed: mem.heapUsed,
             heapTotal: mem.heapTotal,
@@ -94,7 +95,7 @@ export class LevelFunnelController {
                 : await levelFunnelService.getLevelFunnelData(filters);
 
             this.logMemory('level funnel end');
-            logger.warn(`[AnalyticsMetrics] level funnel duration: ${Date.now() - startTime}ms`);
+            logAnalyticsMetrics(`[AnalyticsMetrics] level funnel duration: ${Date.now() - startTime}ms`);
 
             res.json({
                 success: true,
@@ -175,7 +176,7 @@ export class LevelFunnelController {
             }
 
             this.logMemory('level details end');
-            logger.warn(`[AnalyticsMetrics] level details duration: ${Date.now() - startTime}ms`);
+            logAnalyticsMetrics(`[AnalyticsMetrics] level details duration: ${Date.now() - startTime}ms`);
 
             res.json({
                 success: true,

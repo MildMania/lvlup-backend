@@ -12,6 +12,7 @@ import dataRetentionService from './services/DataRetentionService';
 import { startLevelMetricsAggregationJob, startLevelMetricsHourlyTodayJob } from './jobs/levelMetricsAggregation';
 import { startActiveUsersAggregationJob, startActiveUsersHourlyTodayJob } from './jobs/activeUsersAggregation';
 import { startCohortAggregationJob, startCohortHourlyTodayJob } from './jobs/cohortAggregation';
+import { startMonetizationAggregationJob, startMonetizationHourlyTodayJob } from './jobs/monetizationAggregation';
 import { eventBatchWriter } from './services/EventBatchWriter';
 import { revenueBatchWriter } from './services/RevenueBatchWriter';
 import { sessionHeartbeatBatchWriter } from './services/SessionHeartbeatBatchWriter';
@@ -47,7 +48,22 @@ app.use(helmet());
 app.use(express.json({ limit: '2mb' })); // Increased limit for batch events
 app.use(express.urlencoded({ extended: true }));
 app.use(cookieParser());
-app.use(morgan('combined')); // HTTP request logging
+
+const enableHttpAccessLog =
+    process.env.HTTP_ACCESS_LOG === '1' ||
+    process.env.HTTP_ACCESS_LOG === 'true' ||
+    process.env.NODE_ENV !== 'production';
+
+if (enableHttpAccessLog) {
+    app.use(morgan('combined'));
+} else {
+    // In production, log only error responses unless explicitly enabled
+    app.use(
+        morgan('combined', {
+            skip: (_req, res) => res.statusCode < 400
+        })
+    );
+}
 
 if (process.env.ANALYTICS_TRACE === '1' || process.env.ANALYTICS_TRACE === 'true') {
     app.use((req, res, next) => {
@@ -295,6 +311,13 @@ app.listen(PORT, '0.0.0.0', () => {
 
     startCohortHourlyTodayJob();
     logger.info('Cohort hourly aggregation job started');
+
+    // Start monetization aggregation jobs
+    startMonetizationAggregationJob();
+    logger.info('Monetization aggregation cron job started');
+
+    startMonetizationHourlyTodayJob();
+    logger.info('Monetization hourly aggregation job started');
 });
 
 // Graceful shutdown

@@ -3,6 +3,7 @@ import { AuthenticatedRequest } from '../middleware/auth';
 import { CohortAnalyticsService } from '../services/CohortAnalyticsService';
 import { ApiResponse } from '../types/api';
 import { requireGameId } from '../utils/gameIdHelper';
+import { logAnalyticsMetrics } from '../utils/analyticsDebug';
 
 const cohortAnalyticsService = new CohortAnalyticsService();
 
@@ -12,7 +13,7 @@ const cohortAnalyticsService = new CohortAnalyticsService();
 export class CohortAnalyticsController {
     private logMemory(label: string) {
         const mem = process.memoryUsage();
-        console.warn(`[AnalyticsMetrics] ${label}`, {
+        logAnalyticsMetrics(`[AnalyticsMetrics] ${label}`, {
             rss: mem.rss,
             heapUsed: mem.heapUsed,
             heapTotal: mem.heapTotal,
@@ -62,7 +63,7 @@ export class CohortAnalyticsController {
             );
 
             this.logMemory('cohort retention end');
-            console.warn(`[AnalyticsMetrics] cohort retention duration: ${Date.now() - startTime}ms`);
+            logAnalyticsMetrics(`[AnalyticsMetrics] cohort retention duration: ${Date.now() - startTime}ms`);
 
             res.status(200).json({
                 success: true,
@@ -111,7 +112,7 @@ export class CohortAnalyticsController {
             const data = await cohortAnalyticsService.calculateCohortPlaytime(gameId, startDate, endDate, filters);
 
             this.logMemory('cohort playtime end');
-            console.warn(`[AnalyticsMetrics] cohort playtime duration: ${Date.now() - startTime}ms`);
+            logAnalyticsMetrics(`[AnalyticsMetrics] cohort playtime duration: ${Date.now() - startTime}ms`);
 
             res.status(200).json({ success: true, data });
         } catch (error) {
@@ -154,7 +155,7 @@ export class CohortAnalyticsController {
             const data = await cohortAnalyticsService.calculateCohortSessionCount(gameId, startDate, endDate, filters);
 
             this.logMemory('cohort session count end');
-            console.warn(`[AnalyticsMetrics] cohort session count duration: ${Date.now() - startTime}ms`);
+            logAnalyticsMetrics(`[AnalyticsMetrics] cohort session count duration: ${Date.now() - startTime}ms`);
 
             res.status(200).json({ success: true, data });
         } catch (error) {
@@ -197,7 +198,7 @@ export class CohortAnalyticsController {
             const data = await cohortAnalyticsService.calculateCohortSessionLength(gameId, startDate, endDate, filters);
 
             this.logMemory('cohort session length end');
-            console.warn(`[AnalyticsMetrics] cohort session length duration: ${Date.now() - startTime}ms`);
+            logAnalyticsMetrics(`[AnalyticsMetrics] cohort session length duration: ${Date.now() - startTime}ms`);
 
             res.status(200).json({ success: true, data });
         } catch (error) {
@@ -244,7 +245,7 @@ export class CohortAnalyticsController {
             const data = await cohortAnalyticsService.calculateAvgCompletedLevels(gameId, startDate, endDate, filters);
 
             this.logMemory('cohort avg completed levels end');
-            console.warn(`[AnalyticsMetrics] cohort avg completed levels duration: ${Date.now() - startTime}ms`);
+            logAnalyticsMetrics(`[AnalyticsMetrics] cohort avg completed levels duration: ${Date.now() - startTime}ms`);
 
             res.status(200).json({ success: true, data });
         } catch (error) {
@@ -291,7 +292,7 @@ export class CohortAnalyticsController {
             const data = await cohortAnalyticsService.calculateAvgReachedLevel(gameId, startDate, endDate, filters);
 
             this.logMemory('cohort avg reached level end');
-            console.warn(`[AnalyticsMetrics] cohort avg reached level duration: ${Date.now() - startTime}ms`);
+            logAnalyticsMetrics(`[AnalyticsMetrics] cohort avg reached level duration: ${Date.now() - startTime}ms`);
 
             res.status(200).json({ success: true, data });
         } catch (error) {

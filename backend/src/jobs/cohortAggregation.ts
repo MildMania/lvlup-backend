@@ -47,7 +47,7 @@ export function startCohortHourlyTodayJob(): void {
   // Hourly rollup for today at minute 15
   cron.schedule('15 * * * *', async () => {
     try {
-      logger.info('Starting hourly cohort aggregation for today...');
+      logger.info('Starting incremental hourly cohort retention update...');
       const games = await cohortAggregationService.getGamesWithUsers();
 
       if (games.length === 0) {
@@ -55,26 +55,28 @@ export function startCohortHourlyTodayJob(): void {
         return;
       }
 
-      const today = new Date();
-      today.setUTCHours(0, 0, 0, 0);
+      const hourEnd = new Date();
+      hourEnd.setUTCSeconds(0, 0);
+      const hourStart = new Date(hourEnd);
+      hourStart.setUTCHours(hourStart.getUTCHours() - 1);
 
       let success = 0;
       let errors = 0;
       for (const gameId of games) {
         try {
-          await cohortAggregationService.aggregateForDate(gameId, today, COHORT_DAY_INDICES);
+          await cohortAggregationService.aggregateHourlyRetentionUsersForToday(gameId, hourStart, hourEnd);
           success++;
         } catch (error) {
-          logger.error(`Cohort hourly aggregation failed for game ${gameId}:`, error);
+          logger.error(`Cohort hourly incremental update failed for game ${gameId}:`, error);
           errors++;
         }
       }
 
-      logger.info(`Hourly cohort aggregation complete: ${success} succeeded, ${errors} failed`);
+      logger.info(`Hourly cohort incremental update complete: ${success} succeeded, ${errors} failed`);
     } catch (error) {
-      logger.error('Error in hourly cohort aggregation job:', error);
+      logger.error('Error in hourly cohort incremental job:', error);
     }
   });
 
-  logger.info('Cohort hourly aggregation job started (runs hourly at :15 UTC)');
+  logger.info('Cohort hourly incremental job started (runs hourly at :15 UTC)');
 }

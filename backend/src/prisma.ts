@@ -51,12 +51,15 @@ if (process.env.DATABASE_URL) {
 // Prevent multiple instances in hot-reload scenarios (development)
 const globalForPrisma = global as unknown as { prisma: PrismaClient };
 
+const enableAnalyticsTrace = process.env.ANALYTICS_TRACE === '1' || process.env.ANALYTICS_TRACE === 'true';
+
 export const prisma =
   globalForPrisma.prisma ||
   new PrismaClient({
     log: [
       { level: 'warn', emit: 'event' },
       { level: 'error', emit: 'event' },
+      ...(enableAnalyticsTrace ? [{ level: 'query', emit: 'event' }] : []),
     ],
   });
 
@@ -68,6 +71,19 @@ export const prisma =
 (prisma as any).$on('error', (e: any) => {
   logger.error('Prisma error:', e);
 });
+
+if (enableAnalyticsTrace) {
+  const slowMs = Number(process.env.ANALYTICS_TRACE_SLOW_MS || 300);
+  (prisma as any).$on('query', (e: any) => {
+    if (typeof e?.duration === 'number' && e.duration < slowMs) {
+      return;
+    }
+    logger.warn('[AnalyticsTrace] Slow query', {
+      durationMs: e.duration,
+      query: e.query,
+    });
+  });
+}
 
 // Store in global for hot-reload in development
 if (process.env.NODE_ENV !== 'production') {
@@ -95,4 +111,3 @@ process.on('beforeExit', async () => {
 });
 
 export default prisma;
-

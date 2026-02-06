@@ -49,6 +49,45 @@ app.use(express.urlencoded({ extended: true }));
 app.use(cookieParser());
 app.use(morgan('combined')); // HTTP request logging
 
+if (process.env.ANALYTICS_TRACE === '1' || process.env.ANALYTICS_TRACE === 'true') {
+    app.use((req, res, next) => {
+        const isAnalytics =
+            req.path.startsWith('/api/analytics') ||
+            req.path.startsWith('/api/analytics-cohort') ||
+            req.path.startsWith('/api/analytics/metrics') ||
+            req.path.startsWith('/api/analytics/cohort');
+
+        if (!isAnalytics) {
+            return next();
+        }
+
+        const start = Date.now();
+        const memStart = process.memoryUsage();
+        const rssStart = memStart.rss;
+        const heapStart = memStart.heapUsed;
+
+        res.on('finish', () => {
+            const memEnd = process.memoryUsage();
+            const rssEnd = memEnd.rss;
+            const heapEnd = memEnd.heapUsed;
+            logger.warn('[AnalyticsTrace] request', {
+                method: req.method,
+                path: req.originalUrl,
+                status: res.statusCode,
+                durationMs: Date.now() - start,
+                rssStart,
+                rssEnd,
+                heapStart,
+                heapEnd,
+                rssDelta: rssEnd - rssStart,
+                heapDelta: heapEnd - heapStart,
+            });
+        });
+
+        next();
+    });
+}
+
 // Health check endpoint for Railway (root level)
 app.get('/health', (_req: Request, res: Response) => {
     res.json({

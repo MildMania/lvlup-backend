@@ -78,6 +78,172 @@ export class CohortAggregationService {
     }
   }
 
+  async aggregateHourlyRetentionUsersForToday(gameId: string, hourStart: Date, hourEnd: Date): Promise<void> {
+    const targetDay = new Date(hourStart);
+    targetDay.setUTCHours(0, 0, 0, 0);
+    const targetDayEnd = new Date(targetDay);
+    targetDayEnd.setUTCDate(targetDayEnd.getUTCDate() + 1);
+
+    logger.info(`Incremental cohort retention for ${gameId} at ${hourStart.toISOString()}`);
+
+    // Insert unique retained users for this hour (exact, incremental)
+    await this.prisma.$executeRaw`
+      WITH hour_events AS (
+        SELECT DISTINCT e."userId"
+        FROM "events" e
+        WHERE e."gameId" = ${gameId}
+          AND e."timestamp" >= ${hourStart}
+          AND e."timestamp" < ${hourEnd}
+          AND e."timestamp" >= ${targetDay}
+          AND e."timestamp" < ${targetDayEnd}
+      ),
+      cohort_users AS (
+        SELECT u."id" AS "userId",
+               date_trunc('day', u."createdAt") AS "installDate"
+        FROM "users" u
+        JOIN hour_events h ON h."userId" = u."id"
+        WHERE u."gameId" = ${gameId}
+      ),
+      first_event AS (
+        SELECT DISTINCT ON (e."userId")
+          e."userId" AS "userId",
+          e."platform" AS "platform",
+          e."countryCode" AS "countryCode",
+          e."appVersion" AS "appVersion"
+        FROM "events" e
+        JOIN cohort_users cu ON cu."userId" = e."userId"
+        WHERE e."gameId" = ${gameId}
+          AND e."timestamp" >= cu."installDate"
+          AND e."timestamp" < cu."installDate" + INTERVAL '1 day'
+        ORDER BY e."userId", e."timestamp" ASC
+      )
+      INSERT INTO "cohort_retention_users_hourly"
+        ("id","gameId","installDate","dayIndex","userId","platform","countryCode","appVersion","createdAt")
+      SELECT
+        concat('cruh_', md5(
+          ${gameId}::text || '|' ||
+          cu."installDate"::text || '|' ||
+          EXTRACT(DAY FROM (date_trunc('day', ${targetDay}) - cu."installDate"))::text || '|' ||
+          cu."userId"::text
+        )) AS "id",
+        ${gameId},
+        cu."installDate",
+        EXTRACT(DAY FROM (date_trunc('day', ${targetDay}) - cu."installDate"))::int AS "dayIndex",
+        cu."userId",
+        COALESCE(f."platform",'') AS "platform",
+        COALESCE(f."countryCode",'') AS "countryCode",
+        COALESCE(f."appVersion",'') AS "appVersion",
+        now()
+      FROM cohort_users cu
+      LEFT JOIN first_event f ON f."userId" = cu."userId"
+      WHERE EXTRACT(DAY FROM (date_trunc('day', ${targetDay}) - cu."installDate"))::int >= 0
+      ON CONFLICT ("gameId","installDate","dayIndex","userId") DO NOTHING
+    `;
+
+    // Recompute retainedUsers for today's target day from hourly table and upsert daily rollup rows
+    await this.prisma.$executeRaw`
+      WITH counts AS (
+        SELECT
+          h."installDate" AS "installDate",
+          h."dayIndex" AS "dayIndex",
+          h."platform" AS "platform",
+          h."countryCode" AS "countryCode",
+          h."appVersion" AS "appVersion",
+          COUNT(*)::int AS "retainedUsers"
+        FROM "cohort_retention_users_hourly" h
+        WHERE h."gameId" = ${gameId}
+          AND h."installDate" + (h."dayIndex" || ' days')::interval = ${targetDay}
+        GROUP BY 1,2,3,4,5
+      ),
+      cohort_sizes_today AS (
+        WITH cohort_users AS (
+          SELECT u."id"
+          FROM "users" u
+          WHERE u."gameId" = ${gameId}
+            AND u."createdAt" >= ${targetDay}
+            AND u."createdAt" < ${targetDayEnd}
+        ),
+        first_event AS (
+          SELECT DISTINCT ON (e."userId")
+            e."userId" AS "userId",
+            e."platform" AS "platform",
+            e."countryCode" AS "countryCode",
+            e."appVersion" AS "appVersion"
+          FROM "events" e
+          JOIN cohort_users cu ON cu."id" = e."userId"
+          WHERE e."gameId" = ${gameId}
+            AND e."timestamp" >= ${targetDay}
+            AND e."timestamp" < ${targetDayEnd}
+          ORDER BY e."userId", e."timestamp" ASC
+        )
+        SELECT
+          ${targetDay}::timestamptz AS "installDate",
+          COALESCE(f."platform",'') AS "platform",
+          COALESCE(f."countryCode",'') AS "countryCode",
+          COALESCE(f."appVersion",'') AS "appVersion",
+          COUNT(cu."id")::int AS "cohortSize"
+        FROM cohort_users cu
+        LEFT JOIN first_event f ON f."userId" = cu."id"
+        GROUP BY 1,2,3,4
+      ),
+      cohort_sizes AS (
+        SELECT "installDate","platform","countryCode","appVersion","cohortSize"
+        FROM "cohort_retention_daily"
+        WHERE "gameId" = ${gameId}
+          AND "dayIndex" = 0
+      ),
+      merged AS (
+        SELECT
+          c."installDate",
+          c."dayIndex",
+          c."platform",
+          c."countryCode",
+          c."appVersion",
+          c."retainedUsers",
+          COALESCE(cs."cohortSize", cst."cohortSize", 0) AS "cohortSize"
+        FROM counts c
+        LEFT JOIN cohort_sizes cs
+          ON cs."installDate" = c."installDate"
+         AND cs."platform" = c."platform"
+         AND cs."countryCode" = c."countryCode"
+         AND cs."appVersion" = c."appVersion"
+        LEFT JOIN cohort_sizes_today cst
+          ON cst."installDate" = c."installDate"
+         AND cst."platform" = c."platform"
+         AND cst."countryCode" = c."countryCode"
+         AND cst."appVersion" = c."appVersion"
+      )
+      INSERT INTO "cohort_retention_daily"
+        ("id","gameId","installDate","dayIndex","platform","countryCode","appVersion","cohortSize","retainedUsers","retainedLevelCompletes","createdAt","updatedAt")
+      SELECT
+        concat('crd_', ${gameId}::text, '_', to_char(m."installDate",'YYYY-MM-DD'), '_', m."dayIndex"::text, '_', m."platform", '_', m."countryCode", '_', m."appVersion") AS "id",
+        ${gameId},
+        m."installDate",
+        m."dayIndex",
+        m."platform",
+        m."countryCode",
+        m."appVersion",
+        m."cohortSize",
+        m."retainedUsers",
+        0,
+        now(),
+        now()
+      FROM merged m
+      ON CONFLICT ("gameId","installDate","dayIndex","platform","countryCode","appVersion")
+      DO UPDATE SET
+        "retainedUsers" = EXCLUDED."retainedUsers",
+        "cohortSize" = CASE WHEN EXCLUDED."cohortSize" > 0 THEN EXCLUDED."cohortSize" ELSE "cohort_retention_daily"."cohortSize" END,
+        "updatedAt" = now()
+    `;
+
+    // Keep only rows relevant to today to bound table size
+    await this.prisma.$executeRaw`
+      DELETE FROM "cohort_retention_users_hourly"
+      WHERE "gameId" = ${gameId}
+        AND "installDate" + ("dayIndex" || ' days')::interval < ${targetDay}
+    `;
+  }
+
   async backfill(gameId: string, startDate: Date, endDate: Date, dayIndices = COHORT_DAY_INDICES): Promise<void> {
     const cursor = new Date(startDate);
     cursor.setUTCHours(0, 0, 0, 0);

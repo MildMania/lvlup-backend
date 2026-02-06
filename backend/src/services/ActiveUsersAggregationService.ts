@@ -25,7 +25,13 @@ export class ActiveUsersAggregationService {
       INSERT INTO "active_users_daily"
         ("id","gameId","date","platform","countryCode","appVersion","dau","createdAt","updatedAt")
       SELECT
-        concat('aud_', md5(random()::text || clock_timestamp()::text)) as "id",
+        concat('aud_', md5(
+          e."gameId"::text || '|' ||
+          date_trunc('day', e."timestamp")::text || '|' ||
+          COALESCE(e."platform",'') || '|' ||
+          COALESCE(e."countryCode",'') || '|' ||
+          COALESCE(e."appVersion",'')
+        )) as "id",
         e."gameId",
         date_trunc('day', e."timestamp")::timestamptz as "date",
         COALESCE(e."platform",'') as "platform",
@@ -38,7 +44,12 @@ export class ActiveUsersAggregationService {
       WHERE e."gameId" = $1
         AND e."timestamp" >= $2
         AND e."timestamp" < $3
-      GROUP BY 1,2,3,4,5,6
+      GROUP BY
+        e."gameId",
+        date_trunc('day', e."timestamp"),
+        COALESCE(e."platform",''),
+        COALESCE(e."countryCode",''),
+        COALESCE(e."appVersion",'')
       ON CONFLICT ("gameId","date","platform","countryCode","appVersion")
       DO UPDATE SET "dau" = EXCLUDED."dau", "updatedAt" = now()
       `,

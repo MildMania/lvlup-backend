@@ -55,6 +55,53 @@ export function startLevelMetricsAggregationJob(): void {
 }
 
 /**
+ * Hourly level metrics aggregation for today (partial day)
+ * Rebuilds today's aggregates every hour to avoid raw scans on dashboard.
+ */
+export function startLevelMetricsHourlyTodayJob(): void {
+  logger.info('Initializing hourly level metrics aggregation for today...');
+
+  // Run at minute 5 every hour (UTC)
+  cron.schedule('5 * * * *', async () => {
+    try {
+      logger.info('Starting hourly aggregation for today...');
+
+      const games = await aggregationService.getGamesWithLevelEvents();
+      logger.info(`Found ${games.length} games with level events`);
+
+      if (games.length === 0) {
+        logger.info('No games with level events to aggregate for today');
+        return;
+      }
+
+      const today = new Date();
+      today.setUTCHours(0, 0, 0, 0);
+
+      let successCount = 0;
+      let errorCount = 0;
+
+      for (const gameId of games) {
+        try {
+          await aggregationService.aggregateDailyMetrics(gameId, today);
+          successCount++;
+        } catch (error) {
+          logger.error(`Error aggregating today's metrics for game ${gameId}:`, error);
+          errorCount++;
+        }
+      }
+
+      logger.info(
+        `Hourly aggregation for today complete: ${successCount} succeeded, ${errorCount} failed`
+      );
+    } catch (error) {
+      logger.error('Error in hourly aggregation job:', error);
+    }
+  });
+
+  logger.info('Hourly level metrics aggregation started (runs every hour at :05 UTC)');
+}
+
+/**
  * Manual backfill function for testing or historical data
  * Usage: await backfillMetrics('gameId123', new Date('2026-01-01'), new Date('2026-01-28'))
  */
@@ -67,4 +114,3 @@ export async function backfillMetrics(
   await aggregationService.backfillHistorical(gameId, startDate, endDate);
   logger.info('Backfill complete');
 }
-

@@ -9,7 +9,7 @@ import logger from './utils/logger';
 import prismaInstance from './prisma';
 import { sessionHeartbeatService } from './services/SessionHeartbeatService';
 import dataRetentionService from './services/DataRetentionService';
-import { startLevelMetricsAggregationJob } from './jobs/levelMetricsAggregation';
+import { startLevelMetricsAggregationJob, startLevelMetricsHourlyTodayJob } from './jobs/levelMetricsAggregation';
 import { eventBatchWriter } from './services/EventBatchWriter';
 import { revenueBatchWriter } from './services/RevenueBatchWriter';
 import { sessionHeartbeatBatchWriter } from './services/SessionHeartbeatBatchWriter';
@@ -234,6 +234,10 @@ app.listen(PORT, '0.0.0.0', () => {
     // Start level metrics aggregation cron job
     startLevelMetricsAggregationJob();
     logger.info('Level metrics aggregation cron job started');
+
+    // Start hourly aggregation for today (partial day)
+    startLevelMetricsHourlyTodayJob();
+    logger.info('Level metrics hourly aggregation job started');
 });
 
 // Graceful shutdown

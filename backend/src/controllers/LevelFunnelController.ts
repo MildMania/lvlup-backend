@@ -38,7 +38,6 @@ export class LevelFunnelController {
                 levelFunnelVersion,
                 levelLimit,
                 useFast,
-                includeTodayRaw,
                 includeRawUserCounts
             } = req.query;
 
@@ -64,8 +63,6 @@ export class LevelFunnelController {
                 levelFunnel: levelFunnel as string | undefined,
                 levelFunnelVersion: levelFunnelVersion as string | undefined, // Keep as string to support comma-separated versions
                 levelLimit: levelLimit ? parseInt(levelLimit as string) : 100, // Default to 100
-                // Default to true when param not provided
-                includeTodayRaw: includeTodayRaw === undefined ? true : includeTodayRaw === 'true',
                 includeRawUserCounts: includeRawUserCounts === 'true'
             };
 

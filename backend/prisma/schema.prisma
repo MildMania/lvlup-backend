@@ -36,6 +36,8 @@ model Game {
   revenueEvents     Revenue[]
   levelMetricsDaily LevelMetricsDaily[]
   levelMetricsDailyUsers LevelMetricsDailyUser[]
+  activeUsersDaily ActiveUsersDaily[]
+  activeUsersHllDaily ActiveUsersHllDaily[]
 
   @@map("games")
 }
@@ -896,4 +898,44 @@ model LevelMetricsDailyUser {
   @@index([userId])
   @@unique([gameId, date, levelId, levelFunnel, levelFunnelVersion, platform, countryCode, appVersion, userId], name: "unique_daily_level_user")
   @@map("level_metrics_daily_users")
+}
+
+model ActiveUsersDaily {
+  id          String   @id @default(cuid())
+  gameId      String
+  date        DateTime // Daily aggregation (date only, time set to 00:00:00)
+  platform    String   @default("")
+  countryCode String   @default("")
+  appVersion  String   @default("")
+  dau         Int      @default(0)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  game Game @relation(fields: [gameId], references: [id], onDelete: Cascade)
+
+  @@index([gameId, date])
+  @@index([gameId, date, platform, countryCode, appVersion])
+  @@unique([gameId, date, platform, countryCode, appVersion], name: "unique_active_users_daily")
+  @@map("active_users_daily")
+}
+
+model ActiveUsersHllDaily {
+  id          String   @id @default(cuid())
+  gameId      String
+  date        DateTime // Daily aggregation (date only, time set to 00:00:00)
+  platform    String   @default("")
+  countryCode String   @default("")
+  appVersion  String   @default("")
+  hll         Unsupported("hll")
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  game Game @relation(fields: [gameId], references: [id], onDelete: Cascade)
+
+  @@index([gameId, date])
+  @@index([gameId, date, platform, countryCode, appVersion])
+  @@unique([gameId, date, platform, countryCode, appVersion], name: "unique_active_users_hll_daily")
+  @@map("active_users_hll_daily")
 }

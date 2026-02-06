@@ -16,8 +16,7 @@ const METRIC_TOOLTIPS: Record<string, string> = {
     'Completion Rate': '(Unique players completed / Unique players started) × 100',
     'Win Rate': '(Completed attempts / (Completed + Failed attempts)) × 100. Only counts users who finished (excludes incomplete attempts)',
     'Fail Rate': '(Failed attempts / (Completed + Failed attempts)) × 100',
-    'APS Raw': 'All starts from completing users, including orphaned starts from crashes/network issues',
-    'APS Clean': 'Only starts with matching conclusions (complete/fail). Filters out orphaned start events for cleaner data',
+    'APS': 'All starts from completing users, including orphaned starts from crashes/network issues',
     'AVG Time': 'Average time to complete the level in seconds',
     'Cumulative AVG Time': 'Total cumulative average time from level 1 to this level in seconds',
     'Booster': '% of completing/failing users who used at least one booster',
@@ -78,7 +77,6 @@ interface LevelMetrics {
     churnStartComplete: number;
     churnCompleteNext: number;
     apsRaw: number; // All starts from completing users (includes orphaned starts)
-    apsClean: number; // Only starts with matching conclusions (filters out orphaned starts)
     meanCompletionDuration: number;
     meanFailDuration: number;
     cumulativeAvgTime: number;
@@ -282,8 +280,7 @@ export default function LevelFunnel({ isCollapsed = false }: LevelFunnelProps) {
             'Completion Rate (%)',
             'Win Rate (%)',
             'Fail Rate (%)',
-            'APS Raw',
-            'APS Clean',
+            'APS',
             'Avg Completion Time (s)',
             'Cumulative Avg Time (s)',
             'Booster Usage (%)',
@@ -303,7 +300,6 @@ export default function LevelFunnel({ isCollapsed = false }: LevelFunnelProps) {
             level.winRate.toFixed(2),
             level.failRate.toFixed(2),
             level.apsRaw.toFixed(2),
-            level.apsClean.toFixed(2),
             level.meanCompletionDuration.toFixed(2),
             level.cumulativeAvgTime.toFixed(2),
             level.boosterUsage.toFixed(2),
@@ -610,8 +606,7 @@ export default function LevelFunnel({ isCollapsed = false }: LevelFunnelProps) {
                                 <th><MetricTooltip text={METRIC_TOOLTIPS['Completion Rate']}>Completion Rate</MetricTooltip></th>
                                 <th><MetricTooltip text={METRIC_TOOLTIPS['Win Rate']}>Win Rate</MetricTooltip></th>
                                 <th><MetricTooltip text={METRIC_TOOLTIPS['Fail Rate']}>Fail Rate</MetricTooltip></th>
-                                <th><MetricTooltip text={METRIC_TOOLTIPS['APS Raw']}>APS Raw</MetricTooltip></th>
-                                <th><MetricTooltip text={METRIC_TOOLTIPS['APS Clean']}>APS Clean</MetricTooltip></th>
+                                <th><MetricTooltip text={METRIC_TOOLTIPS['APS']}>APS</MetricTooltip></th>
                                 <th><MetricTooltip text={METRIC_TOOLTIPS['AVG Time']}>AVG Time</MetricTooltip></th>
                                 <th><MetricTooltip text={METRIC_TOOLTIPS['Cumulative AVG Time']}>Cumulative AVG Time</MetricTooltip></th>
                                 <th><MetricTooltip text={METRIC_TOOLTIPS['Booster']}>Booster %</MetricTooltip></th>
@@ -684,7 +679,6 @@ export default function LevelFunnel({ isCollapsed = false }: LevelFunnelProps) {
                                     </td>
                                     <td>{level.failRate.toFixed(1)}%</td>
                                     <td>{level.apsRaw.toFixed(2)}</td>
-                                    <td>{level.apsClean.toFixed(2)}</td>
                                     <td>{level.meanCompletionDuration.toFixed(1)}s</td>
                                     <td>{level.cumulativeAvgTime.toFixed(1)}s</td>
                                     <td>{level.boosterUsage.toFixed(1)}%</td>
@@ -756,15 +750,9 @@ LvlUpEvents.TrackLevelFailed(1, "timeout", time);`}
                             </div>
                         </div>
                         <div className="summary-item">
-                            <div className="summary-item-label">Avg APS Raw</div>
+                            <div className="summary-item-label">Avg APS</div>
                             <div className="summary-item-value">
                                 {(levels.reduce((sum, l) => sum + l.apsRaw, 0) / levels.length).toFixed(2)}
-                            </div>
-                        </div>
-                        <div className="summary-item">
-                            <div className="summary-item-label">Avg APS Clean</div>
-                            <div className="summary-item-value">
-                                {(levels.reduce((sum, l) => sum + l.apsClean, 0) / levels.length).toFixed(2)}
                             </div>
                         </div>
                     </div>
@@ -892,4 +880,3 @@ LvlUpEvents.TrackLevelFailed(1, "timeout", time);`}
         </div>
     );
 }
-

@@ -193,34 +193,33 @@ export class AnalyticsMetricsService {
                 SELECT
                     d.day AS day,
                     (
-                        SELECT COUNT(DISTINCT e."userId")
-                        FROM "events" e
-                        WHERE e."gameId" = ${gameId}
-                          AND e."timestamp" >= d.day
-                          AND e."timestamp" < d.day + interval '1 day'
-                          ${countries.length ? Prisma.sql`AND e."countryCode" IN (${Prisma.join(countries)})` : Prisma.sql``}
-                          ${platforms.length ? Prisma.sql`AND e."platform" IN (${Prisma.join(platforms)})` : Prisma.sql``}
-                          ${versions.length ? Prisma.sql`AND e."appVersion" IN (${Prisma.join(versions)})` : Prisma.sql``}
+                        SELECT COALESCE(SUM(aud."dau"), 0)
+                        FROM "active_users_daily" aud
+                        WHERE aud."gameId" = ${gameId}
+                          AND aud."date" = d.day
+                          ${countries.length ? Prisma.sql`AND aud."countryCode" IN (${Prisma.join(countries)})` : Prisma.sql``}
+                          ${platforms.length ? Prisma.sql`AND aud."platform" IN (${Prisma.join(platforms)})` : Prisma.sql``}
+                          ${versions.length ? Prisma.sql`AND aud."appVersion" IN (${Prisma.join(versions)})` : Prisma.sql``}
                     ) AS dau,
                     (
-                        SELECT COUNT(DISTINCT e."userId")
-                        FROM "events" e
-                        WHERE e."gameId" = ${gameId}
-                          AND e."timestamp" >= d.day - interval '6 day'
-                          AND e."timestamp" < d.day + interval '1 day'
-                          ${countries.length ? Prisma.sql`AND e."countryCode" IN (${Prisma.join(countries)})` : Prisma.sql``}
-                          ${platforms.length ? Prisma.sql`AND e."platform" IN (${Prisma.join(platforms)})` : Prisma.sql``}
-                          ${versions.length ? Prisma.sql`AND e."appVersion" IN (${Prisma.join(versions)})` : Prisma.sql``}
+                        SELECT COALESCE(hll_cardinality(hll_union_agg(auh."hll")), 0)::bigint
+                        FROM "active_users_hll_daily" auh
+                        WHERE auh."gameId" = ${gameId}
+                          AND auh."date" >= d.day - interval '6 day'
+                          AND auh."date" <= d.day
+                          ${countries.length ? Prisma.sql`AND auh."countryCode" IN (${Prisma.join(countries)})` : Prisma.sql``}
+                          ${platforms.length ? Prisma.sql`AND auh."platform" IN (${Prisma.join(platforms)})` : Prisma.sql``}
+                          ${versions.length ? Prisma.sql`AND auh."appVersion" IN (${Prisma.join(versions)})` : Prisma.sql``}
                     ) AS wau,
                     (
-                        SELECT COUNT(DISTINCT e."userId")
-                        FROM "events" e
-                        WHERE e."gameId" = ${gameId}
-                          AND e."timestamp" >= d.day - interval '29 day'
-                          AND e."timestamp" < d.day + interval '1 day'
-                          ${countries.length ? Prisma.sql`AND e."countryCode" IN (${Prisma.join(countries)})` : Prisma.sql``}
-                          ${platforms.length ? Prisma.sql`AND e."platform" IN (${Prisma.join(platforms)})` : Prisma.sql``}
-                          ${versions.length ? Prisma.sql`AND e."appVersion" IN (${Prisma.join(versions)})` : Prisma.sql``}
+                        SELECT COALESCE(hll_cardinality(hll_union_agg(auh."hll")), 0)::bigint
+                        FROM "active_users_hll_daily" auh
+                        WHERE auh."gameId" = ${gameId}
+                          AND auh."date" >= d.day - interval '29 day'
+                          AND auh."date" <= d.day
+                          ${countries.length ? Prisma.sql`AND auh."countryCode" IN (${Prisma.join(countries)})` : Prisma.sql``}
+                          ${platforms.length ? Prisma.sql`AND auh."platform" IN (${Prisma.join(platforms)})` : Prisma.sql``}
+                          ${versions.length ? Prisma.sql`AND auh."appVersion" IN (${Prisma.join(versions)})` : Prisma.sql``}
                     ) AS mau
                 FROM days d
                 ORDER BY d.day ASC

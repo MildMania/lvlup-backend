@@ -19,6 +19,13 @@ export class AnalyticsService {
         this.revenueService = new RevenueService(prismaClient);
     }
 
+    private static readonly IGNORED_EVENT_NAMES = new Set(['app_paused', 'app_resumed']);
+
+    private shouldIgnoreEvent(eventName?: string): boolean {
+        if (!eventName) return false;
+        return AnalyticsService.IGNORED_EVENT_NAMES.has(eventName.toLowerCase());
+    }
+
     /**
      * Validate and use client timestamp with fallback to server time
      * 
@@ -217,6 +224,15 @@ export class AnalyticsService {
     // Track single event
     async trackEvent(gameId: string, userId: string, sessionId: string | null, eventData: EventData) {
         try {
+            if (this.shouldIgnoreEvent(eventData.eventName)) {
+                logger.debug(`Ignored event ${eventData.eventName} (user: ${userId})`);
+                return {
+                    id: 'ignored',
+                    timestamp: this.validateClientTimestamp(eventData.clientTs),
+                    eventName: eventData.eventName
+                } as any;
+            }
+
             // Extract levelFunnel fields from properties (new SDK) or top-level (backward compatibility)
             const properties = { ...(eventData.properties || {}) };
             const levelFunnel = (properties as any).levelFunnel ?? eventData.levelFunnel ?? null;
@@ -370,9 +386,18 @@ export class AnalyticsService {
     // Track batch events (for offline queue flush)
     async trackBatchEvents(gameId: string, batchData: BatchEventData) {
         try {
+            const eventsToTrack = batchData.events.filter(
+                (eventData) => !this.shouldIgnoreEvent(eventData.eventName)
+            );
+
+            if (eventsToTrack.length === 0) {
+                logger.debug(`Ignored entire batch for user ${batchData.userId} (all events filtered)`);
+                return { count: 0 };
+            }
+
             // Get or create user
             // Extract country from first event if available (EventData has country/countryCode)
-            const firstEvent = batchData.events[0];
+            const firstEvent = eventsToTrack[0];
             const userProfile: UserProfile = {
                 externalId: batchData.userId,
                 ...(batchData.deviceInfo?.deviceId && { deviceId: batchData.deviceInfo.deviceId }),
@@ -390,7 +415,7 @@ export class AnalyticsService {
 
             // Enqueue all events for batched insertion
             // Prioritize event-level metadata over batch deviceInfo
-            batchData.events.forEach(eventData => {
+            eventsToTrack.forEach(eventData => {
                 // Extract levelFunnel fields from properties (new SDK) or top-level (backward compatibility)
                 const properties = { ...(eventData.properties || {}) };
                 const levelFunnel = (properties as any).levelFunnel ?? eventData.levelFunnel ?? null;
@@ -452,10 +477,10 @@ export class AnalyticsService {
                 eventBatchWriter.enqueue(eventRecord);
             });
 
-            logger.info(`Batch enqueued ${batchData.events.length} events for user ${batchData.userId}`);
+            logger.info(`Batch enqueued ${eventsToTrack.length} events for user ${batchData.userId}`);
             
             // Return count of enqueued events
-            return { count: batchData.events.length };
+            return { count: eventsToTrack.length };
         } catch (error) {
             logger.error('Error tracking batch events:', error);
             throw error;

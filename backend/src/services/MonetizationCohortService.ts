@@ -111,12 +111,22 @@ export class MonetizationCohortService {
                 if (!monetizationByInstallDay.has(installDate)) {
                     monetizationByInstallDay.set(installDate, new Map());
                 }
-                monetizationByInstallDay.get(installDate)!.set(row.dayIndex, {
-                    iapRevenue: row.iapRevenueUsd || 0,
-                    adRevenue: row.adRevenueUsd || 0,
-                    totalRevenue: row.totalRevenueUsd || 0,
-                    iapPayingUsers: row.iapPayingUsers || 0
-                });
+                const dayMap = monetizationByInstallDay.get(installDate)!;
+                const current = dayMap.get(row.dayIndex);
+
+                if (current) {
+                    current.iapRevenue += row.iapRevenueUsd || 0;
+                    current.adRevenue += row.adRevenueUsd || 0;
+                    current.totalRevenue += row.totalRevenueUsd || 0;
+                    current.iapPayingUsers += row.iapPayingUsers || 0;
+                } else {
+                    dayMap.set(row.dayIndex, {
+                        iapRevenue: row.iapRevenueUsd || 0,
+                        adRevenue: row.adRevenueUsd || 0,
+                        totalRevenue: row.totalRevenueUsd || 0,
+                        iapPayingUsers: row.iapPayingUsers || 0
+                    });
+                }
             }
 
             // Step 2: Build monetization data from rollups + retention returning users

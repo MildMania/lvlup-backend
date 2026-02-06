@@ -630,6 +630,21 @@ export class CohortAggregationService {
     totalRevenueUsd: number,
     iapPayingUsers: number
   ): Promise<void> {
+    // Keep cohort monetization table sparse: no row for zero-value slices.
+    if (iapRevenueUsd <= 0 && adRevenueUsd <= 0 && totalRevenueUsd <= 0 && iapPayingUsers <= 0) {
+      await this.prisma.cohortMonetizationDaily.deleteMany({
+        where: {
+          gameId,
+          installDate,
+          dayIndex,
+          platform,
+          countryCode,
+          appVersion
+        }
+      });
+      return;
+    }
+
     await this.prisma.$executeRaw`
       INSERT INTO "cohort_monetization_daily"
         ("id","gameId","installDate","dayIndex","platform","countryCode","appVersion","iapRevenueUsd","adRevenueUsd","totalRevenueUsd","iapPayingUsers","createdAt","updatedAt")

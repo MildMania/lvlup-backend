@@ -547,12 +547,13 @@ const EngagementTab: React.FC<{ gameInfo: any }> = ({ gameInfo }) => {
                       const value = cohort.retentionByDay[day];
                       const userCount = cohort.userCountByDay?.[day];
                       const isNotAvailable = value < 0;
+                      const formattedValue = isNotAvailable ? 'N/A' : `${value.toFixed(1)}%`;
                       return (
                         <td
                           key={day}
                           className={`retention-cell ${isNotAvailable ? 'not-available' : getRetentionColor(value)}`}
                         >
-                          <div className="metric-value">{isNotAvailable ? 'N/A' : `${value}%`}</div>
+                          <div className="metric-value">{formattedValue}</div>
                           {!isNotAvailable && userCount !== undefined && (
                             <div className="metric-user-count">{userCount} users</div>
                           )}

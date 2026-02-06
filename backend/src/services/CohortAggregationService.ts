@@ -79,7 +79,7 @@ export class CohortAggregationService {
   }
 
   async aggregateHourlyRetentionUsersForToday(gameId: string, hourStart: Date, hourEnd: Date): Promise<void> {
-    const targetDay = new Date(hourStart);
+    const targetDay = new Date(hourEnd);
     targetDay.setUTCHours(0, 0, 0, 0);
     const targetDayEnd = new Date(targetDay);
     targetDayEnd.setUTCDate(targetDayEnd.getUTCDate() + 1);
@@ -240,7 +240,7 @@ export class CohortAggregationService {
     await this.prisma.$executeRaw`
       DELETE FROM "cohort_retention_users_hourly"
       WHERE "gameId" = ${gameId}
-        AND "installDate" + ("dayIndex" || ' days')::interval < ${targetDay}
+        AND "installDate" + ("dayIndex" || ' days')::interval < ${targetDay} - interval '1 day'
     `;
   }
 

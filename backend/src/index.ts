@@ -51,13 +51,15 @@ app.use(morgan('combined')); // HTTP request logging
 
 if (process.env.ANALYTICS_TRACE === '1' || process.env.ANALYTICS_TRACE === 'true') {
     app.use((req, res, next) => {
-        const isAnalytics =
-            req.path.startsWith('/api/analytics') ||
-            req.path.startsWith('/api/analytics-cohort') ||
-            req.path.startsWith('/api/analytics/metrics') ||
-            req.path.startsWith('/api/analytics/cohort');
+        const path = req.path;
+        const isHeavyAnalytics =
+            req.method === 'GET' &&
+            (path.startsWith('/api/analytics/summary') ||
+                path.startsWith('/api/analytics/level-funnel') ||
+                path.startsWith('/api/analytics/cohort') ||
+                path.startsWith('/api/analytics/metrics'));
 
-        if (!isAnalytics) {
+        if (!isHeavyAnalytics) {
             return next();
         }
 

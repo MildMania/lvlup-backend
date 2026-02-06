@@ -24,6 +24,7 @@
     "analyze:redundancy": "node dist/scripts/analyzeRedundancy.js",
     "backfill:level-metrics": "ts-node src/scripts/backfillLevelMetrics.ts",
     "backfill:active-users": "ts-node src/scripts/backfillActiveUsers.ts",
+    "backfill:cohorts": "ts-node src/scripts/backfillCohorts.ts",
     "env:local": "cd .. && ./switch-env.sh local",
     "env:prod": "cd .. && ./switch-env.sh production",
     "env:status": "cd .. && ./switch-env.sh status"

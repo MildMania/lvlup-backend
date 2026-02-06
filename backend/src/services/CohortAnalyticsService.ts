@@ -1,5 +1,6 @@
 import { PrismaClient } from '@prisma/client';
 import prismaInstance from '../prisma';
+import { COHORT_DAY_INDICES } from './CohortAggregationService';
 
 // Cohort data for a specific install date
 export interface CohortData {
@@ -44,6 +45,9 @@ export class CohortAnalyticsService {
         try {
             // Default retention days if not specified
             const retentionDays = filters?.days || [0, 1, 2, 3, 4, 5, 6, 7, 14, 30];
+            if (this.canUseRollups(filters, retentionDays)) {
+                return this.getCohortRetentionFromRollups(gameId, startDate, endDate, retentionDays);
+            }
 
             // Build user filters
             const userFilters: any = {
@@ -228,6 +232,9 @@ export class CohortAnalyticsService {
     ): Promise<CohortData[]> {
         try {
             const retentionDays = filters?.days || [0, 1, 2, 3, 4, 5, 6, 7, 14, 30];
+            if (this.canUseRollups(filters, retentionDays)) {
+                return this.getCohortSessionMetricsFromRollups(gameId, startDate, endDate, retentionDays, 'playtime');
+            }
             
             const userFilters: any = {
                 gameId: gameId,
@@ -401,6 +408,9 @@ export class CohortAnalyticsService {
     ): Promise<CohortData[]> {
         try {
             const retentionDays = filters?.days || [0, 1, 2, 3, 4, 5, 6, 7, 14, 30];
+            if (this.canUseRollups(filters, retentionDays)) {
+                return this.getCohortSessionMetricsFromRollups(gameId, startDate, endDate, retentionDays, 'session-count');
+            }
             
             const userFilters: any = {
                 gameId: gameId,
@@ -536,6 +546,9 @@ export class CohortAnalyticsService {
     ): Promise<CohortData[]> {
         try {
             const retentionDays = filters?.days || [0, 1, 2, 3, 4, 5, 6, 7, 14, 30];
+            if (this.canUseRollups(filters, retentionDays)) {
+                return this.getCohortSessionMetricsFromRollups(gameId, startDate, endDate, retentionDays, 'session-length');
+            }
             
             const userFilters: any = {
                 gameId: gameId,
@@ -690,6 +703,138 @@ export class CohortAnalyticsService {
             console.error('Error calculating cohort session length:', error);
             throw new Error('Failed to calculate cohort session length');
         }
+    }
+
+    private canUseRollups(filters: CohortAnalyticsParams | undefined, days: number[]): boolean {
+        const hasFilters =
+            (filters?.country && (Array.isArray(filters.country) ? filters.country.length > 0 : true)) ||
+            (filters?.platform && (Array.isArray(filters.platform) ? filters.platform.length > 0 : true)) ||
+            (filters?.version && (Array.isArray(filters.version) ? filters.version.length > 0 : true));
+
+        if (hasFilters) return false;
+
+        const allowed = new Set(COHORT_DAY_INDICES);
+        return days.every((d) => allowed.has(d));
+    }
+
+    private async getCohortRetentionFromRollups(
+        gameId: string,
+        startDate: Date,
+        endDate: Date,
+        days: number[]
+    ): Promise<CohortData[]> {
+        const rows = await this.prisma.cohortRetentionDaily.findMany({
+            where: {
+                gameId,
+                installDate: {
+                    gte: startDate,
+                    lte: endDate
+                },
+                dayIndex: { in: days }
+            }
+        });
+
+        return this.buildCohortDataFromRollups(rows, days, (row) => ({
+            value: row.cohortSize > 0 ? (row.retainedUsers / row.cohortSize) * 100 : 0,
+            userCount: row.retainedUsers
+        }));
+    }
+
+    private async getCohortSessionMetricsFromRollups(
+        gameId: string,
+        startDate: Date,
+        endDate: Date,
+        days: number[],
+        metric: 'playtime' | 'session-count' | 'session-length'
+    ): Promise<CohortData[]> {
+        const rows = await this.prisma.cohortSessionMetricsDaily.findMany({
+            where: {
+                gameId,
+                installDate: {
+                    gte: startDate,
+                    lte: endDate
+                },
+                dayIndex: { in: days }
+            }
+        });
+
+        return this.buildCohortDataFromRollups(rows, days, (row) => {
+            const sessionUsers = row.sessionUsers || 0;
+            const totalSessions = row.totalSessions || 0;
+            const totalDurationSec = Number(row.totalDurationSec || 0);
+
+            if (metric === 'playtime') {
+                const avgMinutes = sessionUsers > 0 ? (totalDurationSec / sessionUsers) / 60 : 0;
+                return { value: Math.round(avgMinutes * 10) / 10, userCount: sessionUsers };
+            }
+
+            if (metric === 'session-count') {
+                const avgSessions = sessionUsers > 0 ? totalSessions / sessionUsers : 0;
+                return { value: Math.round(avgSessions * 100) / 100, userCount: sessionUsers };
+            }
+
+            const avgLengthMin = totalSessions > 0 ? (totalDurationSec / totalSessions) / 60 : 0;
+            return { value: Math.round(avgLengthMin * 10) / 10, userCount: sessionUsers };
+        });
+    }
+
+    private buildCohortDataFromRollups<T extends { installDate: Date; dayIndex: number; cohortSize: number }>(
+        rows: T[],
+        days: number[],
+        mapper: (row: T) => { value: number; userCount: number }
+    ): CohortData[] {
+        const byInstall = new Map<string, Map<number, T>>();
+        for (const row of rows) {
+            const key = row.installDate.toISOString().split('T')[0];
+            if (!key) continue;
+            if (!byInstall.has(key)) byInstall.set(key, new Map());
+            byInstall.get(key)!.set(row.dayIndex, row);
+        }
+
+        const now = new Date();
+        const result: CohortData[] = [];
+
+        for (const [installDate, dayMap] of byInstall.entries()) {
+            const installDateObj = new Date(installDate + 'T00:00:00.000Z');
+            const retentionByDay: { [day: number]: number } = {};
+            const userCountByDay: { [day: number]: number } = {};
+
+            const cohortSize = dayMap.values().next().value?.cohortSize || 0;
+
+            for (const day of days) {
+                const targetDate = new Date(installDateObj);
+                targetDate.setUTCDate(targetDate.getUTCDate() + day);
+                const targetStart = new Date(targetDate);
+                targetStart.setUTCHours(0, 0, 0, 0);
+
+                if (targetStart > now) {
+                    retentionByDay[day] = -1;
+                    userCountByDay[day] = 0;
+                    continue;
+                }
+
+                const row = dayMap.get(day);
+                if (!row) {
+                    retentionByDay[day] = 0;
+                    userCountByDay[day] = 0;
+                    continue;
+                }
+
+                const mapped = mapper(row);
+                retentionByDay[day] = mapped.value;
+                userCountByDay[day] = mapped.userCount;
+            }
+
+            result.push({
+                installDate,
+                installCount: cohortSize,
+                retentionByDay,
+                userCountByDay
+            });
+        }
+
+        result.sort((a, b) => a.installDate.localeCompare(b.installDate));
+        return result;
     }
 
     /**

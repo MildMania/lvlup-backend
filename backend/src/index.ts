@@ -11,6 +11,7 @@ import { sessionHeartbeatService } from './services/SessionHeartbeatService';
 import dataRetentionService from './services/DataRetentionService';
 import { startLevelMetricsAggregationJob, startLevelMetricsHourlyTodayJob } from './jobs/levelMetricsAggregation';
 import { startActiveUsersAggregationJob, startActiveUsersHourlyTodayJob } from './jobs/activeUsersAggregation';
+import { startCohortAggregationJob, startCohortHourlyTodayJob } from './jobs/cohortAggregation';
 import { eventBatchWriter } from './services/EventBatchWriter';
 import { revenueBatchWriter } from './services/RevenueBatchWriter';
 import { sessionHeartbeatBatchWriter } from './services/SessionHeartbeatBatchWriter';
@@ -246,6 +247,13 @@ app.listen(PORT, '0.0.0.0', () => {
 
     startActiveUsersHourlyTodayJob();
     logger.info('Active users hourly aggregation job started');
+
+    // Start cohort aggregation jobs
+    startCohortAggregationJob();
+    logger.info('Cohort aggregation cron job started');
+
+    startCohortHourlyTodayJob();
+    logger.info('Cohort hourly aggregation job started');
 });
 
 // Graceful shutdown

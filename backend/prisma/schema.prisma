@@ -38,6 +38,8 @@ model Game {
   levelMetricsDailyUsers LevelMetricsDailyUser[]
   activeUsersDaily ActiveUsersDaily[]
   activeUsersHllDaily ActiveUsersHllDaily[]
+  cohortRetentionDaily CohortRetentionDaily[]
+  cohortSessionMetricsDaily CohortSessionMetricsDaily[]
 
   @@map("games")
 }
@@ -938,4 +940,44 @@ model ActiveUsersHllDaily {
   @@index([gameId, date, platform, countryCode, appVersion])
   @@unique([gameId, date, platform, countryCode, appVersion], name: "unique_active_users_hll_daily")
   @@map("active_users_hll_daily")
+}
+
+model CohortRetentionDaily {
+  id          String   @id @default(cuid())
+  gameId      String
+  installDate DateTime // Cohort install date (UTC date only)
+  dayIndex    Int      // Day offset from install date
+  cohortSize  Int      @default(0)
+  retainedUsers Int    @default(0)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  game Game @relation(fields: [gameId], references: [id], onDelete: Cascade)
+
+  @@index([gameId, installDate])
+  @@index([gameId, dayIndex])
+  @@unique([gameId, installDate, dayIndex], name: "unique_cohort_retention_daily")
+  @@map("cohort_retention_daily")
+}
+
+model CohortSessionMetricsDaily {
+  id          String   @id @default(cuid())
+  gameId      String
+  installDate DateTime // Cohort install date (UTC date only)
+  dayIndex    Int      // Day offset from install date
+  cohortSize  Int      @default(0)
+  sessionUsers Int     @default(0)
+  totalSessions Int    @default(0)
+  totalDurationSec BigInt @default(0)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  game Game @relation(fields: [gameId], references: [id], onDelete: Cascade)
+
+  @@index([gameId, installDate])
+  @@index([gameId, dayIndex])
+  @@unique([gameId, installDate, dayIndex], name: "unique_cohort_session_metrics_daily")
+  @@map("cohort_session_metrics_daily")
 }

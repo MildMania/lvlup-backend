@@ -1,4 +1,4 @@
-import { PrismaClient } from '@prisma/client';
+import { Prisma, PrismaClient } from '@prisma/client';
 import logger from './utils/logger';
 
 /**
@@ -53,14 +53,16 @@ const globalForPrisma = global as unknown as { prisma: PrismaClient };
 
 const enableAnalyticsTrace = process.env.ANALYTICS_TRACE === '1' || process.env.ANALYTICS_TRACE === 'true';
 
+const prismaLogConfig: Prisma.LogDefinition[] = [
+  { level: 'warn', emit: 'event' },
+  { level: 'error', emit: 'event' },
+  ...(enableAnalyticsTrace ? [{ level: 'query', emit: 'event' } as Prisma.LogDefinition] : []),
+];
+
 export const prisma =
   globalForPrisma.prisma ||
   new PrismaClient({
-    log: [
-      { level: 'warn', emit: 'event' },
-      { level: 'error', emit: 'event' },
-      ...(enableAnalyticsTrace ? [{ level: 'query', emit: 'event' }] : []),
-    ],
+    log: prismaLogConfig,
   });
 
 // Log Prisma warnings and errors

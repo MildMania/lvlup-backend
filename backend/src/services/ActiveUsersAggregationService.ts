@@ -70,7 +70,13 @@ export class ActiveUsersAggregationService {
     let processed = 0;
 
     while (true) {
-      const rows = await this.prisma.event.findMany({
+      const rows: Array<{
+        id: string;
+        userId: string;
+        platform: string | null;
+        countryCode: string | null;
+        appVersion: string | null;
+      }> = await this.prisma.event.findMany({
         where: {
           gameId,
           timestamp: {
@@ -106,7 +112,8 @@ export class ActiveUsersAggregationService {
       }
 
       processed += rows.length;
-      lastId = rows[rows.length - 1].id;
+      const lastRow = rows[rows.length - 1];
+      lastId = lastRow ? lastRow.id : null;
     }
 
     if (hllMap.size > 0) {

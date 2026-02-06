@@ -3,6 +3,7 @@ import logger from '../utils/logger';
 import { AnalyticsFilterParams } from '../types/api';
 import { cache, generateCacheKey } from '../utils/simpleCache';
 import prisma from '../prisma';
+import { HLL } from '../utils/hll';
 
 export interface RetentionData {
     day: number;
@@ -180,57 +181,97 @@ export class AnalyticsMetricsService {
                 ? (Array.isArray(filters.version) ? filters.version : [filters.version])
                 : [];
 
-            const rows = await this.prisma.$queryRaw<
-                Array<{ day: Date; dau: bigint; wau: bigint; mau: bigint }>
+            const days: Date[] = [];
+            const cursor = new Date(startDate);
+            cursor.setUTCHours(0, 0, 0, 0);
+            const end = new Date(endDate);
+            end.setUTCHours(0, 0, 0, 0);
+            while (cursor <= end) {
+                days.push(new Date(cursor));
+                cursor.setUTCDate(cursor.getUTCDate() + 1);
+            }
+
+            const dauRows = await this.prisma.$queryRaw<
+                Array<{ day: Date; dau: bigint }>
             >(Prisma.sql`
-                WITH days AS (
-                    SELECT generate_series(
-                        date_trunc('day', ${startDate}::timestamptz),
-                        date_trunc('day', ${endDate}::timestamptz),
-                        interval '1 day'
-                    ) AS day
-                )
                 SELECT
-                    d.day AS day,
-                    (
-                        SELECT COALESCE(SUM(aud."dau"), 0)
-                        FROM "active_users_daily" aud
-                        WHERE aud."gameId" = ${gameId}
-                          AND aud."date" = d.day
-                          ${countries.length ? Prisma.sql`AND aud."countryCode" IN (${Prisma.join(countries)})` : Prisma.sql``}
-                          ${platforms.length ? Prisma.sql`AND aud."platform" IN (${Prisma.join(platforms)})` : Prisma.sql``}
-                          ${versions.length ? Prisma.sql`AND aud."appVersion" IN (${Prisma.join(versions)})` : Prisma.sql``}
-                    ) AS dau,
-                    (
-                        SELECT COALESCE(hll_cardinality(hll_union_agg(auh."hll")), 0)::bigint
-                        FROM "active_users_hll_daily" auh
-                        WHERE auh."gameId" = ${gameId}
-                          AND auh."date" >= d.day - interval '6 day'
-                          AND auh."date" <= d.day
-                          ${countries.length ? Prisma.sql`AND auh."countryCode" IN (${Prisma.join(countries)})` : Prisma.sql``}
-                          ${platforms.length ? Prisma.sql`AND auh."platform" IN (${Prisma.join(platforms)})` : Prisma.sql``}
-                          ${versions.length ? Prisma.sql`AND auh."appVersion" IN (${Prisma.join(versions)})` : Prisma.sql``}
-                    ) AS wau,
-                    (
-                        SELECT COALESCE(hll_cardinality(hll_union_agg(auh."hll")), 0)::bigint
-                        FROM "active_users_hll_daily" auh
-                        WHERE auh."gameId" = ${gameId}
-                          AND auh."date" >= d.day - interval '29 day'
-                          AND auh."date" <= d.day
-                          ${countries.length ? Prisma.sql`AND auh."countryCode" IN (${Prisma.join(countries)})` : Prisma.sql``}
-                          ${platforms.length ? Prisma.sql`AND auh."platform" IN (${Prisma.join(platforms)})` : Prisma.sql``}
-                          ${versions.length ? Prisma.sql`AND auh."appVersion" IN (${Prisma.join(versions)})` : Prisma.sql``}
-                    ) AS mau
-                FROM days d
-                ORDER BY d.day ASC
+                    date_trunc('day', "date") AS "day",
+                    COALESCE(SUM("dau"), 0) AS "dau"
+                FROM "active_users_daily"
+                WHERE "gameId" = ${gameId}
+                  AND "date" >= ${startDate}
+                  AND "date" <= ${endDate}
+                  ${countries.length ? Prisma.sql`AND "countryCode" IN (${Prisma.join(countries)})` : Prisma.sql``}
+                  ${platforms.length ? Prisma.sql`AND "platform" IN (${Prisma.join(platforms)})` : Prisma.sql``}
+                  ${versions.length ? Prisma.sql`AND "appVersion" IN (${Prisma.join(versions)})` : Prisma.sql``}
+                GROUP BY 1
             `);
 
-            const dailyData: ActiveUserData[] = rows.map((row) => ({
-                date: row.day.toISOString().split('T')[0] || '',
-                dau: Number(row.dau || 0),
-                wau: Number(row.wau || 0),
-                mau: Number(row.mau || 0)
-            }));
+            const hllStart = new Date(startDate);
+            hllStart.setUTCDate(hllStart.getUTCDate() - 29);
+
+            const hllRows = await this.prisma.$queryRaw<
+                Array<{ day: Date; hll: Buffer }>
+            >(Prisma.sql`
+                SELECT
+                    date_trunc('day', "date") AS "day",
+                    "hll" AS "hll"
+                FROM "active_users_hll_daily"
+                WHERE "gameId" = ${gameId}
+                  AND "date" >= ${hllStart}
+                  AND "date" <= ${endDate}
+                  ${countries.length ? Prisma.sql`AND "countryCode" IN (${Prisma.join(countries)})` : Prisma.sql``}
+                  ${platforms.length ? Prisma.sql`AND "platform" IN (${Prisma.join(platforms)})` : Prisma.sql``}
+                  ${versions.length ? Prisma.sql`AND "appVersion" IN (${Prisma.join(versions)})` : Prisma.sql``}
+            `);
+
+            const dauByDay = new Map<string, number>();
+            for (const row of dauRows) {
+                const key = row.day.toISOString().split('T')[0] || '';
+                dauByDay.set(key, Number(row.dau || 0));
+            }
+
+            const hllByDay = new Map<string, HLL>();
+            for (const row of hllRows) {
+                const key = row.day.toISOString().split('T')[0] || '';
+                const existing = hllByDay.get(key);
+                const current = HLL.fromBuffer(row.hll);
+                if (existing) {
+                    existing.union(current);
+                } else {
+                    hllByDay.set(key, current);
+                }
+            }
+
+            const dailyData: ActiveUserData[] = days.map((day) => {
+                const key = day.toISOString().split('T')[0] || '';
+                const dau = dauByDay.get(key) || 0;
+
+                const wauHll = new HLL();
+                for (let i = 6; i >= 0; i--) {
+                    const d = new Date(day);
+                    d.setUTCDate(d.getUTCDate() - i);
+                    const k = d.toISOString().split('T')[0] || '';
+                    const hll = hllByDay.get(k);
+                    if (hll) wauHll.union(hll);
+                }
+
+                const mauHll = new HLL();
+                for (let i = 29; i >= 0; i--) {
+                    const d = new Date(day);
+                    d.setUTCDate(d.getUTCDate() - i);
+                    const k = d.toISOString().split('T')[0] || '';
+                    const hll = hllByDay.get(k);
+                    if (hll) mauHll.union(hll);
+                }
+
+                return {
+                    date: key,
+                    dau,
+                    wau: wauHll.count(),
+                    mau: mauHll.count()
+                };
+            });
 
             // Cache for 5 minutes (300 seconds)
             cache.set(cacheKey, dailyData, 300);

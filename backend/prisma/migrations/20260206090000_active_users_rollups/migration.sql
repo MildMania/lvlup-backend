@@ -1,6 +1,3 @@
--- Enable HLL extension for approximate distinct counts
-CREATE EXTENSION IF NOT EXISTS hll;
-
 -- Daily exact DAU rollups
 CREATE TABLE IF NOT EXISTS "active_users_daily" (
     "id" TEXT NOT NULL,
@@ -23,7 +20,7 @@ CREATE TABLE IF NOT EXISTS "active_users_hll_daily" (
     "platform" TEXT NOT NULL DEFAULT '',
     "countryCode" TEXT NOT NULL DEFAULT '',
     "appVersion" TEXT NOT NULL DEFAULT '',
-    "hll" hll NOT NULL,
+    "hll" BYTEA NOT NULL,
     "createdAt" TIMESTAMPTZ NOT NULL DEFAULT now(),
     "updatedAt" TIMESTAMPTZ NOT NULL DEFAULT now(),
     CONSTRAINT "active_users_hll_daily_pkey" PRIMARY KEY ("id")

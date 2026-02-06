@@ -1,4 +1,5 @@
 import { PrismaClient } from '@prisma/client';
+import { HLL, newHllId } from '../utils/hll';
 import prisma from '../prisma';
 import logger from '../utils/logger';
 
@@ -52,31 +53,60 @@ export class ActiveUsersAggregationService {
       dayEnd
     );
 
-    // HLL rollups for approximate WAU/MAU
-    await this.prisma.$executeRawUnsafe(
-      `
-      INSERT INTO "active_users_hll_daily"
-        ("id","gameId","date","platform","countryCode","appVersion","hll","createdAt","updatedAt")
-      SELECT
-        concat('auh_', md5(random()::text || clock_timestamp()::text)) as "id",
-        e."gameId",
-        date_trunc('day', e."timestamp")::timestamptz as "date",
-        COALESCE(e."platform",'') as "platform",
-        COALESCE(e."countryCode",'') as "countryCode",
-        COALESCE(e."appVersion",'') as "appVersion",
-        hll_add_agg(hll_hash_text(e."userId")) as "hll",
-        now() as "createdAt",
-        now() as "updatedAt"
-      FROM "events" e
-      WHERE e."gameId" = $1
-        AND e."timestamp" >= $2
-        AND e."timestamp" < $3
-      GROUP BY 1,2,3,4,5,6
-      `,
-      gameId,
-      dayStart,
-      dayEnd
-    );
+    // HLL rollups for approximate WAU/MAU (computed in app, stored as BYTEA)
+    const rows = await this.prisma.event.findMany({
+      where: {
+        gameId,
+        timestamp: {
+          gte: dayStart,
+          lt: dayEnd
+        }
+      },
+      select: {
+        userId: true,
+        platform: true,
+        countryCode: true,
+        appVersion: true
+      }
+    });
+
+    const hllMap = new Map<string, {
+      platform: string;
+      countryCode: string;
+      appVersion: string;
+      hll: HLL;
+    }>();
+
+    for (const row of rows) {
+      const platform = row.platform || '';
+      const countryCode = row.countryCode || '';
+      const appVersion = row.appVersion || '';
+      const key = `${platform}::${countryCode}::${appVersion}`;
+      if (!hllMap.has(key)) {
+        hllMap.set(key, { platform, countryCode, appVersion, hll: new HLL() });
+      }
+      hllMap.get(key)!.hll.add(row.userId);
+    }
+
+    if (hllMap.size > 0) {
+      for (const entry of hllMap.values()) {
+        await this.prisma.$executeRaw`
+          INSERT INTO "active_users_hll_daily"
+            ("id","gameId","date","platform","countryCode","appVersion","hll","createdAt","updatedAt")
+          VALUES (
+            ${newHllId('auh')},
+            ${gameId},
+            ${dayStart},
+            ${entry.platform},
+            ${entry.countryCode},
+            ${entry.appVersion},
+            ${entry.hll.toBuffer()},
+            now(),
+            now()
+          )
+        `;
+      }
+    }
   }
 
   async backfillHistorical(gameId: string, startDate: Date, endDate: Date): Promise<void> {

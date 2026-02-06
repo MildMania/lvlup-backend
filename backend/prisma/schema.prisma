@@ -927,7 +927,7 @@ model ActiveUsersHllDaily {
   platform    String   @default("")
   countryCode String   @default("")
   appVersion  String   @default("")
-  hll         Unsupported("hll")
+  hll         Bytes
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt

@@ -19,14 +19,6 @@ export class ActiveUsersAggregationService {
 
     logger.info(`Aggregating active users for ${gameId} on ${date.toISOString().split('T')[0]}`);
 
-    // Clear existing rollups for the day
-    await this.prisma.activeUsersDaily.deleteMany({
-      where: { gameId, date }
-    });
-    await this.prisma.activeUsersHllDaily.deleteMany({
-      where: { gameId, date }
-    });
-
     // Exact DAU rollups
     await this.prisma.$executeRawUnsafe(
       `
@@ -47,6 +39,8 @@ export class ActiveUsersAggregationService {
         AND e."timestamp" >= $2
         AND e."timestamp" < $3
       GROUP BY 1,2,3,4,5,6
+      ON CONFLICT ("gameId","date","platform","countryCode","appVersion")
+      DO UPDATE SET "dau" = EXCLUDED."dau", "updatedAt" = now()
       `,
       gameId,
       dayStart,
@@ -104,6 +98,8 @@ export class ActiveUsersAggregationService {
             now(),
             now()
           )
+          ON CONFLICT ("gameId","date","platform","countryCode","appVersion")
+          DO UPDATE SET "hll" = EXCLUDED."hll", "updatedAt" = now()
         `;
       }
     }

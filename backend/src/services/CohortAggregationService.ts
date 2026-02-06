@@ -74,6 +74,29 @@ export class CohortAggregationService {
           sessionMetrics.totalSessions,
           sessionMetrics.totalDurationSec
         );
+
+        const monetizationMetrics = await this.getMonetizationMetricsByDimensions(
+          gameId,
+          installDate,
+          installEnd,
+          target,
+          targetEnd,
+          cohort.platform,
+          cohort.countryCode,
+          cohort.appVersion
+        );
+        await this.upsertMonetizationMetrics(
+          gameId,
+          installDate,
+          dayIndex,
+          cohort.platform,
+          cohort.countryCode,
+          cohort.appVersion,
+          monetizationMetrics.iapRevenueUsd,
+          monetizationMetrics.adRevenueUsd,
+          monetizationMetrics.totalRevenueUsd,
+          monetizationMetrics.iapPayingUsers
+        );
       }
     }
   }
@@ -242,6 +265,8 @@ export class CohortAggregationService {
       WHERE "gameId" = ${gameId}
         AND "installDate" + ("dayIndex" || ' days')::interval < ${targetDay} - interval '1 day'
     `;
+
+    await this.aggregateMonetizationForTargetDay(gameId, targetDay, COHORT_DAY_INDICES);
   }
 
   async backfill(gameId: string, startDate: Date, endDate: Date, dayIndices = COHORT_DAY_INDICES): Promise<void> {
@@ -454,6 +479,68 @@ export class CohortAggregationService {
     };
   }
 
+  private async getMonetizationMetricsByDimensions(
+    gameId: string,
+    installStart: Date,
+    installEnd: Date,
+    targetStart: Date,
+    targetEnd: Date,
+    platform: string,
+    countryCode: string,
+    appVersion: string
+  ): Promise<{ iapRevenueUsd: number; adRevenueUsd: number; totalRevenueUsd: number; iapPayingUsers: number }> {
+    const result = await this.prisma.$queryRaw<
+      Array<{ iap_revenue_usd: number | null; ad_revenue_usd: number | null; total_revenue_usd: number | null; iap_paying_users: bigint }>
+    >(Prisma.sql`
+      WITH cohort_users AS (
+        SELECT u."id"
+        FROM "users" u
+        WHERE u."gameId" = ${gameId}
+          AND u."createdAt" >= ${installStart}
+          AND u."createdAt" < ${installEnd}
+      ),
+      first_event AS (
+        SELECT DISTINCT ON (e."userId")
+          e."userId" AS "userId",
+          e."platform" AS "platform",
+          e."countryCode" AS "countryCode",
+          e."appVersion" AS "appVersion"
+        FROM "events" e
+        JOIN cohort_users cu ON cu."id" = e."userId"
+        WHERE e."gameId" = ${gameId}
+          AND e."timestamp" >= ${installStart}
+          AND e."timestamp" < ${installEnd}
+        ORDER BY e."userId", e."timestamp" ASC
+      ),
+      cohort AS (
+        SELECT cu."id"
+        FROM cohort_users cu
+        LEFT JOIN first_event f ON f."userId" = cu."id"
+        WHERE COALESCE(f."platform",'') = ${platform}
+          AND COALESCE(f."countryCode",'') = ${countryCode}
+          AND COALESCE(f."appVersion",'') = ${appVersion}
+      )
+      SELECT
+        COALESCE(SUM(CASE WHEN r."revenueType" = 'IN_APP_PURCHASE' THEN COALESCE(r."revenueUSD", 0) ELSE 0 END), 0) AS "iap_revenue_usd",
+        COALESCE(SUM(CASE WHEN r."revenueType" = 'AD_IMPRESSION' THEN COALESCE(r."revenueUSD", 0) ELSE 0 END), 0) AS "ad_revenue_usd",
+        COALESCE(SUM(COALESCE(r."revenueUSD", 0)), 0) AS "total_revenue_usd",
+        COUNT(DISTINCT CASE WHEN r."revenueType" = 'IN_APP_PURCHASE' THEN r."userId" END)::bigint AS "iap_paying_users"
+      FROM "revenue" r
+      JOIN cohort c ON c."id" = r."userId"
+      WHERE r."gameId" = ${gameId}
+        AND r."timestamp" >= ${targetStart}
+        AND r."timestamp" < ${targetEnd}
+    `);
+
+    const row = result[0];
+    return {
+      iapRevenueUsd: Number(row?.iap_revenue_usd || 0),
+      adRevenueUsd: Number(row?.ad_revenue_usd || 0),
+      totalRevenueUsd: Number(row?.total_revenue_usd || 0),
+      iapPayingUsers: Number(row?.iap_paying_users || 0)
+    };
+  }
+
   private async upsertRetention(
     gameId: string,
     installDate: Date,
@@ -529,6 +616,94 @@ export class CohortAggregationService {
         "totalDurationSec" = EXCLUDED."totalDurationSec",
         "updatedAt" = now()
     `;
+  }
+
+  private async upsertMonetizationMetrics(
+    gameId: string,
+    installDate: Date,
+    dayIndex: number,
+    platform: string,
+    countryCode: string,
+    appVersion: string,
+    iapRevenueUsd: number,
+    adRevenueUsd: number,
+    totalRevenueUsd: number,
+    iapPayingUsers: number
+  ): Promise<void> {
+    await this.prisma.$executeRaw`
+      INSERT INTO "cohort_monetization_daily"
+        ("id","gameId","installDate","dayIndex","platform","countryCode","appVersion","iapRevenueUsd","adRevenueUsd","totalRevenueUsd","iapPayingUsers","createdAt","updatedAt")
+      VALUES (
+        ${this.buildId('cmd', gameId, installDate, dayIndex, platform, countryCode, appVersion)},
+        ${gameId},
+        ${installDate},
+        ${dayIndex},
+        ${platform},
+        ${countryCode},
+        ${appVersion},
+        ${iapRevenueUsd},
+        ${adRevenueUsd},
+        ${totalRevenueUsd},
+        ${iapPayingUsers},
+        now(),
+        now()
+      )
+      ON CONFLICT ("gameId","installDate","dayIndex","platform","countryCode","appVersion")
+      DO UPDATE SET
+        "iapRevenueUsd" = EXCLUDED."iapRevenueUsd",
+        "adRevenueUsd" = EXCLUDED."adRevenueUsd",
+        "totalRevenueUsd" = EXCLUDED."totalRevenueUsd",
+        "iapPayingUsers" = EXCLUDED."iapPayingUsers",
+        "updatedAt" = now()
+    `;
+  }
+
+  private async aggregateMonetizationForTargetDay(
+    gameId: string,
+    targetDay: Date,
+    dayIndices = COHORT_DAY_INDICES
+  ): Promise<void> {
+    const target = new Date(targetDay);
+    target.setUTCHours(0, 0, 0, 0);
+    const targetEnd = new Date(target);
+    targetEnd.setUTCDate(targetEnd.getUTCDate() + 1);
+
+    for (const dayIndex of dayIndices) {
+      const installDate = new Date(target);
+      installDate.setUTCDate(installDate.getUTCDate() - dayIndex);
+      installDate.setUTCHours(0, 0, 0, 0);
+      const installEnd = new Date(installDate);
+      installEnd.setUTCDate(installEnd.getUTCDate() + 1);
+
+      const cohorts = await this.getCohortSizesByDimensions(gameId, installDate, installEnd);
+      if (cohorts.length === 0) continue;
+
+      for (const cohort of cohorts) {
+        const monetizationMetrics = await this.getMonetizationMetricsByDimensions(
+          gameId,
+          installDate,
+          installEnd,
+          target,
+          targetEnd,
+          cohort.platform,
+          cohort.countryCode,
+          cohort.appVersion
+        );
+
+        await this.upsertMonetizationMetrics(
+          gameId,
+          installDate,
+          dayIndex,
+          cohort.platform,
+          cohort.countryCode,
+          cohort.appVersion,
+          monetizationMetrics.iapRevenueUsd,
+          monetizationMetrics.adRevenueUsd,
+          monetizationMetrics.totalRevenueUsd,
+          monetizationMetrics.iapPayingUsers
+        );
+      }
+    }
   }
 
   private buildId(prefix: string, gameId: string, installDate: Date, dayIndex: number, platform: string, countryCode: string, appVersion: string): string {

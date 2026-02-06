@@ -53,10 +53,11 @@ export class MonetizationCohortService {
         }
     ): Promise<MonetizationCohortData[]> {
         try {
-            logger.info(`[Monetization] Fetching cohorts using optimized retention service`);
+            logger.info(`[Monetization] Fetching cohorts from retention+monetization rollups`);
 
-            // Step 1: Get cohort structure from the already-optimized retention service
-            // This gives us cohort dates, user counts, and returning users per day
+            const dayIndices = Array.from({ length: maxDays + 1 }, (_, i) => i);
+
+            // Step 1: Cohort structure and returning users from retention rollups
             const retentionCohorts = await this.cohortAnalyticsService.calculateCohortRetention(
                 gameId,
                 startDate,
@@ -65,7 +66,7 @@ export class MonetizationCohortService {
                     country: filters?.country,
                     platform: filters?.platform,
                     version: filters?.version,
-                    days: Array.from({ length: maxDays + 1 }, (_, i) => i) // [0, 1, 2, ..., maxDays]
+                    days: dayIndices
                 }
             );
 
@@ -74,98 +75,64 @@ export class MonetizationCohortService {
                 return [];
             }
 
-            logger.info(`[Monetization] Got ${retentionCohorts.length} cohorts from retention service`);
+            const platformFilter = this.normalizeFilter(filters?.platform);
+            const countryFilter = this.normalizeFilter(filters?.country);
+            const versionFilter = this.normalizeFilter(filters?.version);
 
-            // Step 2: Get all user IDs grouped by install date
-            const whereClause: any = {
-                gameId,
-                createdAt: { gte: startDate, lte: endDate }
-            };
-
-            if (filters?.country) {
-                whereClause.events = {
-                    some: {
-                        countryCode: Array.isArray(filters.country) ? { in: filters.country } : filters.country
-                    }
-                };
-            }
-
-            if (filters?.platform) {
-                if (!whereClause.events) whereClause.events = { some: {} };
-                whereClause.events.some.platform = Array.isArray(filters.platform)
-                    ? { in: filters.platform }
-                    : filters.platform;
-            }
-
-            if (filters?.version) {
-                if (!whereClause.events) whereClause.events = { some: {} };
-                whereClause.events.some.appVersion = Array.isArray(filters.version)
-                    ? { in: filters.version }
-                    : filters.version;
-            }
-
-            const users = await this.prisma.user.findMany({
-                where: whereClause,
-                select: { id: true, createdAt: true }
-            });
-
-            // Group users by install date
-            const usersByDate = new Map<string, string[]>();
-            users.forEach(user => {
-                const timestamp = typeof user.createdAt === 'bigint' ? Number(user.createdAt) : user.createdAt;
-                const installDate = new Date(timestamp).toISOString().split('T')[0];
-                if (installDate) {
-                    if (!usersByDate.has(installDate)) {
-                        usersByDate.set(installDate, []);
-                    }
-                    usersByDate.get(installDate)!.push(user.id);
-                }
-            });
-
-            // Step 3: Batch fetch ALL revenue events (single query!)
-            const allUserIds = Array.from(usersByDate.values()).flat();
-            const allRevenue = await this.prisma.revenue.findMany({
+            const monetizationRows = await this.prisma.cohortMonetizationDaily.findMany({
                 where: {
                     gameId,
-                    userId: { in: allUserIds },
-                    timestamp: {
-                        gte: startDate,
-                        lte: new Date(endDate.getTime() + maxDays * 24 * 60 * 60 * 1000)
-                    }
+                    installDate: { gte: startDate, lte: endDate },
+                    dayIndex: { in: dayIndices },
+                    ...(platformFilter.length ? { platform: { in: platformFilter } } : {}),
+                    ...(countryFilter.length ? { countryCode: { in: countryFilter } } : {}),
+                    ...(versionFilter.length ? { appVersion: { in: versionFilter } } : {})
                 },
                 select: {
-                    userId: true,
-                    timestamp: true,
-                    revenue: true,
-                    revenueUSD: true,  // Use USD-converted values for aggregation
-                    revenueType: true
+                    installDate: true,
+                    dayIndex: true,
+                    iapRevenueUsd: true,
+                    adRevenueUsd: true,
+                    totalRevenueUsd: true,
+                    iapPayingUsers: true
                 }
             });
 
-            logger.info(`[Monetization] Fetched ${allRevenue.length} revenue events for ${allUserIds.length} users`);
+            const monetizationByInstallDay = new Map<string, Map<number, {
+                iapRevenue: number;
+                adRevenue: number;
+                totalRevenue: number;
+                iapPayingUsers: number;
+            }>>();
 
-            // Step 4: Build monetization data by layering revenue on top of retention cohorts
+            for (const row of monetizationRows) {
+                const installDate = row.installDate.toISOString().split('T')[0];
+                if (!installDate) continue;
+                if (!monetizationByInstallDay.has(installDate)) {
+                    monetizationByInstallDay.set(installDate, new Map());
+                }
+                monetizationByInstallDay.get(installDate)!.set(row.dayIndex, {
+                    iapRevenue: row.iapRevenueUsd || 0,
+                    adRevenue: row.adRevenueUsd || 0,
+                    totalRevenue: row.totalRevenueUsd || 0,
+                    iapPayingUsers: row.iapPayingUsers || 0
+                });
+            }
+
+            // Step 2: Build monetization data from rollups + retention returning users
             const monetizationData: MonetizationCohortData[] = [];
-            const now = new Date();
 
             for (const cohort of retentionCohorts) {
                 const cohortDate = cohort.installDate;
-                const cohortStartDate = new Date(cohortDate + 'T00:00:00.000Z');
-                const cohortUserIds = usersByDate.get(cohortDate) || [];
+                const dayMap = monetizationByInstallDay.get(cohortDate) || new Map();
 
                 const metrics: MonetizationCohortData['metrics'] = {};
 
                 for (let dayOffset = 0; dayOffset <= maxDays; dayOffset++) {
-                    const periodStart = new Date(cohortStartDate);
-                    periodStart.setUTCDate(periodStart.getUTCDate() + dayOffset);
-                    periodStart.setUTCHours(0, 0, 0, 0);
+                    const retentionValue = cohort.retentionByDay[dayOffset];
+                    const returningUsers = cohort.userCountByDay[dayOffset] || 0;
 
-                    const periodEnd = new Date(periodStart);
-                    periodEnd.setUTCDate(periodEnd.getUTCDate() + 1);
-                    periodEnd.setUTCHours(0, 0, 0, 0);
-
-                    // Check if day has been reached (same logic as retention)
-                    if (periodStart > now) {
+                    if (retentionValue === -1) {
                         metrics[`day${dayOffset}`] = {
                             returningUsers: -1,
                             iapRevenue: -1,
@@ -179,9 +146,6 @@ export class MonetizationCohortService {
                         };
                         continue;
                     }
-
-                    // Get returning user count from retention data (no extra query needed!)
-                    const returningUsers = cohort.userCountByDay[dayOffset] || 0;
 
                     if (returningUsers === 0) {
                         metrics[`day${dayOffset}`] = {
@@ -198,33 +162,11 @@ export class MonetizationCohortService {
                         continue;
                     }
 
-                    // Filter revenue events in-memory (super fast!)
-                    let iapRevenue = 0;
-                    let adRevenue = 0;
-                    const iapPayingUserIds = new Set<string>();
-
-                    allRevenue
-                        .filter(r =>
-                            cohortUserIds.includes(r.userId) &&
-                            r.timestamp >= periodStart &&
-                            r.timestamp < periodEnd
-                        )
-                        .forEach(item => {
-                            // IMPORTANT: ONLY use revenueUSD for multi-currency aggregation
-                            // DO NOT fall back to 'revenue' as it's in original currency (e.g., TRY, EUR)
-                            // which would inflate USD calculations
-                            const revenue = Number(item.revenueUSD || 0);
-
-                            if (item.revenueType === 'IN_APP_PURCHASE') {
-                                iapRevenue += revenue;
-                                iapPayingUserIds.add(item.userId);
-                            } else if (item.revenueType === 'AD_IMPRESSION') {
-                                adRevenue += revenue;
-                            }
-                        });
-
-                    const totalRevenue = iapRevenue + adRevenue;
-                    const iapPayingUsers = iapPayingUserIds.size;
+                    const rollup = dayMap.get(dayOffset);
+                    const iapRevenue = rollup?.iapRevenue || 0;
+                    const adRevenue = rollup?.adRevenue || 0;
+                    const totalRevenue = rollup?.totalRevenue || 0;
+                    const iapPayingUsers = rollup?.iapPayingUsers || 0;
                     const arpuIap = returningUsers > 0 ? iapRevenue / returningUsers : 0;
                     const arppuIap = iapPayingUsers > 0 ? iapRevenue / iapPayingUsers : 0;
                     const arpu = returningUsers > 0 ? totalRevenue / returningUsers : 0;
@@ -257,5 +199,11 @@ export class MonetizationCohortService {
             logger.error('[Monetization] Error generating cohorts:', error);
             throw error;
         }
+    }
+
+    private normalizeFilter(value?: string | string[]): string[] {
+        if (!value) return [];
+        if (Array.isArray(value)) return value.filter((v) => v && v !== 'All');
+        return value.split(',').map((v) => v.trim()).filter((v) => v && v !== 'All');
     }
 }

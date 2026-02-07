@@ -15,7 +15,7 @@ import {
 import { Users, Activity, Clock, TrendingUp, RefreshCw, Info, Copy, Check } from 'lucide-react';
 import { AnalyticsService, fetchActiveUsers, fetchPlaytime } from '../services/analytics';
 import type { 
-  ActiveUserPoint, 
+  ActiveUserPoint,
   RetentionPoint, 
   PlaytimePoint, 
   DashboardSummary 

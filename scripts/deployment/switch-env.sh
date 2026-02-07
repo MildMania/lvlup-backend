@@ -8,8 +8,32 @@ BLUE='\033[0;34m'
 NC='\033[0m' # No Color
 
 SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
-BACKEND_DIR="$SCRIPT_DIR/backend"
-FRONTEND_DIR="$SCRIPT_DIR/frontend"
+REPO_ROOT="$( cd "$SCRIPT_DIR/../.." && pwd )"
+BACKEND_DIR="$REPO_ROOT/backend"
+FRONTEND_DIR="$REPO_ROOT/frontend"
+
+upsert_env_var() {
+    local file="$1"
+    local key="$2"
+    local value="$3"
+    local tmp
+    tmp="$(mktemp)"
+
+    awk -v key="$key" -v value="$value" '
+        BEGIN { updated=0 }
+        $0 ~ ("^" key "=") {
+            print key "=\"" value "\""
+            updated=1
+            next
+        }
+        { print }
+        END {
+            if (!updated) {
+                print key "=\"" value "\""
+            }
+        }
+    ' "$file" > "$tmp" && mv "$tmp" "$file"
+}
 
 print_usage() {
     echo ""
@@ -101,15 +125,10 @@ switch_to_local() {
     # Backend - ensure SQLite configuration
     echo "📝 Configuring backend for SQLite..."
     if [ -f "$BACKEND_DIR/.env" ]; then
-        # Update DATABASE_URL to SQLite
-        if grep -q "^DATABASE_URL=" "$BACKEND_DIR/.env"; then
-            sed -i.bak 's|^DATABASE_URL=.*|DATABASE_URL="file:./dev.db"|' "$BACKEND_DIR/.env"
-            echo -e "  ${GREEN}✅${NC} Updated DATABASE_URL to SQLite"
-        else
-            echo 'DATABASE_URL="file:./dev.db"' >> "$BACKEND_DIR/.env"
-            echo -e "  ${GREEN}✅${NC} Added DATABASE_URL for SQLite"
-        fi
-        rm -f "$BACKEND_DIR/.env.bak"
+        upsert_env_var "$BACKEND_DIR/.env" "DATABASE_URL" "file:./dev.db"
+        upsert_env_var "$BACKEND_DIR/.env" "NODE_ENV" "development"
+        echo -e "  ${GREEN}✅${NC} Updated DATABASE_URL to SQLite"
+        echo -e "  ${GREEN}✅${NC} Updated NODE_ENV to development"
     else
         echo -e "  ${RED}❌ Backend .env file not found${NC}"
         exit 1
@@ -268,4 +287,3 @@ case "${1:-}" in
         exit 1
         ;;
 esac
-

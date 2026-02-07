@@ -26,6 +26,7 @@ const MAX_BATCH_SIZE = 100; // Flush when batch reaches this size
 const MAX_BATCH_DELAY_MS = 5000; // Flush after this delay (ms) - 5 seconds optimal for sparse traffic
 const MAX_BUFFER_SIZE = 1000; // Hard limit to prevent unbounded memory growth
 const SHUTDOWN_GRACE_PERIOD_MS = 3000; // Max time to wait during shutdown
+const CAN_SKIP_DUPLICATES = (process.env.DATABASE_URL || '').includes('postgres');
 
 interface PendingRevenue {
     gameId: string;
@@ -221,10 +222,11 @@ export class RevenueBatchWriter {
         
         try {
             // Single INSERT for entire batch
-            await this.prisma.revenue.createMany({
-                data: revenueToFlush,
-                skipDuplicates: true,  // ✅ FIXED: Skip duplicates to handle idempotent retries
-            });
+            const createManyArgs: any = { data: revenueToFlush };
+            if (CAN_SKIP_DUPLICATES) {
+                createManyArgs.skipDuplicates = true;
+            }
+            await this.prisma.revenue.createMany(createManyArgs);
             
             const flushDuration = Date.now() - startTime;
             this.totalFlushed += revenueToFlush.length;
@@ -265,10 +267,11 @@ export class RevenueBatchWriter {
             
             // Retry once
             try {
-                await this.prisma.revenue.createMany({
-                    data: revenueToFlush,
-                    skipDuplicates: true,  // ✅ FIXED: Skip duplicates on retry to prevent double-insertion
-                });
+                const retryCreateManyArgs: any = { data: revenueToFlush };
+                if (CAN_SKIP_DUPLICATES) {
+                    retryCreateManyArgs.skipDuplicates = true;
+                }
+                await this.prisma.revenue.createMany(retryCreateManyArgs);
                 
                 const retryDuration = Date.now() - startTime;
                 this.totalFlushed += revenueToFlush.length;
@@ -371,4 +374,3 @@ export class RevenueBatchWriter {
 
 // Singleton instance
 export const revenueBatchWriter = new RevenueBatchWriter();
-

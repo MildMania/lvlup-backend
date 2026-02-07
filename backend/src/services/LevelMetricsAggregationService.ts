@@ -2,6 +2,8 @@ import { PrismaClient } from '@prisma/client';
 import prisma from '../prisma';
 import logger from '../utils/logger';
 
+const CAN_SKIP_DUPLICATES = (process.env.DATABASE_URL || '').includes('postgres');
+
 /**
  * Level Metrics Aggregation Service
  * 
@@ -88,10 +90,11 @@ export class LevelMetricsAggregationService {
         });
 
         if (dailyUserRows.length > 0) {
-          await this.prisma.levelMetricsDailyUser.createMany({
-            data: dailyUserRows,
-            skipDuplicates: true
-          });
+          const createManyArgs: any = { data: dailyUserRows };
+          if (CAN_SKIP_DUPLICATES) {
+            createManyArgs.skipDuplicates = true;
+          }
+          await this.prisma.levelMetricsDailyUser.createMany(createManyArgs);
         }
       } catch (userRowError) {
         logger.error(`Failed to upsert daily user rows for ${dateStr}:`, userRowError);

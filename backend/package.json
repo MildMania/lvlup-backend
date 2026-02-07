@@ -26,9 +26,9 @@
     "backfill:active-users": "ts-node src/scripts/backfillActiveUsers.ts",
     "backfill:cohorts": "ts-node src/scripts/backfillCohorts.ts",
     "backfill:monetization": "ts-node src/scripts/backfillMonetization.ts",
-    "env:local": "cd .. && ./switch-env.sh local",
-    "env:prod": "cd .. && ./switch-env.sh production",
-    "env:status": "cd .. && ./switch-env.sh status"
+    "env:local": "cd .. && ./env local",
+    "env:prod": "cd .. && ./env production",
+    "env:status": "cd .. && ./env status"
   },
   "keywords": [],
   "author": "",

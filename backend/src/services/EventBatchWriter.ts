@@ -25,6 +25,7 @@ const MAX_BATCH_SIZE = 100; // Flush when batch reaches this size
 const MAX_BATCH_DELAY_MS = 5000; // Flush after this delay (ms) - 5 seconds optimal for sparse traffic
 const MAX_BUFFER_SIZE = 1000; // Hard limit to prevent unbounded memory growth
 const SHUTDOWN_GRACE_PERIOD_MS = 3000; // Max time to wait during shutdown
+const CAN_SKIP_DUPLICATES = (process.env.DATABASE_URL || '').includes('postgres');
 
 interface PendingEvent {
     gameId: string;
@@ -168,10 +169,11 @@ export class EventBatchWriter {
         
         try {
             // Single INSERT for entire batch
-            await this.prisma.event.createMany({
-                data: eventsToFlush,
-                skipDuplicates: false, // We want to know if there are duplicates
-            });
+            const createManyArgs: any = { data: eventsToFlush };
+            if (CAN_SKIP_DUPLICATES) {
+                createManyArgs.skipDuplicates = true;
+            }
+            await this.prisma.event.createMany(createManyArgs);
             
             const flushDuration = Date.now() - startTime;
             this.totalFlushed += eventsToFlush.length;
@@ -192,10 +194,11 @@ export class EventBatchWriter {
             
             // Retry once
             try {
-                await this.prisma.event.createMany({
-                    data: eventsToFlush,
-                    skipDuplicates: false,
-                });
+                const retryCreateManyArgs: any = { data: eventsToFlush };
+                if (CAN_SKIP_DUPLICATES) {
+                    retryCreateManyArgs.skipDuplicates = true;
+                }
+                await this.prisma.event.createMany(retryCreateManyArgs);
                 
                 const retryDuration = Date.now() - startTime;
                 this.totalFlushed += eventsToFlush.length;
@@ -280,4 +283,3 @@ export class EventBatchWriter {
 
 // Singleton instance
 export const eventBatchWriter = new EventBatchWriter();
-

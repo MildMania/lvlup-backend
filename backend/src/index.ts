@@ -18,8 +18,9 @@ import { eventBatchWriter } from './services/EventBatchWriter';
 import { revenueBatchWriter } from './services/RevenueBatchWriter';
 import { sessionHeartbeatBatchWriter } from './services/SessionHeartbeatBatchWriter';
 
-// Load environment variables
-dotenv.config();
+// Load environment variables and override inherited shell vars.
+// This keeps `./switch-env.sh` deterministic without manual `unset DATABASE_URL`.
+dotenv.config({ override: true });
 
 const app = express();
 const PORT = process.env.PORT ? parseInt(process.env.PORT) : 3000;

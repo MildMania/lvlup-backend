@@ -43,8 +43,8 @@ function ensureConnectionLimits(databaseUrl: string): string {
   }
 }
 
-// Apply connection limits
-if (process.env.DATABASE_URL) {
+// Apply connection limits only for PostgreSQL URLs.
+if (process.env.DATABASE_URL?.startsWith('postgresql://')) {
   process.env.DATABASE_URL = ensureConnectionLimits(process.env.DATABASE_URL);
 }
 

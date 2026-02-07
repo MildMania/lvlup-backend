@@ -10,18 +10,17 @@ SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
 case "${1:-}" in
     local|l)
         echo "🟢 Switching to LOCAL..."
-        bash "$SCRIPT_DIR/switch-env.sh" local
+        bash "$SCRIPT_DIR/scripts/deployment/switch-env.sh" local
         ;;
     production|prod|p)
         echo "🔵 Switching to PRODUCTION..."
-        bash "$SCRIPT_DIR/switch-env.sh" production
+        bash "$SCRIPT_DIR/scripts/deployment/switch-env.sh" production
         ;;
     status|s)
-        bash "$SCRIPT_DIR/switch-env.sh" status
+        bash "$SCRIPT_DIR/scripts/deployment/switch-env.sh" status
         ;;
     *)
         echo "Usage: ./env [local|prod|status]"
         echo "Shortcuts: l=local, p=prod, s=status"
         ;;
 esac
-

@@ -1,237 +1,150 @@
-import { ContextManager } from './ContextManager';
-import { AnalyticsService } from './AnalyticsService';
-import { OpenAIService, AIAnalysisRequest, ConversationMessage } from './OpenAIService';
-import prisma from '../prisma';
+import logger from '../utils/logger';
+import { v4 as uuidv4 } from 'uuid';
+import { AiLlmClient } from '../ai/llm';
+import { QueryPlanner } from '../ai/planner';
+import { AnalyticsExecutor } from '../ai/executor';
+import { buildNarrationPrompt } from '../ai/prompts';
+import { validateExecutorOutput } from '../ai/validation';
+import { getPlanCache, getResultCache, setPlanCache, setResultCache } from '../ai/cache';
+import { ExecutorOutput, PlannerOutput } from '../ai/types';
+
+const DEFAULT_RESPONSE = 'Sorry, I encountered an error. Please try again.';
+
+const extractNumbers = (text: string): number[] => {
+  const matches = text.match(/-?\d+(\.\d+)?/g) || [];
+  return matches.map((value) => Number(value)).filter((v) => !Number.isNaN(v));
+};
+
+const collectNumbers = (input: unknown, output: number[] = []): number[] => {
+  if (typeof input === 'number' && !Number.isNaN(input)) {
+    output.push(Number(input.toFixed(2)));
+  } else if (Array.isArray(input)) {
+    input.forEach((item) => collectNumbers(item, output));
+  } else if (input && typeof input === 'object') {
+    Object.values(input).forEach((value) => collectNumbers(value, output));
+  }
+  return output;
+};
+
+const numbersAllowed = (result: ExecutorOutput) => {
+  const values = collectNumbers(result);
+  return new Set(values.map((v) => v.toFixed(2)));
+};
+
+const validateNarrationNumbers = (text: string, allowed: Set<string>): boolean => {
+  const found = extractNumbers(text);
+  if (found.length === 0) return true;
+  return found.every((value) => {
+    const fixed = Number(value.toFixed(2)).toFixed(2);
+    return allowed.has(fixed);
+  });
+};
+
+const buildFallbackResponse = (result: ExecutorOutput): string => {
+  const metric = result.context.plan.metric;
+  const summaryValue = result.summary.value;
+  const comparison = result.summary.previous;
+  const change = result.summary.change;
+  const changePct = result.summary.changePct;
+
+  let base = `The ${metric} over the requested period is ${summaryValue}.`;
+  if (typeof comparison === 'number' && typeof change === 'number') {
+    const delta = change >= 0 ? `+${change}` : `${change}`;
+    base += ` Compared to the previous period, change is ${delta}`;
+    if (typeof changePct === 'number') {
+      base += ` (${changePct}%).`;
+    } else {
+      base += '.';
+    }
+  }
+
+  if (result.attribution.length === 0) {
+    base += ' Attribution is inconclusive.';
+  }
+
+  return base;
+};
 
 export class AIAnalyticsService {
-  private contextManager: ContextManager;
-  private analyticsService: AnalyticsService;
-  private openaiService: OpenAIService;
-  private conversationHistory: Map<string, ConversationMessage[]> = new Map();
+  private llm: AiLlmClient;
+  private planner: QueryPlanner;
+  private executor: AnalyticsExecutor;
 
   constructor() {
-    this.contextManager = new ContextManager();
-    this.analyticsService = new AnalyticsService();
-    this.openaiService = new OpenAIService();
+    this.llm = new AiLlmClient();
+    this.planner = new QueryPlanner(this.llm);
+    this.executor = new AnalyticsExecutor();
   }
 
-  /**
-   * Check if AI features are enabled
-   */
   public isAIEnabled(): boolean {
-    return this.openaiService.isAIEnabled();
+    return this.llm.enabled();
   }
 
-  /**
-   * Process natural language query using real AI
-   */
-  async processQuery(query: string, gameId?: string, userId?: string): Promise<any> {
-    try {
-      // Create session key for conversation tracking
-      const sessionKey = `${gameId || 'default'}_${userId || 'anonymous'}`;
+  public async processQuery(question: string, tenantId: string): Promise<{
+    response: string;
+    confidence: number;
+    data: ExecutorOutput;
+    traceId: string;
+    latencyMs: number;
+    plan: PlannerOutput;
+  }> {
+    const traceId = uuidv4();
+    const startedAt = Date.now();
 
-      // Get available metrics for this game
-      const availableMetrics = [
-        'active_users', 'new_users', 'retention_rate', 'engagement_rate',
-        'session_duration', 'session_count', 'total_events', 'revenue', 'arpu'
-      ];
+    if (!this.isAIEnabled()) {
+      throw new Error('AI features are disabled. Please configure OPENAI_API_KEY.');
+    }
 
-      // Use AI to understand the query intent
-      const intentAnalysis = await this.openaiService.extractQueryIntent(query, availableMetrics);
+    let plan = getPlanCache(question);
+    if (!plan) {
+      plan = await this.planner.plan(question, new Date());
+      setPlanCache(question, plan);
+    }
 
-      // Get real analytics data based on AI-extracted intent
-      const analyticsData = await this.getAnalyticsData(intentAnalysis, gameId);
+    let result = getResultCache(tenantId, plan);
+    if (!result) {
+      result = await this.executor.execute(question, tenantId, plan);
+      setResultCache(tenantId, plan, result);
+    }
 
-      // Get business context
-      const businessContext = await this.contextManager.generateContextSummary(
-        intentAnalysis.timeframe.start,
-        intentAnalysis.timeframe.end
-      );
+    validateExecutorOutput(result);
 
-      // Get conversation history for this session
-      const conversationHistory = this.conversationHistory.get(sessionKey) || [];
+    const prompt = buildNarrationPrompt(result);
+    const maxTokens = plan.response_mode === 'deep' ? 600 : 220;
+    let response = await this.llm.completeText(prompt, maxTokens);
 
-      // Use AI to analyze the data and generate response
-      const aiAnalysis = await this.openaiService.analyzeAnalyticsQuery({
-        query,
-        analyticsData,
-        businessContext,
-        conversationHistory
+    const allowedNumbers = numbersAllowed(result);
+    if (!validateNarrationNumbers(response, allowedNumbers)) {
+      logger.warn('[AIAnalytics] narrator used unsupported numbers', {
+        traceId,
+        question
       });
-
-      // Store this interaction in conversation history
-      this.updateConversationHistory(sessionKey, query, aiAnalysis.response);
-
-      // Store the query and response for learning
-      await this.contextManager.storeAIQuery(
-        query,
-        aiAnalysis.response,
-        aiAnalysis.confidence,
-        'natural_language',
-        gameId,
-        userId,
-        {
-          intent: intentAnalysis,
-          reasoning: aiAnalysis.reasoning,
-          suggestedActions: aiAnalysis.suggestedActions
-        }
-      );
-
-      return {
-        response: aiAnalysis.response,
-        data: analyticsData,
-        confidence: aiAnalysis.confidence,
-        reasoning: aiAnalysis.reasoning,
-        suggestedActions: aiAnalysis.suggestedActions,
-        followUpQuestions: aiAnalysis.followUpQuestions,
-        intent: intentAnalysis
-      };
-
-    } catch (error) {
-      console.error('Error processing AI query:', error);
-
-      // Fallback to basic response if AI fails
-      return {
-        response: 'I apologize, but I encountered an issue processing your query with AI. The system may be temporarily unavailable. Please try again or rephrase your question.',
-        confidence: 0,
-        error: error instanceof Error ? error.message : 'Unknown error'
-      };
-    }
-  }
-
-  /**
-   * Get analytics data based on AI-extracted intent
-   */
-  private async getAnalyticsData(intentAnalysis: any, gameId?: string): Promise<any> {
-    // Get the first available game for demo purposes
-    const game = await prisma.game.findFirst();
-    if (!game) {
-      throw new Error('No games found');
+      response = buildFallbackResponse(result);
     }
 
-    const targetGameId = gameId || game.id;
+    const latencyMs = Date.now() - startedAt;
 
-    // Get real analytics data
-    const analytics = await this.analyticsService.getAnalytics(
-      targetGameId,
-      intentAnalysis.timeframe.start,
-      intentAnalysis.timeframe.end
-    );
+    logger.info('[AIAnalytics] query processed', {
+      traceId,
+      tenantId,
+      metric: plan.metric,
+      breakdowns: plan.breakdowns,
+      latencyMs
+    });
 
-    // Map metrics to actual values
-    const values: any = {};
-
-    for (const metric of intentAnalysis.metrics) {
-      switch (metric) {
-        case 'engagement_rate':
-          // Calculate engagement rate as sessions per user percentage
-          values[metric] = Math.round((analytics.avgSessionsPerUser || 0) * 10);
-          break;
-        case 'retention_rate':
-          // Calculate basic retention as percentage of active vs new users
-          const retentionRate = (analytics.newUsers || 0) > 0 ?
-            Math.round((((analytics.totalActiveUsers || 0) - (analytics.newUsers || 0)) / (analytics.totalActiveUsers || 1)) * 100) : 0;
-          values[metric] = Math.max(retentionRate, 0);
-          break;
-        case 'active_users':
-          values[metric] = analytics.totalActiveUsers || 0;
-          break;
-        case 'new_users':
-          values[metric] = analytics.newUsers || 0;
-          break;
-        case 'session_duration':
-          values[metric] = Math.round((analytics.avgSessionDuration || 0) / 1000);
-          break;
-        case 'session_count':
-          values[metric] = analytics.totalSessions || 0;
-          break;
-        case 'total_events':
-          values[metric] = analytics.totalEvents || 0;
-          break;
-        case 'revenue':
-          // Estimate revenue based on engagement metrics (events per user * conversion factor)
-          const eventsPerUser = (analytics.totalActiveUsers || 0) > 0 ? (analytics.totalEvents || 0) / (analytics.totalActiveUsers || 1) : 0;
-          values[metric] = Math.round(eventsPerUser * 0.1); // $0.10 per significant event
-          break;
-        case 'arpu':
-          // Calculate ARPU from estimated revenue
-          const estimatedRevenue = (analytics.totalActiveUsers || 0) > 0 ?
-            Math.round(((analytics.totalEvents || 0) / (analytics.totalActiveUsers || 1)) * 0.1) : 0;
-          values[metric] = (analytics.totalActiveUsers || 0) > 0 ?
-            Math.round((estimatedRevenue / (analytics.totalActiveUsers || 1)) * 100) / 100 : 0;
-          break;
-        default:
-          values[metric] = 0;
-      }
-    }
+    const confidenceMap: Record<ExecutorOutput['confidence'], number> = {
+      high: 0.9,
+      medium: 0.6,
+      low: 0.3
+    };
 
     return {
-      gameInfo: {
-        id: game.id,
-        name: game.name
-      },
-      metrics: intentAnalysis.metrics,
-      values,
-      timeframe: intentAnalysis.timeframe,
-      summary: analytics
+      response,
+      confidence: confidenceMap[result.confidence],
+      data: result,
+      traceId,
+      latencyMs,
+      plan
     };
-  }
-
-  /**
-   * Update conversation history for a session
-   */
-  private updateConversationHistory(sessionKey: string, userQuery: string, aiResponse: string): void {
-    const history = this.conversationHistory.get(sessionKey) || [];
-
-    // Add user message
-    history.push({
-      role: 'user',
-      content: userQuery,
-      timestamp: new Date()
-    });
-
-    // Add AI response
-    history.push({
-      role: 'assistant',
-      content: aiResponse,
-      timestamp: new Date()
-    });
-
-    // Keep only last 10 messages to manage memory
-    if (history.length > 10) {
-      history.splice(0, history.length - 10);
-    }
-
-    this.conversationHistory.set(sessionKey, history);
-  }
-
-  /**
-   * Test AI connection
-   */
-  async testAIConnection(): Promise<boolean> {
-    try {
-      return await this.openaiService.testConnection();
-    } catch (error) {
-      console.error('AI connection test failed:', error);
-      return false;
-    }
-  }
-
-  /**
-   * Clear conversation history for a session
-   */
-  clearConversationHistory(sessionKey: string): void {
-    this.conversationHistory.delete(sessionKey);
-  }
-
-  /**
-   * Get conversation history for a session
-   */
-  getConversationHistory(sessionKey: string): ConversationMessage[] {
-    return this.conversationHistory.get(sessionKey) || [];
-  }
-
-  async disconnect(): Promise<void> {
-    await this.contextManager.disconnect();
   }
 }

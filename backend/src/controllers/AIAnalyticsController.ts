@@ -1,5 +1,6 @@
 import { Request, Response } from 'express';
 import { AIAnalyticsService } from '../services/AIAnalyticsService';
+import prisma from '../prisma';
 
 export class AIAnalyticsController {
     private aiAnalyticsService: AIAnalyticsService;
@@ -22,23 +23,55 @@ export class AIAnalyticsController {
                 return;
             }
 
-            const { query, gameId, userId } = req.body;
+            const request = req as any;
+            const { query, gameId, gameName } = req.body as {
+                query?: string;
+                gameId?: string;
+                gameName?: string;
+            };
 
             if (!query) {
                 res.status(400).json({ error: 'Query is required' });
                 return;
             }
 
-            const result = await this.aiAnalyticsService.processQuery(query, gameId, userId);
+            const tenantId = await this.resolveTenantId(request, gameId, gameName);
+            if (!tenantId) {
+                res.status(400).json({ error: 'gameId or gameName is required for this request' });
+                return;
+            }
+
+            const result = await this.aiAnalyticsService.processQuery(query, tenantId);
 
             res.json({
                 success: true,
                 query,
-                ...result
+                response: result.response,
+                confidence: result.confidence,
+                data: result.data,
+                traceId: result.traceId,
+                latencyMs: result.latencyMs
             });
         } catch (error) {
             console.error('Error processing AI analytics query:', error);
             const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+
+            if (
+                typeof errorMessage === 'string' &&
+                (
+                    errorMessage.includes('Ambiguous game name') ||
+                    errorMessage.includes('No game found for name') ||
+                    errorMessage.includes('not accessible') ||
+                    errorMessage.includes('gameName must be')
+                )
+            ) {
+                res.status(400).json({
+                    success: false,
+                    error: errorMessage
+                });
+                return;
+            }
+
             res.status(500).json({ 
                 success: false,
                 error: 'Failed to process query',
@@ -46,6 +79,112 @@ export class AIAnalyticsController {
             });
         }
     };
+
+    private async resolveTenantId(req: any, gameId?: string, gameName?: string): Promise<string | null> {
+        if (req.game?.id) {
+            return req.game.id;
+        }
+
+        if (!req.dashboardUser?.id) {
+            return gameId || null;
+        }
+
+        const userId = String(req.dashboardUser.id);
+        const { allGames, allowedGameIds } = await this.getAllowedGamesForDashboardUser(userId);
+
+        if (gameId) {
+            if (allGames || allowedGameIds.has(gameId)) {
+                return gameId;
+            }
+            throw new Error('Requested gameId is not accessible for this user');
+        }
+
+        if (gameName) {
+            const candidate = gameName.trim();
+            if (!candidate) {
+                throw new Error('gameName must be a non-empty string');
+            }
+
+            const exactMatches = await prisma.game.findMany({
+                where: {
+                    ...(allGames ? {} : { id: { in: Array.from(allowedGameIds) } }),
+                    name: { equals: candidate, mode: 'insensitive' }
+                },
+                select: { id: true, name: true },
+                take: 5
+            });
+
+            if (exactMatches.length === 1) {
+                return exactMatches[0]!.id;
+            }
+
+            if (exactMatches.length > 1) {
+                throw new Error(`Ambiguous game name. Matches: ${exactMatches.map(g => g.name).join(', ')}`);
+            }
+
+            const fuzzyMatches = await prisma.game.findMany({
+                where: {
+                    ...(allGames ? {} : { id: { in: Array.from(allowedGameIds) } }),
+                    name: { contains: candidate, mode: 'insensitive' }
+                },
+                select: { id: true, name: true },
+                take: 5
+            });
+
+            if (fuzzyMatches.length === 1) {
+                return fuzzyMatches[0]!.id;
+            }
+
+            if (fuzzyMatches.length > 1) {
+                throw new Error(`Ambiguous game name. Matches: ${fuzzyMatches.map(g => g.name).join(', ')}`);
+            }
+
+            throw new Error(`No game found for name: ${candidate}`);
+        }
+
+        // Backward-compatible fallback: pick first accessible game.
+        if (allGames) {
+            const firstGame = await prisma.game.findFirst({ select: { id: true } });
+            return firstGame?.id || null;
+        }
+
+        return allowedGameIds.values().next().value || null;
+    }
+
+    private async getAllowedGamesForDashboardUser(userId: string): Promise<{ allGames: boolean; allowedGameIds: Set<string> }> {
+        const teamMemberships = await prisma.teamMember.findMany({
+            where: { userId },
+            select: { teamId: true }
+        });
+        const teamIds = teamMemberships.map((m) => m.teamId);
+
+        const accesses = await prisma.gameAccess.findMany({
+            where: {
+                AND: [
+                    {
+                        OR: [
+                            { userId },
+                            ...(teamIds.length ? [{ teamId: { in: teamIds } }] : [])
+                        ]
+                    },
+                    {
+                        OR: [
+                            { expiresAt: null },
+                            { expiresAt: { gt: new Date() } }
+                        ]
+                    }
+                ],
+            },
+            select: { gameId: true, allGames: true }
+        });
+
+        const allGames = accesses.some((a) => a.allGames);
+        const allowedGameIds = new Set(
+            accesses.map((a) => a.gameId).filter((id): id is string => Boolean(id))
+        );
+
+        return { allGames, allowedGameIds };
+    }
 
     /**
      * Check AI service health and configuration
@@ -62,7 +201,8 @@ export class AIAnalyticsController {
                 aiEnabled: isEnabled,
                 apiKeyConfigured: apiKeySet,
                 apiKeyPrefix: apiKeyPrefix,
-                model: process.env.OPENAI_MODEL || 'gpt-4',
+                plannerModel: process.env.AI_PLANNER_MODEL || 'gpt-4o-mini',
+                narratorModel: process.env.AI_NARRATOR_MODEL || 'gpt-4o-mini',
                 status: isEnabled ? 'operational' : 'disabled'
             });
         } catch (error) {
@@ -84,44 +224,19 @@ export class AIAnalyticsController {
                 {
                     category: 'Metrics',
                     queries: [
-                        'What is the current user engagement rate?',
-                        'Show me today\'s active users',
-                        'How much revenue did we generate last week?',
-                        'What are the session durations for this month?'
+                        'Show daily revenue for the last 30 days',
+                        'What is DAU by country this week?',
+                        'Installs by platform over the last 14 days',
+                        'ARPDAU for the last 7 days'
                     ]
                 },
                 {
                     category: 'Trends',
                     queries: [
-                        'Show me the engagement trend over the last month',
-                        'How has user retention changed over time?',
-                        'What is the revenue trend for the past quarter?',
-                        'Are session lengths increasing or decreasing?'
-                    ]
-                },
-                {
-                    category: 'Comparisons',
-                    queries: [
-                        'Compare this month\'s revenue to last month',
-                        'How does today\'s engagement compare to yesterday?',
-                        'Show me the difference in user acquisition this week vs last week'
-                    ]
-                },
-                {
-                    category: 'Anomalies',
-                    queries: [
-                        'Detect any unusual spikes in user activity',
-                        'Are there any anomalies in revenue patterns?',
-                        'Show me any unexpected changes in engagement'
-                    ]
-                },
-                {
-                    category: 'Insights',
-                    queries: [
-                        'Why did engagement drop yesterday?',
-                        'Explain the recent increase in user sessions',
-                        'What factors might be affecting retention rates?',
-                        'Give me insights about our monetization performance'
+                        'Revenue trend for the last 30 days',
+                        'D7 retention trend by platform for the last 8 weeks',
+                        'Compare last 7 days vs previous 7 days',
+                        'Is any country driving the revenue decline?'
                     ]
                 }
             ];

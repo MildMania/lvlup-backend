@@ -94,7 +94,7 @@ interface LevelFunnelProps {
     isCollapsed?: boolean;
 }
 
-type SortField = 'apsRaw' | 'churnTotal' | 'churnStartComplete' | 'winRate' | 'meanCompletionDuration';
+type SortField = 'apsRaw' | 'churnTotal' | 'churnStartComplete' | 'winRate' | 'meanCompletionDuration' | 'boosterUsage' | 'egpRate';
 type SortDirection = 'asc' | 'desc';
 
 export default function LevelFunnel({ isCollapsed = false }: LevelFunnelProps) {
@@ -683,8 +683,22 @@ export default function LevelFunnel({ isCollapsed = false }: LevelFunnelProps) {
                                     </MetricTooltip>
                                 </th>
                                 <th><MetricTooltip text={METRIC_TOOLTIPS['Cumulative AVG Time']}>Cumulative AVG Time</MetricTooltip></th>
-                                <th><MetricTooltip text={METRIC_TOOLTIPS['Booster']}>Booster %</MetricTooltip></th>
-                                <th><MetricTooltip text={METRIC_TOOLTIPS['EGP']}>EGP %</MetricTooltip></th>
+                                <th
+                                    onClick={() => toggleSort('boosterUsage')}
+                                    style={{ cursor: 'pointer' }}
+                                >
+                                    <MetricTooltip text={METRIC_TOOLTIPS['Booster']}>
+                                        Booster % {sortIndicator('boosterUsage')}
+                                    </MetricTooltip>
+                                </th>
+                                <th
+                                    onClick={() => toggleSort('egpRate')}
+                                    style={{ cursor: 'pointer' }}
+                                >
+                                    <MetricTooltip text={METRIC_TOOLTIPS['EGP']}>
+                                        EGP % {sortIndicator('egpRate')}
+                                    </MetricTooltip>
+                                </th>
                             </tr>
                         </thead>
                         <tbody>

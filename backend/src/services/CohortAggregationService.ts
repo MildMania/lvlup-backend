@@ -272,6 +272,7 @@ export class CohortAggregationService {
         AND "installDate" + ("dayIndex" || ' days')::interval < ${targetDay} - interval '1 day'
     `;
 
+    await this.aggregateSessionAndCompletesForTargetDay(gameId, targetDay, COHORT_DAY_INDICES);
     await this.aggregateMonetizationForTargetDay(gameId, targetDay, COHORT_DAY_INDICES);
   }
 
@@ -722,6 +723,77 @@ export class CohortAggregationService {
           monetizationMetrics.adRevenueUsd,
           monetizationMetrics.totalRevenueUsd,
           monetizationMetrics.iapPayingUsers
+        );
+      }
+    }
+  }
+
+  private async aggregateSessionAndCompletesForTargetDay(
+    gameId: string,
+    targetDay: Date,
+    dayIndices = COHORT_DAY_INDICES
+  ): Promise<void> {
+    const target = new Date(targetDay);
+    target.setUTCHours(0, 0, 0, 0);
+    const targetEnd = new Date(target);
+    targetEnd.setUTCDate(targetEnd.getUTCDate() + 1);
+
+    for (const dayIndex of dayIndices) {
+      const installDate = new Date(target);
+      installDate.setUTCDate(installDate.getUTCDate() - dayIndex);
+      installDate.setUTCHours(0, 0, 0, 0);
+      const installEnd = new Date(installDate);
+      installEnd.setUTCDate(installEnd.getUTCDate() + 1);
+
+      const cohorts = await this.getCohortSizesByDimensions(gameId, installDate, installEnd);
+      if (cohorts.length === 0) continue;
+
+      for (const cohort of cohorts) {
+        const retention = await this.getRetentionAndCompletesByDimensions(
+          gameId,
+          installDate,
+          installEnd,
+          target,
+          targetEnd,
+          cohort.platform,
+          cohort.countryCode,
+          cohort.appVersion
+        );
+
+        await this.upsertRetention(
+          gameId,
+          installDate,
+          dayIndex,
+          cohort.platform,
+          cohort.countryCode,
+          cohort.appVersion,
+          cohort.cohortSize,
+          retention.retainedUsers,
+          retention.retainedLevelCompletes
+        );
+
+        const sessionMetrics = await this.getSessionMetricsByDimensions(
+          gameId,
+          installDate,
+          installEnd,
+          target,
+          targetEnd,
+          cohort.platform,
+          cohort.countryCode,
+          cohort.appVersion
+        );
+
+        await this.upsertSessionMetrics(
+          gameId,
+          installDate,
+          dayIndex,
+          cohort.platform,
+          cohort.countryCode,
+          cohort.appVersion,
+          cohort.cohortSize,
+          sessionMetrics.sessionUsers,
+          sessionMetrics.totalSessions,
+          sessionMetrics.totalDurationSec
         );
       }
     }

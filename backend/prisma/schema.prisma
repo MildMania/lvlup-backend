@@ -1060,6 +1060,21 @@ model MonetizationDailyRollup {
   @@map("monetization_daily_rollups")
 }
 
+model FxRateDaily {
+  id        String   @id @default(cuid())
+  date      DateTime // UTC date only (00:00:00)
+  currency  String   // ISO 4217, uppercase
+  rateToUsd Float
+  source    String?  // e.g. "exchangerate.host"
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([currency, date])
+  @@unique([date, currency], name: "unique_fx_rate_daily")
+  @@map("fx_rates_daily")
+}
+
 model IapPayer {
   id        String   @id @default(cuid())
   gameId    String

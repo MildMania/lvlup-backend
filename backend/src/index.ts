@@ -13,6 +13,7 @@ import { startLevelMetricsAggregationJob, startLevelMetricsHourlyTodayJob } from
 import { startActiveUsersAggregationJob, startActiveUsersHourlyTodayJob } from './jobs/activeUsersAggregation';
 import { startCohortAggregationJob, startCohortHourlyTodayJob } from './jobs/cohortAggregation';
 import { startMonetizationAggregationJob, startMonetizationHourlyTodayJob } from './jobs/monetizationAggregation';
+import { startFxRatesSyncJob } from './jobs/fxRatesSync';
 import { eventBatchWriter } from './services/EventBatchWriter';
 import { revenueBatchWriter } from './services/RevenueBatchWriter';
 import { sessionHeartbeatBatchWriter } from './services/SessionHeartbeatBatchWriter';
@@ -318,6 +319,9 @@ app.listen(PORT, '0.0.0.0', () => {
 
     startMonetizationHourlyTodayJob();
     logger.info('Monetization hourly aggregation job started');
+
+    startFxRatesSyncJob();
+    logger.info('FX rates sync cron job started');
 });
 
 // Graceful shutdown

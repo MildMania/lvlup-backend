@@ -643,6 +643,7 @@ export class AnalyticsController {
 
             // Track each revenue item
             const results = [];
+            let skipped = 0;
             for (const revenue of revenueData) {
                 try {
                     const tracked = await revenueService.trackRevenue(
@@ -652,7 +653,11 @@ export class AnalyticsController {
                         revenue,
                         revenue // Pass the revenue object itself as eventMetadata
                     );
-                    results.push(tracked);
+                    if (tracked) {
+                        results.push(tracked);
+                    } else {
+                        skipped++;
+                    }
                 } catch (error) {
                     logger.error(`Failed to track revenue item:`, error);
                     // Continue with next item instead of failing entire batch
@@ -663,6 +668,7 @@ export class AnalyticsController {
                 success: true,
                 data: {
                     tracked: results.length,
+                    skipped,
                     total: revenueData.length
                 }
             });

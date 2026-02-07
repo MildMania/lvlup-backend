@@ -246,20 +246,6 @@ export class CohortAnalyticsService {
             const userCountByDay: { [day: number]: number } = {};
             const cohortSize = Number(dayMap.values().next().value?.cohortSize || 0);
 
-            if (installDateObj.getTime() === todayStart.getTime()) {
-                for (const day of days) {
-                    retentionByDay[day] = -1;
-                    userCountByDay[day] = 0;
-                }
-                result.push({
-                    installDate,
-                    installCount: cohortSize,
-                    retentionByDay,
-                    userCountByDay
-                });
-                continue;
-            }
-
             for (const day of days) {
                 const target = new Date(installDateObj);
                 target.setUTCDate(target.getUTCDate() + day);
@@ -318,20 +304,6 @@ export class CohortAnalyticsService {
             const retentionByDay: { [day: number]: number } = {};
             const userCountByDay: { [day: number]: number } = {};
             const cohortSize = Number(dayMap.values().next().value?.cohortSize || 0);
-
-            if (installDateObj.getTime() === todayStart.getTime()) {
-                for (const day of days) {
-                    retentionByDay[day] = -1;
-                    userCountByDay[day] = 0;
-                }
-                result.push({
-                    installDate,
-                    installCount: cohortSize,
-                    retentionByDay,
-                    userCountByDay
-                });
-                continue;
-            }
 
             const dailyAvg: Record<number, number> = {};
             for (const day of days) {

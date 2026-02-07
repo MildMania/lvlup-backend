@@ -183,8 +183,8 @@ export class CohortAggregationService {
           SELECT u."id"
           FROM "users" u
           WHERE u."gameId" = ${gameId}
-            AND u."createdAt" >= ${targetDay}
-            AND u."createdAt" < ${targetDayEnd}
+            AND u."createdAt" >= ${hourStart}
+            AND u."createdAt" < ${hourEnd}
         ),
         first_event AS (
           SELECT DISTINCT ON (e."userId")
@@ -255,7 +255,13 @@ export class CohortAggregationService {
       ON CONFLICT ("gameId","installDate","dayIndex","platform","countryCode","appVersion")
       DO UPDATE SET
         "retainedUsers" = EXCLUDED."retainedUsers",
-        "cohortSize" = CASE WHEN EXCLUDED."cohortSize" > 0 THEN EXCLUDED."cohortSize" ELSE "cohort_retention_daily"."cohortSize" END,
+        "cohortSize" = CASE
+          WHEN EXCLUDED."dayIndex" = 0 AND EXCLUDED."cohortSize" > 0
+            THEN "cohort_retention_daily"."cohortSize" + EXCLUDED."cohortSize"
+          WHEN EXCLUDED."cohortSize" > 0
+            THEN EXCLUDED."cohortSize"
+          ELSE "cohort_retention_daily"."cohortSize"
+        END,
         "updatedAt" = now()
     `;
 

@@ -36,6 +36,14 @@ model Game {
   revenueEvents     Revenue[]
   levelMetricsDaily LevelMetricsDaily[]
   levelMetricsDailyUsers LevelMetricsDailyUser[]
+  activeUsersDaily ActiveUsersDaily[]
+  activeUsersHllDaily ActiveUsersHllDaily[]
+  cohortRetentionDaily CohortRetentionDaily[]
+  cohortSessionMetricsDaily CohortSessionMetricsDaily[]
+  cohortRetentionUsersHourly CohortRetentionUsersHourly[]
+  cohortMonetizationDaily CohortMonetizationDaily[]
+  monetizationDailyRollups MonetizationDailyRollup[]
+  iapPayers IapPayer[]
 
   @@map("games")
 }
@@ -896,4 +904,189 @@ model LevelMetricsDailyUser {
   @@index([userId])
   @@unique([gameId, date, levelId, levelFunnel, levelFunnelVersion, platform, countryCode, appVersion, userId], name: "unique_daily_level_user")
   @@map("level_metrics_daily_users")
+}
+
+model ActiveUsersDaily {
+  id          String   @id @default(cuid())
+  gameId      String
+  date        DateTime // Daily aggregation (date only, time set to 00:00:00)
+  platform    String   @default("")
+  countryCode String   @default("")
+  appVersion  String   @default("")
+  dau         Int      @default(0)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  game Game @relation(fields: [gameId], references: [id], onDelete: Cascade)
+
+  @@index([gameId, date])
+  @@index([gameId, date, platform, countryCode, appVersion])
+  @@unique([gameId, date, platform, countryCode, appVersion], name: "unique_active_users_daily")
+  @@map("active_users_daily")
+}
+
+model ActiveUsersHllDaily {
+  id          String   @id @default(cuid())
+  gameId      String
+  date        DateTime // Daily aggregation (date only, time set to 00:00:00)
+  platform    String   @default("")
+  countryCode String   @default("")
+  appVersion  String   @default("")
+  hll         Bytes
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  game Game @relation(fields: [gameId], references: [id], onDelete: Cascade)
+
+  @@index([gameId, date])
+  @@index([gameId, date, platform, countryCode, appVersion])
+  @@unique([gameId, date, platform, countryCode, appVersion], name: "unique_active_users_hll_daily")
+  @@map("active_users_hll_daily")
+}
+
+model CohortRetentionDaily {
+  id          String   @id @default(cuid())
+  gameId      String
+  installDate DateTime // Cohort install date (UTC date only)
+  dayIndex    Int      // Day offset from install date
+  platform    String   @default("")
+  countryCode String   @default("")
+  appVersion  String   @default("")
+  cohortSize  Int      @default(0)
+  retainedUsers Int    @default(0)
+  retainedLevelCompletes Int @default(0)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  game Game @relation(fields: [gameId], references: [id], onDelete: Cascade)
+
+  @@index([gameId, installDate])
+  @@index([gameId, dayIndex])
+  @@index([gameId, installDate, platform, countryCode, appVersion])
+  @@unique([gameId, installDate, dayIndex, platform, countryCode, appVersion], name: "unique_cohort_retention_daily")
+  @@map("cohort_retention_daily")
+}
+
+model CohortSessionMetricsDaily {
+  id          String   @id @default(cuid())
+  gameId      String
+  installDate DateTime // Cohort install date (UTC date only)
+  dayIndex    Int      // Day offset from install date
+  platform    String   @default("")
+  countryCode String   @default("")
+  appVersion  String   @default("")
+  cohortSize  Int      @default(0)
+  sessionUsers Int     @default(0)
+  totalSessions Int    @default(0)
+  totalDurationSec BigInt @default(0)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  game Game @relation(fields: [gameId], references: [id], onDelete: Cascade)
+
+  @@index([gameId, installDate])
+  @@index([gameId, dayIndex])
+  @@index([gameId, installDate, platform, countryCode, appVersion])
+  @@unique([gameId, installDate, dayIndex, platform, countryCode, appVersion], name: "unique_cohort_session_metrics_daily")
+  @@map("cohort_session_metrics_daily")
+}
+
+model CohortRetentionUsersHourly {
+  id          String   @id @default(cuid())
+  gameId      String
+  installDate DateTime
+  dayIndex    Int
+  userId      String
+  platform    String   @default("")
+  countryCode String   @default("")
+  appVersion  String   @default("")
+
+  createdAt DateTime @default(now())
+
+  game Game @relation(fields: [gameId], references: [id], onDelete: Cascade)
+
+  @@index([gameId, installDate, dayIndex])
+  @@index([gameId, installDate, dayIndex, platform, countryCode, appVersion])
+  @@unique([gameId, installDate, dayIndex, userId], name: "unique_cohort_retention_users_hourly")
+  @@map("cohort_retention_users_hourly")
+}
+
+model CohortMonetizationDaily {
+  id             String   @id @default(cuid())
+  gameId         String
+  installDate    DateTime // Cohort install date (UTC date only)
+  dayIndex       Int      // Day offset from install date
+  platform       String   @default("")
+  countryCode    String   @default("")
+  appVersion     String   @default("")
+  iapRevenueUsd  Float    @default(0)
+  adRevenueUsd   Float    @default(0)
+  totalRevenueUsd Float   @default(0)
+  iapPayingUsers Int      @default(0)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  game Game @relation(fields: [gameId], references: [id], onDelete: Cascade)
+
+  @@index([gameId, installDate])
+  @@index([gameId, dayIndex])
+  @@index([gameId, installDate, platform, countryCode, appVersion])
+  @@unique([gameId, installDate, dayIndex, platform, countryCode, appVersion], name: "unique_cohort_monetization_daily")
+  @@map("cohort_monetization_daily")
+}
+
+model MonetizationDailyRollup {
+  id                String   @id @default(cuid())
+  gameId            String
+  date              DateTime // UTC day
+  totalRevenueUsd   Float    @default(0)
+  adRevenueUsd      Float    @default(0)
+  iapRevenueUsd     Float    @default(0)
+  adImpressionCount Int      @default(0)
+  iapCount          Int      @default(0)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  game Game @relation(fields: [gameId], references: [id], onDelete: Cascade)
+
+  @@index([gameId, date])
+  @@unique([gameId, date], name: "unique_monetization_daily_rollup")
+  @@map("monetization_daily_rollups")
+}
+
+model FxRateDaily {
+  id        String   @id @default(cuid())
+  date      DateTime // UTC date only (00:00:00)
+  currency  String   // ISO 4217, uppercase
+  rateToUsd Float
+  source    String?  // e.g. "exchangerate.host"
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([currency, date])
+  @@unique([date, currency], name: "unique_fx_rate_daily")
+  @@map("fx_rates_daily")
+}
+
+model IapPayer {
+  id        String   @id @default(cuid())
+  gameId    String
+  userId    String
+  firstSeen DateTime
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  game Game @relation(fields: [gameId], references: [id], onDelete: Cascade)
+
+  @@index([gameId, firstSeen])
+  @@unique([gameId, userId], name: "unique_iap_payer")
+  @@map("iap_payers")
 }

@@ -3,6 +3,7 @@ import logger from '../utils/logger';
 import { AnalyticsFilterParams } from '../types/api';
 import { cache, generateCacheKey } from '../utils/simpleCache';
 import prisma from '../prisma';
+import { HLL } from '../utils/hll';
 
 export interface RetentionData {
     day: number;
@@ -74,52 +75,28 @@ export class AnalyticsMetricsService {
                     ? (Array.isArray(filters.version) ? filters.version : [filters.version])
                     : [];
 
-                // Eligible users: users created in range whose Day N has passed
-                const eligibleResult = await this.prisma.$queryRaw<{ count: bigint }[]>(Prisma.sql`
-                    SELECT COUNT(*) AS count
-                    FROM "users" u
-                    WHERE u."gameId" = ${gameId}
-                      AND u."createdAt" >= ${startDate}
-                      AND u."createdAt" <= ${endDate}
-                      AND u."createdAt" + (${day} || ' days')::interval <= ${endDate}
-                      ${platforms.length ? Prisma.sql`AND u."platform" IN (${Prisma.join(platforms)})` : Prisma.sql``}
-                      ${versions.length ? Prisma.sql`AND u."version" IN (${Prisma.join(versions)})` : Prisma.sql``}
-                      ${
-                          countries.length
-                              ? Prisma.sql`AND EXISTS (
-                                    SELECT 1 FROM "events" e
-                                    WHERE e."userId" = u."id"
-                                      AND e."gameId" = ${gameId}
-                                      AND e."countryCode" IN (${Prisma.join(countries)})
-                                )`
-                              : Prisma.sql``
-                      }
+                const eligibleEnd = new Date(endDate);
+                eligibleEnd.setUTCDate(eligibleEnd.getUTCDate() - day);
+
+                const result = await this.prisma.$queryRaw<
+                    Array<{ cohort_size: bigint; retained_users: bigint }>
+                >(Prisma.sql`
+                    SELECT
+                        COALESCE(SUM(CASE WHEN "dayIndex" = 0 THEN "cohortSize" ELSE 0 END), 0)::bigint AS "cohort_size",
+                        COALESCE(SUM(CASE WHEN "dayIndex" = ${day} THEN "retainedUsers" ELSE 0 END), 0)::bigint AS "retained_users"
+                    FROM "cohort_retention_daily"
+                    WHERE "gameId" = ${gameId}
+                      AND "installDate" >= ${startDate}
+                      AND "installDate" <= ${eligibleEnd}
+                      AND "dayIndex" IN (0, ${day})
+                      ${platforms.length ? Prisma.sql`AND "platform" IN (${Prisma.join(platforms)})` : Prisma.sql``}
+                      ${countries.length ? Prisma.sql`AND "countryCode" IN (${Prisma.join(countries)})` : Prisma.sql``}
+                      ${versions.length ? Prisma.sql`AND "appVersion" IN (${Prisma.join(versions)})` : Prisma.sql``}
                 `);
-                const eligibleUsersCount = Number(eligibleResult[0]?.count || 0);
 
-                if (eligibleUsersCount === 0) {
-                    return { day, count: 0, percentage: 0 };
-                }
-
-                // Retained users: users whose event day matches createdAt + N days
-                const retainedResult = await this.prisma.$queryRaw<{ count: bigint }[]>(Prisma.sql`
-                    SELECT COUNT(DISTINCT e."userId") AS count
-                    FROM "events" e
-                    JOIN "users" u ON u."id" = e."userId"
-                    WHERE u."gameId" = ${gameId}
-                      AND u."createdAt" >= ${startDate}
-                      AND u."createdAt" <= ${endDate}
-                      AND e."gameId" = ${gameId}
-                      AND e."timestamp" >= ${startDate}
-                      AND e."timestamp" <= ${endDate}
-                      AND date_trunc('day', e."timestamp") = date_trunc('day', u."createdAt") + (${day} || ' days')::interval
-                      ${countries.length ? Prisma.sql`AND e."countryCode" IN (${Prisma.join(countries)})` : Prisma.sql``}
-                      ${platforms.length ? Prisma.sql`AND u."platform" IN (${Prisma.join(platforms)})` : Prisma.sql``}
-                      ${versions.length ? Prisma.sql`AND u."version" IN (${Prisma.join(versions)})` : Prisma.sql``}
-                `);
-                const retainedCount = Number(retainedResult[0]?.count || 0);
-
-                const percentage = eligibleUsersCount > 0 ? (retainedCount / eligibleUsersCount) * 100 : 0;
+                const cohortSize = Number(result[0]?.cohort_size || 0);
+                const retainedCount = Number(result[0]?.retained_users || 0);
+                const percentage = cohortSize > 0 ? (retainedCount / cohortSize) * 100 : 0;
 
                 return {
                     day,
@@ -180,58 +157,97 @@ export class AnalyticsMetricsService {
                 ? (Array.isArray(filters.version) ? filters.version : [filters.version])
                 : [];
 
-            const rows = await this.prisma.$queryRaw<
-                Array<{ day: Date; dau: bigint; wau: bigint; mau: bigint }>
+            const days: Date[] = [];
+            const cursor = new Date(startDate);
+            cursor.setUTCHours(0, 0, 0, 0);
+            const end = new Date(endDate);
+            end.setUTCHours(0, 0, 0, 0);
+            while (cursor <= end) {
+                days.push(new Date(cursor));
+                cursor.setUTCDate(cursor.getUTCDate() + 1);
+            }
+
+            const dauRows = await this.prisma.$queryRaw<
+                Array<{ day: Date; dau: bigint }>
             >(Prisma.sql`
-                WITH days AS (
-                    SELECT generate_series(
-                        date_trunc('day', ${startDate}::timestamptz),
-                        date_trunc('day', ${endDate}::timestamptz),
-                        interval '1 day'
-                    ) AS day
-                )
                 SELECT
-                    d.day AS day,
-                    (
-                        SELECT COUNT(DISTINCT e."userId")
-                        FROM "events" e
-                        WHERE e."gameId" = ${gameId}
-                          AND e."timestamp" >= d.day
-                          AND e."timestamp" < d.day + interval '1 day'
-                          ${countries.length ? Prisma.sql`AND e."countryCode" IN (${Prisma.join(countries)})` : Prisma.sql``}
-                          ${platforms.length ? Prisma.sql`AND e."platform" IN (${Prisma.join(platforms)})` : Prisma.sql``}
-                          ${versions.length ? Prisma.sql`AND e."appVersion" IN (${Prisma.join(versions)})` : Prisma.sql``}
-                    ) AS dau,
-                    (
-                        SELECT COUNT(DISTINCT e."userId")
-                        FROM "events" e
-                        WHERE e."gameId" = ${gameId}
-                          AND e."timestamp" >= d.day - interval '6 day'
-                          AND e."timestamp" < d.day + interval '1 day'
-                          ${countries.length ? Prisma.sql`AND e."countryCode" IN (${Prisma.join(countries)})` : Prisma.sql``}
-                          ${platforms.length ? Prisma.sql`AND e."platform" IN (${Prisma.join(platforms)})` : Prisma.sql``}
-                          ${versions.length ? Prisma.sql`AND e."appVersion" IN (${Prisma.join(versions)})` : Prisma.sql``}
-                    ) AS wau,
-                    (
-                        SELECT COUNT(DISTINCT e."userId")
-                        FROM "events" e
-                        WHERE e."gameId" = ${gameId}
-                          AND e."timestamp" >= d.day - interval '29 day'
-                          AND e."timestamp" < d.day + interval '1 day'
-                          ${countries.length ? Prisma.sql`AND e."countryCode" IN (${Prisma.join(countries)})` : Prisma.sql``}
-                          ${platforms.length ? Prisma.sql`AND e."platform" IN (${Prisma.join(platforms)})` : Prisma.sql``}
-                          ${versions.length ? Prisma.sql`AND e."appVersion" IN (${Prisma.join(versions)})` : Prisma.sql``}
-                    ) AS mau
-                FROM days d
-                ORDER BY d.day ASC
+                    date_trunc('day', "date") AS "day",
+                    COALESCE(SUM("dau"), 0) AS "dau"
+                FROM "active_users_daily"
+                WHERE "gameId" = ${gameId}
+                  AND "date" >= ${startDate}
+                  AND "date" <= ${endDate}
+                  ${countries.length ? Prisma.sql`AND "countryCode" IN (${Prisma.join(countries)})` : Prisma.sql``}
+                  ${platforms.length ? Prisma.sql`AND "platform" IN (${Prisma.join(platforms)})` : Prisma.sql``}
+                  ${versions.length ? Prisma.sql`AND "appVersion" IN (${Prisma.join(versions)})` : Prisma.sql``}
+                GROUP BY 1
             `);
 
-            const dailyData: ActiveUserData[] = rows.map((row) => ({
-                date: row.day.toISOString().split('T')[0] || '',
-                dau: Number(row.dau || 0),
-                wau: Number(row.wau || 0),
-                mau: Number(row.mau || 0)
-            }));
+            const hllStart = new Date(startDate);
+            hllStart.setUTCDate(hllStart.getUTCDate() - 29);
+
+            const hllRows = await this.prisma.$queryRaw<
+                Array<{ day: Date; hll: Buffer }>
+            >(Prisma.sql`
+                SELECT
+                    date_trunc('day', "date") AS "day",
+                    "hll" AS "hll"
+                FROM "active_users_hll_daily"
+                WHERE "gameId" = ${gameId}
+                  AND "date" >= ${hllStart}
+                  AND "date" <= ${endDate}
+                  ${countries.length ? Prisma.sql`AND "countryCode" IN (${Prisma.join(countries)})` : Prisma.sql``}
+                  ${platforms.length ? Prisma.sql`AND "platform" IN (${Prisma.join(platforms)})` : Prisma.sql``}
+                  ${versions.length ? Prisma.sql`AND "appVersion" IN (${Prisma.join(versions)})` : Prisma.sql``}
+            `);
+
+            const dauByDay = new Map<string, number>();
+            for (const row of dauRows) {
+                const key = row.day.toISOString().split('T')[0] || '';
+                dauByDay.set(key, Number(row.dau || 0));
+            }
+
+            const hllByDay = new Map<string, HLL>();
+            for (const row of hllRows) {
+                const key = row.day.toISOString().split('T')[0] || '';
+                const existing = hllByDay.get(key);
+                const current = HLL.fromBuffer(row.hll);
+                if (existing) {
+                    existing.union(current);
+                } else {
+                    hllByDay.set(key, current);
+                }
+            }
+
+            const dailyData: ActiveUserData[] = days.map((day) => {
+                const key = day.toISOString().split('T')[0] || '';
+                const dau = dauByDay.get(key) || 0;
+
+                const wauHll = new HLL();
+                for (let i = 6; i >= 0; i--) {
+                    const d = new Date(day);
+                    d.setUTCDate(d.getUTCDate() - i);
+                    const k = d.toISOString().split('T')[0] || '';
+                    const hll = hllByDay.get(k);
+                    if (hll) wauHll.union(hll);
+                }
+
+                const mauHll = new HLL();
+                for (let i = 29; i >= 0; i--) {
+                    const d = new Date(day);
+                    d.setUTCDate(d.getUTCDate() - i);
+                    const k = d.toISOString().split('T')[0] || '';
+                    const hll = hllByDay.get(k);
+                    if (hll) mauHll.union(hll);
+                }
+
+                return {
+                    date: key,
+                    dau,
+                    wau: wauHll.count(),
+                    mau: mauHll.count()
+                };
+            });
 
             // Cache for 5 minutes (300 seconds)
             cache.set(cacheKey, dailyData, 300);
@@ -292,29 +308,18 @@ export class AnalyticsMetricsService {
                 ),
                 session_agg AS (
                     SELECT
-                        date_trunc('day', s."startTime") AS day,
-                        COUNT(*) AS total_sessions,
-                        COUNT(DISTINCT s."userId") AS unique_users,
-                        COALESCE(SUM(s."duration"), 0) AS total_duration
-                    FROM "sessions" s
-                    WHERE s."gameId" = ${gameId}
-                      AND s."startTime" >= ${startDate}
-                      AND s."startTime" <= ${endDate}
-                      AND s."endTime" IS NOT NULL
-                      AND s."duration" IS NOT NULL
-                      AND s."duration" > 0
-                      ${platforms.length ? Prisma.sql`AND s."platform" IN (${Prisma.join(platforms)})` : Prisma.sql``}
-                      ${versions.length ? Prisma.sql`AND s."version" IN (${Prisma.join(versions)})` : Prisma.sql``}
-                      ${
-                          countries.length
-                              ? Prisma.sql`AND EXISTS (
-                                    SELECT 1 FROM "events" e
-                                    WHERE e."sessionId" = s."id"
-                                      AND e."countryCode" IN (${Prisma.join(countries)})
-                                )`
-                              : Prisma.sql``
-                      }
-                    GROUP BY date_trunc('day', s."startTime")
+                        date_trunc('day', ("installDate" + ("dayIndex" || ' days')::interval)) AS day,
+                        SUM("totalSessions") AS total_sessions,
+                        SUM("sessionUsers") AS unique_users,
+                        SUM("totalDurationSec") AS total_duration
+                    FROM "cohort_session_metrics_daily"
+                    WHERE "gameId" = ${gameId}
+                      AND ("installDate" + ("dayIndex" || ' days')::interval) >= ${startDate}
+                      AND ("installDate" + ("dayIndex" || ' days')::interval) <= ${endDate}
+                      ${platforms.length ? Prisma.sql`AND "platform" IN (${Prisma.join(platforms)})` : Prisma.sql``}
+                      ${versions.length ? Prisma.sql`AND "appVersion" IN (${Prisma.join(versions)})` : Prisma.sql``}
+                      ${countries.length ? Prisma.sql`AND "countryCode" IN (${Prisma.join(countries)})` : Prisma.sql``}
+                    GROUP BY date_trunc('day', ("installDate" + ("dayIndex" || ' days')::interval))
                 )
                 SELECT
                     d.day AS day,

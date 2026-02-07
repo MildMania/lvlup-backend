@@ -13,7 +13,7 @@ import {
   Cell
 } from 'recharts';
 import { Users, Activity, Clock, TrendingUp, RefreshCw, Info, Copy, Check } from 'lucide-react';
-import { AnalyticsService, fetchPlaytime } from '../services/analytics';
+import { AnalyticsService, fetchActiveUsers, fetchPlaytime } from '../services/analytics';
 import type { 
   RetentionPoint, 
   PlaytimePoint, 
@@ -127,6 +127,7 @@ interface DashboardProps {
 const Dashboard: React.FC<DashboardProps> = ({ gameInfo, isCollapsed = false }) => {
   const { currentGame } = useGame();
   const [retention, setRetention] = useState<RetentionPoint[]>([]);
+  const [activeUsers, setActiveUsers] = useState<ActiveUserPoint[]>([]);
   const [playtime, setPlaytime] = useState<PlaytimePoint[]>([]);
   const [apiKeyCopied, setApiKeyCopied] = useState(false);
   const [summary, setSummary] = useState<DashboardSummary | null>(null);
@@ -222,13 +223,22 @@ const Dashboard: React.FC<DashboardProps> = ({ gameInfo, isCollapsed = false }) 
       }
 
       // Fetch chart data
-        const [playtimeResult] = await Promise.allSettled([
-          fetchPlaytime(new URLSearchParams({
-            gameId: currentGame.id,
-            startDate: startDateStr,
-            endDate: endDateStr
-          }))
-        ]);
+      const [activeUsersResult, playtimeResult] = await Promise.allSettled([
+        fetchActiveUsers(new URLSearchParams({
+          gameId: currentGame.id,
+          startDate: startDateStr,
+          endDate: endDateStr
+        })),
+        fetchPlaytime(new URLSearchParams({
+          gameId: currentGame.id,
+          startDate: startDateStr,
+          endDate: endDateStr
+        }))
+      ]);
+
+      if (activeUsersResult.status === 'fulfilled') {
+        setActiveUsers(activeUsersResult.value || []);
+      }
       
       if (playtimeResult.status === 'fulfilled') {
         setPlaytime(playtimeResult.value || []);
@@ -368,11 +378,22 @@ const Dashboard: React.FC<DashboardProps> = ({ gameInfo, isCollapsed = false }) 
         endDate: endDateStr
       });
       
+      const activeUsersPromise = fetchActiveUsers(new URLSearchParams({
+        gameId: currentGame.id,
+        startDate: startDateStr,
+        endDate: endDateStr
+      }));
       const playtimePromise = fetchPlaytime(playtimeParams);
       
       // Fetch player journey with date range
       // Wait for all data fetches to complete
-      const [playtimeResult] = await Promise.allSettled([playtimePromise]);
+      const [activeUsersResult, playtimeResult] = await Promise.allSettled([activeUsersPromise, playtimePromise]);
+      
+      if (activeUsersResult.status === 'fulfilled') {
+        setActiveUsers(activeUsersResult.value || []);
+      } else {
+        console.error('Failed to fetch active users:', activeUsersResult.reason);
+      }
       
       if (playtimeResult.status === 'fulfilled') {
         console.log('Playtime Data:', playtimeResult.value);
@@ -621,22 +642,38 @@ const Dashboard: React.FC<DashboardProps> = ({ gameInfo, isCollapsed = false }) 
 
       {/* Charts Grid */}
       <div className="charts-grid">
-        {/* Active Users Chart (Temporarily Disabled) */}
+        {/* Active Users Chart */}
         <ChartContainer 
           title="Active Users Trend"
           className="chart-large"
-          description="Temporarily disabled while we migrate active user metrics to aggregates"
+          description="Tracks daily, weekly, and monthly active users over time to measure engagement trends"
         >
-          <div style={{ 
-            display: 'flex', 
-            alignItems: 'center', 
-            justifyContent: 'center', 
-            height: '300px',
-            color: chartColors.text,
-            fontStyle: 'italic'
-          }}>
-            Active users trend is temporarily disabled
-          </div>
+          <ResponsiveContainer width="100%" height={300}>
+            <LineChart data={activeUsers}>
+              <CartesianGrid strokeDasharray="3 3" stroke={chartColors.grid} />
+              <XAxis
+                dataKey="date"
+                stroke={chartColors.text}
+                fontSize={12}
+              />
+              <YAxis
+                stroke={chartColors.text}
+                fontSize={12}
+              />
+              <Tooltip
+                contentStyle={{
+                  backgroundColor: chartColors.background,
+                  border: `1px solid ${chartColors.grid}`,
+                  borderRadius: '8px',
+                  color: chartColors.text
+                }}
+              />
+              <Legend wrapperStyle={{ color: chartColors.text }} />
+              <Line type="monotone" dataKey="dau" stroke={chartColors.primary} strokeWidth={2} name="DAU" />
+              <Line type="monotone" dataKey="wau" stroke={chartColors.secondary} strokeWidth={2} name="WAU" />
+              <Line type="monotone" dataKey="mau" stroke={chartColors.tertiary} strokeWidth={2} name="MAU" />
+            </LineChart>
+          </ResponsiveContainer>
         </ChartContainer>
 
         {/* Retention Chart */}

@@ -55,18 +55,6 @@ router.get('/dashboard/summary', authenticateEither, async (req: AuthenticatedRe
             { retentionDays: [1, 7] }
         );
 
-        // Get active users today using analytics metrics service
-        const todayStart = new Date();
-        todayStart.setHours(0, 0, 0, 0);
-        const todayEnd = new Date();
-        todayEnd.setHours(23, 59, 59, 999);
-
-        const activeUsersData = await analyticsMetricsService.calculateActiveUsers(
-            gameId,
-            todayStart,
-            todayEnd
-        );
-
         const summary = {
             totalUsers: analyticsData.totalActiveUsers,
             newUsers: analyticsData.newUsers,
@@ -77,7 +65,7 @@ router.get('/dashboard/summary', authenticateEither, async (req: AuthenticatedRe
             avgPlaytimeDuration: analyticsData.avgPlaytimeDuration,
             retentionDay1: retentionData.find(r => r.day === 1)?.percentage || 0,
             retentionDay7: retentionData.find(r => r.day === 7)?.percentage || 0,
-            activeUsersToday: activeUsersData && activeUsersData.length > 0 ? activeUsersData[0]?.dau || 0 : 0,
+            activeUsersToday: analyticsData.activeUsersToday || 0,
             topEvent: analyticsData.topEvents && analyticsData.topEvents.length > 0 ? analyticsData.topEvents[0]?.name || 'No events' : 'No events'
         };
 

@@ -15,7 +15,6 @@ interface LevelFunnelFilters {
     levelFunnel?: string | undefined; // e.g., "live_v1" or "live_v1,live_v2"
     levelFunnelVersion?: string | number | undefined; // e.g., 15 or "15,16" for paired selections
     levelLimit?: number | undefined; // Maximum number of levels to return (default: 100)
-    includeTodayRaw?: boolean | undefined; // Include raw events for today (can be expensive)
     includeRawUserCounts?: boolean | undefined; // Include raw user counts for multi-day ranges (expensive)
 }
 
@@ -61,8 +60,7 @@ export class LevelFunnelService {
                 version,
                 levelFunnel,
                 levelFunnelVersion,
-                levelLimit = 100,
-                includeTodayRaw = true
+                levelLimit = 100
             } = filters;
 
             logger.info(`Starting FAST level funnel query (hybrid) for game ${gameId}`);
@@ -83,8 +81,6 @@ export class LevelFunnelService {
             const daysDifference = Math.ceil((end.getTime() - start.getTime()) / (24 * 60 * 60 * 1000));
             const isMultipleDays = daysDifference > 1;
             
-            const useTodayRaw = includeTodayRaw && queryIncludesToday;
-            
 
             // Ensure today's aggregation exists when range includes today
             if (queryIncludesToday) {
@@ -92,11 +88,7 @@ export class LevelFunnelService {
             }
 
             // Query pre-aggregated data for event counts (all days)
-            // If using raw events for today, exclude today's date from aggregated query
-            const aggregatedEnd = useTodayRaw
-                ? new Date(new Date(today).setUTCDate(today.getUTCDate() - 1))
-                : end;
-            const aggregatedMetrics = await this.queryAggregatedMetrics(gameId, start, aggregatedEnd, {
+            const aggregatedMetrics = await this.queryAggregatedMetrics(gameId, start, end, {
                 country,
                 platform,
                 version,
@@ -114,23 +106,13 @@ export class LevelFunnelService {
             }> | null = null;
 
             if (isMultipleDays) {
-                if (useTodayRaw) {
-                    userCountsByLevel = await this.queryDailyUserCountsWithTodayRaw(gameId, start, aggregatedEnd, today, {
-                        country,
-                        platform,
-                        version,
-                        levelFunnel,
-                        levelFunnelVersion
-                    });
-                } else {
-                    userCountsByLevel = await this.queryDailyUserCounts(gameId, start, aggregatedEnd, {
-                        country,
-                        platform,
-                        version,
-                        levelFunnel,
-                        levelFunnelVersion
-                    });
-                }
+                userCountsByLevel = await this.queryDailyUserCounts(gameId, start, end, {
+                    country,
+                    platform,
+                    version,
+                    levelFunnel,
+                    levelFunnelVersion
+                });
             }
 
             // Group by levelId and sum event counts from aggregated data
@@ -178,22 +160,7 @@ export class LevelFunnelService {
                 }
             }
             
-            // Merge in today's raw data when requested
-            let mergedData = grouped;
-            if (useTodayRaw) {
-                const todayRaw = await this.queryTodayRawEvents(gameId, today, {
-                    country,
-                    platform,
-                    version,
-                    levelFunnel,
-                    levelFunnelVersion
-                });
-                
-                mergedData = this.mergeHistoricalAndTodayMetrics(
-                    Array.from(grouped.values()),
-                    todayRaw
-                );
-            }
+            const mergedData = grouped;
 
             // Replace user counts with accurate raw event counts for multi-day queries
             if (userCountsByLevel) {
@@ -212,7 +179,7 @@ export class LevelFunnelService {
             const levelMetrics = this.calculateDerivedMetrics(mergedData, levelLimit);
 
             const totalDuration = Date.now() - queryStart;
-            logger.info(`FAST level funnel query completed in ${totalDuration}ms (${levelMetrics.length} levels, ${daysDifference} days, includes today: ${queryIncludesToday}, today raw: ${useTodayRaw})`);
+            logger.info(`FAST level funnel query completed in ${totalDuration}ms (${levelMetrics.length} levels, ${daysDifference} days, includes today: ${queryIncludesToday})`);
 
             return levelMetrics;
         } catch (error) {
@@ -319,15 +286,30 @@ export class LevelFunnelService {
         return result;
     }
 
+
+    private async ensureDailyAggregation(gameId: string, date: Date): Promise<void> {
+        const existing = await prisma.levelMetricsDailyUser.count({
+            where: {
+                gameId,
+                date
+            }
+        });
+
+        if (existing > 0) {
+            return;
+        }
+
+        logger.warn(`No daily user metrics for ${gameId} on ${date.toISOString()} - running on-demand aggregation`);
+        await levelMetricsAggregationService.aggregateDailyMetrics(gameId, date);
+    }
+
     /**
-     * Query daily user rows for historical days and merge with today's raw events
-     * to get exact unique user counts across the range.
+     * Query pre-aggregated metrics from LevelMetricsDaily
      */
-    private async queryDailyUserCountsWithTodayRaw(
+    private async queryAggregatedMetrics(
         gameId: string,
         startDate: Date,
         endDate: Date,
-        todayUtcStart: Date,
         filters: {
             country?: string;
             platform?: string;
@@ -335,13 +317,7 @@ export class LevelFunnelService {
             levelFunnel?: string;
             levelFunnelVersion?: string | number;
         }
-    ): Promise<Map<number, {
-        startedPlayers: number;
-        completedPlayers: number;
-        boosterUsers: number;
-        egpUsers: number;
-    }>> {
-        // Historical rows (excluding today) -> build per-level user sets
+    ): Promise<any[]> {
         const countries = filters.country
             ? filters.country.split(',').map(c => c.trim()).filter(c => c)
             : [];
@@ -375,24 +351,40 @@ export class LevelFunnelService {
             }
         }
 
-        const historicalRows = await prisma.$queryRaw<
+        const rows = await prisma.$queryRaw<
             Array<{
                 levelId: number;
-                userId: string;
-                started: boolean;
-                completed: boolean;
-                boosterUsed: boolean;
-                egpUsed: boolean;
+                starts: bigint;
+                completes: bigint;
+                fails: bigint;
+                startedPlayers: bigint;
+                completedPlayers: bigint;
+                boosterUsers: bigint;
+                totalBoosterUsage: bigint;
+                egpUsers: bigint;
+                totalEgpUsage: bigint;
+                totalCompletionDuration: bigint;
+                completionCount: bigint;
+                totalFailDuration: bigint;
+                failCount: bigint;
             }>
         >(Prisma.sql`
             SELECT
                 "levelId" AS "levelId",
-                "userId" AS "userId",
-                "started" AS "started",
-                "completed" AS "completed",
-                "boosterUsed" AS "boosterUsed",
-                "egpUsed" AS "egpUsed"
-            FROM "level_metrics_daily_users"
+                COALESCE(SUM("starts"), 0) AS "starts",
+                COALESCE(SUM("completes"), 0) AS "completes",
+                COALESCE(SUM("fails"), 0) AS "fails",
+                COALESCE(SUM("startedPlayers"), 0) AS "startedPlayers",
+                COALESCE(SUM("completedPlayers"), 0) AS "completedPlayers",
+                COALESCE(SUM("boosterUsers"), 0) AS "boosterUsers",
+                COALESCE(SUM("totalBoosterUsage"), 0) AS "totalBoosterUsage",
+                COALESCE(SUM("egpUsers"), 0) AS "egpUsers",
+                COALESCE(SUM("totalEgpUsage"), 0) AS "totalEgpUsage",
+                COALESCE(SUM("totalCompletionDuration"), 0) AS "totalCompletionDuration",
+                COALESCE(SUM("completionCount"), 0) AS "completionCount",
+                COALESCE(SUM("totalFailDuration"), 0) AS "totalFailDuration",
+                COALESCE(SUM("failCount"), 0) AS "failCount"
+            FROM "level_metrics_daily"
             WHERE "gameId" = ${gameId}
               AND "date" >= ${startDate}
               AND "date" <= ${endDate}
@@ -400,631 +392,27 @@ export class LevelFunnelService {
               ${platforms.length ? Prisma.sql`AND "platform" IN (${Prisma.join(platforms)})` : Prisma.sql``}
               ${versions.length ? Prisma.sql`AND "appVersion" IN (${Prisma.join(versions)})` : Prisma.sql``}
               ${funnelClauses}
+            GROUP BY "levelId"
         `);
 
-        const startedByLevel = new Map<number, Set<string>>();
-        const completedByLevel = new Map<number, Set<string>>();
-        const boosterByLevel = new Map<number, Set<string>>();
-        const egpByLevel = new Map<number, Set<string>>();
-
-        const ensureSet = (map: Map<number, Set<string>>, levelId: number) => {
-            if (!map.has(levelId)) map.set(levelId, new Set());
-            return map.get(levelId)!;
-        };
-
-        for (const row of historicalRows) {
-            if (row.started) ensureSet(startedByLevel, row.levelId).add(row.userId);
-            if (row.completed) ensureSet(completedByLevel, row.levelId).add(row.userId);
-            if (row.boosterUsed) ensureSet(boosterByLevel, row.levelId).add(row.userId);
-            if (row.egpUsed) ensureSet(egpByLevel, row.levelId).add(row.userId);
-        }
-
-        // Merge with today's raw user sets
-        const todayUserSets = await this.queryTodayRawUserSets(gameId, todayUtcStart, filters);
-        for (const [levelId, sets] of todayUserSets.entries()) {
-            ensureSet(startedByLevel, levelId);
-            ensureSet(completedByLevel, levelId);
-            ensureSet(boosterByLevel, levelId);
-            ensureSet(egpByLevel, levelId);
-
-            sets.started.forEach(u => startedByLevel.get(levelId)!.add(u));
-            sets.completed.forEach(u => completedByLevel.get(levelId)!.add(u));
-            sets.booster.forEach(u => boosterByLevel.get(levelId)!.add(u));
-            sets.egp.forEach(u => egpByLevel.get(levelId)!.add(u));
-        }
-
-        const result = new Map<number, {
-            startedPlayers: number;
-            completedPlayers: number;
-            boosterUsers: number;
-            egpUsers: number;
-        }>();
-
-        const levelIds = new Set<number>([
-            ...startedByLevel.keys(),
-            ...completedByLevel.keys(),
-            ...boosterByLevel.keys(),
-            ...egpByLevel.keys()
-        ]);
-
-        for (const levelId of levelIds) {
-            result.set(levelId, {
-                startedPlayers: startedByLevel.get(levelId)?.size || 0,
-                completedPlayers: completedByLevel.get(levelId)?.size || 0,
-                boosterUsers: boosterByLevel.get(levelId)?.size || 0,
-                egpUsers: egpByLevel.get(levelId)?.size || 0
-            });
-        }
-
-        return result;
+        return rows.map((row) => ({
+            levelId: row.levelId,
+            starts: Number(row.starts || 0),
+            completes: Number(row.completes || 0),
+            fails: Number(row.fails || 0),
+            startedPlayers: Number(row.startedPlayers || 0),
+            completedPlayers: Number(row.completedPlayers || 0),
+            boosterUsers: Number(row.boosterUsers || 0),
+            totalBoosterUsage: Number(row.totalBoosterUsage || 0),
+            egpUsers: Number(row.egpUsers || 0),
+            totalEgpUsage: Number(row.totalEgpUsage || 0),
+            totalCompletionDuration: BigInt(row.totalCompletionDuration || 0),
+            completionCount: Number(row.completionCount || 0),
+            totalFailDuration: BigInt(row.totalFailDuration || 0),
+            failCount: Number(row.failCount || 0)
+        }));
     }
 
-    /**
-     * Build per-level user sets for today's raw events
-     */
-    private async queryTodayRawUserSets(
-        gameId: string,
-        todayUtcStart: Date,
-        filters: {
-            country?: string;
-            platform?: string;
-            version?: string;
-            levelFunnel?: string;
-            levelFunnelVersion?: string | number;
-        }
-    ): Promise<Map<number, {
-        started: Set<string>;
-        completed: Set<string>;
-        booster: Set<string>;
-        egp: Set<string>;
-    }>> {
-        const todayUtcEnd = new Date(todayUtcStart);
-        todayUtcEnd.setUTCDate(todayUtcEnd.getUTCDate() + 1);
-
-        const whereClause: any = {
-            gameId,
-            eventName: { in: ['level_start', 'level_complete', 'level_failed'] },
-            timestamp: {
-                gte: todayUtcStart,
-                lt: todayUtcEnd
-            }
-        };
-
-        if (filters.country) {
-            const countries = filters.country.split(',').map(c => c.trim()).filter(c => c);
-            if (countries.length > 1) {
-                whereClause.countryCode = { in: countries };
-            } else if (countries.length === 1) {
-                whereClause.countryCode = countries[0];
-            }
-        }
-
-        if (filters.platform) {
-            const platforms = filters.platform.split(',').map(p => p.trim()).filter(p => p);
-            if (platforms.length > 1) {
-                whereClause.platform = { in: platforms };
-            } else if (platforms.length === 1) {
-                whereClause.platform = platforms[0];
-            }
-        }
-
-        if (filters.version) {
-            const versions = filters.version.split(',').map(v => v.trim()).filter(v => v);
-            if (versions.length > 1) {
-                whereClause.appVersion = { in: versions };
-            } else if (versions.length === 1) {
-                whereClause.appVersion = versions[0];
-            }
-        }
-
-        if (filters.levelFunnel) {
-            const funnels = filters.levelFunnel.split(',').map(f => f.trim()).filter(f => f);
-            if (filters.levelFunnelVersion) {
-                const versions = filters.levelFunnelVersion.toString().split(',').map(v => parseInt(v.trim())).filter(v => !isNaN(v));
-                if (funnels.length === 1 && versions.length === 1) {
-                    whereClause.levelFunnel = funnels[0];
-                    whereClause.levelFunnelVersion = versions[0];
-                } else if (funnels.length > 0 && versions.length > 0 && funnels.length === versions.length) {
-                    whereClause.OR = funnels.map((funnel, idx) => ({
-                        levelFunnel: funnel,
-                        levelFunnelVersion: versions[idx]
-                    }));
-                } else if (funnels.length > 1) {
-                    whereClause.levelFunnel = { in: funnels };
-                } else if (funnels.length === 1) {
-                    whereClause.levelFunnel = funnels[0];
-                }
-            } else if (funnels.length > 1) {
-                whereClause.levelFunnel = { in: funnels };
-            } else if (funnels.length === 1) {
-                whereClause.levelFunnel = funnels[0];
-            }
-        } else if (filters.levelFunnelVersion) {
-            const versions = filters.levelFunnelVersion.toString().split(',').map(v => parseInt(v.trim())).filter(v => !isNaN(v));
-            if (versions.length > 1) {
-                whereClause.levelFunnelVersion = { in: versions };
-            } else if (versions.length === 1) {
-                whereClause.levelFunnelVersion = versions[0];
-            }
-        }
-
-        const events = await prisma.event.findMany({
-            where: whereClause,
-            select: {
-                userId: true,
-                eventName: true,
-                properties: true
-            }
-        });
-
-        const result = new Map<number, {
-            started: Set<string>;
-            completed: Set<string>;
-            booster: Set<string>;
-            egp: Set<string>;
-        }>();
-
-        const ensure = (levelId: number) => {
-            if (!result.has(levelId)) {
-                result.set(levelId, {
-                    started: new Set(),
-                    completed: new Set(),
-                    booster: new Set(),
-                    egp: new Set()
-                });
-            }
-            return result.get(levelId)!;
-        };
-
-        for (const event of events) {
-            const props = event.properties as any;
-            const levelId = props?.levelId;
-            if (levelId === undefined || levelId === null || typeof levelId !== 'number') continue;
-
-            const group = ensure(levelId);
-
-            if (event.eventName === 'level_start') {
-                group.started.add(event.userId);
-            } else if (event.eventName === 'level_complete') {
-                group.completed.add(event.userId);
-
-                if (props?.boosters && typeof props.boosters === 'object' && Object.keys(props.boosters).length > 0) {
-                    group.booster.add(event.userId);
-                }
-                const egpValue = props?.egp ?? props?.endGamePurchase;
-                if ((typeof egpValue === 'number' && egpValue > 0) || egpValue === true) {
-                    group.egp.add(event.userId);
-                }
-            } else if (event.eventName === 'level_failed') {
-                if (props?.boosters && typeof props.boosters === 'object' && Object.keys(props.boosters).length > 0) {
-                    group.booster.add(event.userId);
-                }
-                const egpValue = props?.egp ?? props?.endGamePurchase;
-                if ((typeof egpValue === 'number' && egpValue > 0) || egpValue === true) {
-                    group.egp.add(event.userId);
-                }
-            }
-        }
-
-        return result;
-    }
-
-    private async ensureDailyAggregation(gameId: string, date: Date): Promise<void> {
-        const existing = await prisma.levelMetricsDailyUser.count({
-            where: {
-                gameId,
-                date
-            }
-        });
-
-        if (existing > 0) {
-            return;
-        }
-
-        logger.warn(`No daily user metrics for ${gameId} on ${date.toISOString()} - running on-demand aggregation`);
-        await levelMetricsAggregationService.aggregateDailyMetrics(gameId, date);
-    }
-
-    /**
-     * Query pre-aggregated metrics from LevelMetricsDaily
-     */
-    private async queryAggregatedMetrics(
-        gameId: string,
-        startDate: Date,
-        endDate: Date,
-        filters: {
-            country?: string;
-            platform?: string;
-            version?: string;
-            levelFunnel?: string;
-            levelFunnelVersion?: string | number;
-        }
-    ): Promise<any[]> {
-        const whereClause: any = {
-            gameId,
-            date: {
-                gte: startDate,
-                lte: endDate
-            }
-        };
-
-        // Apply filters
-        if (filters.country) {
-            const countries = filters.country.split(',').map(c => c.trim()).filter(c => c);
-            if (countries.length > 1) {
-                whereClause.countryCode = { in: countries };
-            } else if (countries.length === 1) {
-                whereClause.countryCode = countries[0];
-            }
-        }
-
-        if (filters.platform) {
-            const platforms = filters.platform.split(',').map(p => p.trim()).filter(p => p);
-            if (platforms.length > 1) {
-                whereClause.platform = { in: platforms };
-            } else if (platforms.length === 1) {
-                whereClause.platform = platforms[0];
-            }
-        }
-
-        if (filters.version) {
-            const versions = filters.version.split(',').map(v => v.trim()).filter(v => v);
-            if (versions.length > 1) {
-                whereClause.appVersion = { in: versions };
-            } else if (versions.length === 1) {
-                whereClause.appVersion = versions[0];
-            }
-        }
-
-        // Handle levelFunnel and levelFunnelVersion filtering
-        if (filters.levelFunnel) {
-            const funnels = filters.levelFunnel.split(',').map(f => f.trim()).filter(f => f);
-            
-            if (filters.levelFunnelVersion) {
-                // Both funnel and version provided - try to pair them
-                const versions = filters.levelFunnelVersion.toString().split(',').map(v => parseInt(v.trim())).filter(v => !isNaN(v));
-                
-                if (funnels.length === 1 && versions.length === 1) {
-                    // Single funnel+version pair - simple equality
-                    whereClause.levelFunnel = funnels[0];
-                    whereClause.levelFunnelVersion = versions[0];
-                } else if (funnels.length > 0 && versions.length > 0 && funnels.length === versions.length) {
-                    // Multiple funnel+version pairs with matching counts - use OR condition for exact pairs
-                    whereClause.OR = funnels.map((funnel, idx) => ({
-                        levelFunnel: funnel,
-                        levelFunnelVersion: versions[idx]
-                    }));
-                } else {
-                    // Mismatched funnel and version counts - filter by funnel only
-                    if (funnels.length > 1) {
-                        whereClause.levelFunnel = { in: funnels };
-                    } else if (funnels.length === 1) {
-                        whereClause.levelFunnel = funnels[0];
-                    }
-                }
-            } else {
-                // Only funnel provided - filter by funnel
-                if (funnels.length > 1) {
-                    whereClause.levelFunnel = { in: funnels };
-                } else if (funnels.length === 1) {
-                    whereClause.levelFunnel = funnels[0];
-                }
-            }
-        } else if (filters.levelFunnelVersion) {
-            // Only version provided - filter by version
-            const versions = filters.levelFunnelVersion.toString().split(',').map(v => parseInt(v.trim())).filter(v => !isNaN(v));
-            if (versions.length > 1) {
-                whereClause.levelFunnelVersion = { in: versions };
-            } else if (versions.length === 1) {
-                whereClause.levelFunnelVersion = versions[0];
-            }
-        }
-
-        const aggregatedData = await prisma.levelMetricsDaily.findMany({
-            where: whereClause,
-            select: {
-                levelId: true,
-                starts: true,
-                completes: true,
-                fails: true,
-                startedPlayers: true,
-                completedPlayers: true,
-                boosterUsers: true,
-                totalBoosterUsage: true,
-                egpUsers: true,
-                totalEgpUsage: true,
-                totalCompletionDuration: true,
-                completionCount: true,
-                totalFailDuration: true,
-                failCount: true
-            }
-        });
-
-        // Group by levelId and sum metrics
-        const grouped = new Map<number, any>();
-        for (const row of aggregatedData) {
-            if (!grouped.has(row.levelId)) {
-                grouped.set(row.levelId, {
-                    levelId: row.levelId,
-                    starts: 0,
-                    completes: 0,
-                    fails: 0,
-                    startedPlayers: 0,
-                    completedPlayers: 0,
-                    boosterUsers: 0,
-                    totalBoosterUsage: 0,
-                    egpUsers: 0,
-                    totalEgpUsage: 0,
-                    totalCompletionDuration: BigInt(0),
-                    completionCount: 0,
-                    totalFailDuration: BigInt(0),
-                    failCount: 0
-                });
-            }
-
-            const group = grouped.get(row.levelId)!;
-            group.starts += row.starts;
-            group.completes += row.completes;
-            group.fails += row.fails;
-            group.startedPlayers += row.startedPlayers;
-            group.completedPlayers += row.completedPlayers;
-            group.boosterUsers += row.boosterUsers;
-            group.totalBoosterUsage += row.totalBoosterUsage;
-            group.egpUsers += row.egpUsers;
-            group.totalEgpUsage += row.totalEgpUsage;
-            group.totalCompletionDuration += BigInt(row.totalCompletionDuration);
-            group.completionCount += row.completionCount;
-            group.totalFailDuration += BigInt(row.totalFailDuration);
-            group.failCount += row.failCount;
-        }
-
-        return Array.from(grouped.values());
-    }
-
-    /**
-     * Query today's raw events and aggregate them in memory
-     */
-    private async queryTodayRawEvents(
-        gameId: string,
-        todayUtcStart: Date,
-        filters: {
-            country?: string;
-            platform?: string;
-            version?: string;
-            levelFunnel?: string;
-            levelFunnelVersion?: string | number;
-        }
-    ): Promise<any[]> {
-        const todayUtcEnd = new Date(todayUtcStart);
-        todayUtcEnd.setUTCDate(todayUtcEnd.getUTCDate() + 1);
-
-        const whereClause: any = {
-            gameId,
-            eventName: { in: ['level_start', 'level_complete', 'level_failed'] },
-            timestamp: {
-                gte: todayUtcStart,
-                lt: todayUtcEnd
-            }
-        };
-
-        // Apply same filters as main query
-        if (filters.country) {
-            const countries = filters.country.split(',').map(c => c.trim()).filter(c => c);
-            if (countries.length > 1) {
-                whereClause.countryCode = { in: countries };
-            } else if (countries.length === 1) {
-                whereClause.countryCode = countries[0];
-            }
-        }
-
-        if (filters.platform) {
-            const platforms = filters.platform.split(',').map(p => p.trim()).filter(p => p);
-            if (platforms.length > 1) {
-                whereClause.platform = { in: platforms };
-            } else if (platforms.length === 1) {
-                whereClause.platform = platforms[0];
-            }
-        }
-
-        if (filters.version) {
-            const versions = filters.version.split(',').map(v => v.trim()).filter(v => v);
-            if (versions.length > 1) {
-                whereClause.appVersion = { in: versions };
-            } else if (versions.length === 1) {
-                whereClause.appVersion = versions[0];
-            }
-        }
-
-        // Handle levelFunnel and levelFunnelVersion filtering
-        if (filters.levelFunnel) {
-            const funnels = filters.levelFunnel.split(',').map(f => f.trim()).filter(f => f);
-            
-            if (filters.levelFunnelVersion) {
-                // Both funnel and version provided - try to pair them
-                const versions = filters.levelFunnelVersion.toString().split(',').map(v => parseInt(v.trim())).filter(v => !isNaN(v));
-                
-                if (funnels.length === 1 && versions.length === 1) {
-                    // Single funnel+version pair - simple equality
-                    whereClause.levelFunnel = funnels[0];
-                    whereClause.levelFunnelVersion = versions[0];
-                } else if (funnels.length > 0 && versions.length > 0 && funnels.length === versions.length) {
-                    // Multiple funnel+version pairs with matching counts - use OR condition for exact pairs
-                    whereClause.OR = funnels.map((funnel, idx) => ({
-                        levelFunnel: funnel,
-                        levelFunnelVersion: versions[idx]
-                    }));
-                } else {
-                    // Mismatched funnel and version counts - filter by funnel only
-                    if (funnels.length > 1) {
-                        whereClause.levelFunnel = { in: funnels };
-                    } else if (funnels.length === 1) {
-                        whereClause.levelFunnel = funnels[0];
-                    }
-                }
-            } else {
-                // Only funnel provided - filter by funnel
-                if (funnels.length > 1) {
-                    whereClause.levelFunnel = { in: funnels };
-                } else if (funnels.length === 1) {
-                    whereClause.levelFunnel = funnels[0];
-                }
-            }
-        } else if (filters.levelFunnelVersion) {
-            // Only version provided - filter by version
-            const versions = filters.levelFunnelVersion.toString().split(',').map(v => parseInt(v.trim())).filter(v => !isNaN(v));
-            if (versions.length > 1) {
-                whereClause.levelFunnelVersion = { in: versions };
-            } else if (versions.length === 1) {
-                whereClause.levelFunnelVersion = versions[0];
-            }
-        }
-
-        const events = await prisma.event.findMany({
-            where: whereClause,
-            select: {
-                userId: true,
-                eventName: true,
-                properties: true,
-                timestamp: true
-            }
-        });
-
-        // Group by level and aggregate (same logic as original)
-        return this.aggregateRawEventsInMemory(events);
-    }
-
-    /**
-     * Aggregate raw events in memory (used for today's data)
-     */
-    private aggregateRawEventsInMemory(events: any[]): any[] {
-        const levelGroups = this.groupEventsByLevel(events);
-        const result: any[] = [];
-
-        for (const [levelId, levelEvents] of levelGroups.entries()) {
-            const startEvents = levelEvents.filter(e => e.eventName === 'level_start');
-            const completeEvents = levelEvents.filter(e => e.eventName === 'level_complete');
-            const failEvents = levelEvents.filter(e => e.eventName === 'level_failed');
-
-            const startedUserIds = new Set(startEvents.map(e => e.userId));
-            const completedUserIds = new Set(completeEvents.map(e => e.userId));
-
-            // Booster usage (unique users and total count)
-            const usersWithBoosters = new Set<string>();
-            let totalBoosterUsage = 0;
-            [...completeEvents, ...failEvents].forEach(e => {
-                const props = e.properties as any;
-                if (props?.boosters && typeof props.boosters === 'object' && Object.keys(props.boosters).length > 0) {
-                    usersWithBoosters.add(e.userId);
-                    // Sum total booster count
-                    const boosterCount = Object.values(props.boosters).reduce((sum: number, val: any) => {
-                        return sum + (typeof val === 'number' ? val : 0);
-                    }, 0);
-                    totalBoosterUsage += boosterCount;
-                }
-            });
-
-            // EGP usage (unique users and total count)
-            const usersWithEGP = new Set<string>();
-            let totalEgpUsage = 0;
-            [...completeEvents, ...failEvents].forEach(e => {
-                const props = e.properties as any;
-                const egpValue = props?.egp ?? props?.endGamePurchase;
-                if ((typeof egpValue === 'number' && egpValue > 0) || egpValue === true) {
-                    usersWithEGP.add(e.userId);
-                    totalEgpUsage += typeof egpValue === 'number' ? egpValue : 1;
-                }
-            });
-
-            // Duration calculations
-            const completionDurations = this.calculateDurations(startEvents, completeEvents);
-            const failDurations = this.calculateDurations(startEvents, failEvents);
-
-            result.push({
-                levelId,
-                starts: startEvents.length,
-                completes: completeEvents.length,
-                fails: failEvents.length,
-                startedPlayers: startedUserIds.size,
-                completedPlayers: completedUserIds.size,
-                boosterUsers: usersWithBoosters.size,
-                totalBoosterUsage: totalBoosterUsage,
-                egpUsers: usersWithEGP.size,
-                totalEgpUsage: totalEgpUsage,
-                totalCompletionDuration: BigInt(Math.floor(completionDurations.reduce((sum, d) => sum + d, 0))),
-                completionCount: completionDurations.length,
-                totalFailDuration: BigInt(Math.floor(failDurations.reduce((sum, d) => sum + d, 0))),
-                failCount: failDurations.length
-            });
-        }
-
-        return result;
-    }
-
-    /**
-     * Merge historical aggregated data with today's raw event data
-     */
-    private mergeHistoricalAndTodayMetrics(historical: any[], today: any[]): Map<number, any> {
-        const merged = new Map<number, any>();
-
-        // Add historical data
-        for (const hist of historical) {
-            merged.set(hist.levelId, {
-                levelId: hist.levelId,
-                starts: hist.starts,
-                completes: hist.completes,
-                fails: hist.fails,
-                startedPlayers: hist.startedPlayers,
-                completedPlayers: hist.completedPlayers,
-                boosterUsers: hist.boosterUsers,
-                totalBoosterUsage: hist.totalBoosterUsage,
-                egpUsers: hist.egpUsers,
-                totalEgpUsage: hist.totalEgpUsage,
-                totalCompletionDuration: hist.totalCompletionDuration,
-                completionCount: hist.completionCount,
-                totalFailDuration: hist.totalFailDuration,
-                failCount: hist.failCount
-            });
-        }
-
-        // Merge today's data
-        for (const todayData of today) {
-            if (!merged.has(todayData.levelId)) {
-                merged.set(todayData.levelId, {
-                    levelId: todayData.levelId,
-                    starts: 0,
-                    completes: 0,
-                    fails: 0,
-                    startedPlayers: 0,
-                    completedPlayers: 0,
-                    boosterUsers: 0,
-                    totalBoosterUsage: 0,
-                    egpUsers: 0,
-                    totalEgpUsage: 0,
-                    totalCompletionDuration: BigInt(0),
-                    completionCount: 0,
-                    totalFailDuration: BigInt(0),
-                    failCount: 0
-                });
-            }
-
-            const group = merged.get(todayData.levelId)!;
-            group.starts += todayData.starts;
-            group.completes += todayData.completes;
-            group.fails += todayData.fails;
-            group.startedPlayers += todayData.startedPlayers;
-            group.completedPlayers += todayData.completedPlayers;
-            group.boosterUsers += todayData.boosterUsers;
-            group.totalBoosterUsage += todayData.totalBoosterUsage;
-            group.egpUsers += todayData.egpUsers;
-            group.totalEgpUsage += todayData.totalEgpUsage;
-            group.totalCompletionDuration += todayData.totalCompletionDuration;
-            group.completionCount += todayData.completionCount;
-            group.totalFailDuration += todayData.totalFailDuration;
-            group.failCount += todayData.failCount;
-        }
-
-        return merged;
-    }
 
     /**
      * Calculate derived metrics from merged aggregated data
@@ -1140,6 +528,16 @@ export class LevelFunnelService {
      * Get level funnel data with all metrics (LEGACY VERSION using raw events)
      * Kept for validation and debugging
      */
+    async getLevelFunnelData(filters: LevelFunnelFilters): Promise<LevelMetrics[]> {
+        logger.warn('Legacy level funnel raw query disabled. Falling back to aggregated fast path.');
+        return this.getLevelFunnelDataFast(filters);
+    }
+
+    /**
+     * Legacy raw implementation removed (disabled to avoid raw scans).
+     * Kept below as reference in git history.
+     */
+    /*
     async getLevelFunnelData(filters: LevelFunnelFilters): Promise<LevelMetrics[]> {
         try {
             const { gameId, startDate, endDate, country, platform, version, abTestId, variantId, levelFunnel, levelFunnelVersion, levelLimit = 100 } = filters;
@@ -1331,6 +729,7 @@ export class LevelFunnelService {
             throw error;
         }
     }
+    */
 
     /**
      * Group events by levelId

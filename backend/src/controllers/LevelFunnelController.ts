@@ -2,11 +2,12 @@ import { Request, Response } from 'express';
 import levelFunnelService from '../services/LevelFunnelService';
 import { ApiResponse } from '../types/api';
 import logger from '../utils/logger';
+import { logAnalyticsMetrics } from '../utils/analyticsDebug';
 
 export class LevelFunnelController {
     private logMemory(label: string) {
         const mem = process.memoryUsage();
-        logger.warn(`[AnalyticsMetrics] ${label}`, {
+        logAnalyticsMetrics(`[AnalyticsMetrics] ${label}`, {
             rss: mem.rss,
             heapUsed: mem.heapUsed,
             heapTotal: mem.heapTotal,
@@ -38,7 +39,6 @@ export class LevelFunnelController {
                 levelFunnelVersion,
                 levelLimit,
                 useFast,
-                includeTodayRaw,
                 includeRawUserCounts
             } = req.query;
 
@@ -64,8 +64,6 @@ export class LevelFunnelController {
                 levelFunnel: levelFunnel as string | undefined,
                 levelFunnelVersion: levelFunnelVersion as string | undefined, // Keep as string to support comma-separated versions
                 levelLimit: levelLimit ? parseInt(levelLimit as string) : 100, // Default to 100
-                // Default to true when param not provided
-                includeTodayRaw: includeTodayRaw === undefined ? true : includeTodayRaw === 'true',
                 includeRawUserCounts: includeRawUserCounts === 'true'
             };
 
@@ -91,13 +89,13 @@ export class LevelFunnelController {
             }
 
             // Use fast query by default (unless explicitly disabled)
-            const shouldUseFast = useFast === undefined || useFast === 'true';
+            const shouldUseFast = true;
             const levels = shouldUseFast 
                 ? await levelFunnelService.getLevelFunnelDataFast(filters)
                 : await levelFunnelService.getLevelFunnelData(filters);
 
             this.logMemory('level funnel end');
-            logger.warn(`[AnalyticsMetrics] level funnel duration: ${Date.now() - startTime}ms`);
+            logAnalyticsMetrics(`[AnalyticsMetrics] level funnel duration: ${Date.now() - startTime}ms`);
 
             res.json({
                 success: true,
@@ -178,7 +176,7 @@ export class LevelFunnelController {
             }
 
             this.logMemory('level details end');
-            logger.warn(`[AnalyticsMetrics] level details duration: ${Date.now() - startTime}ms`);
+            logAnalyticsMetrics(`[AnalyticsMetrics] level details duration: ${Date.now() - startTime}ms`);
 
             res.json({
                 success: true,

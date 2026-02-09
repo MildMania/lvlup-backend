@@ -64,6 +64,25 @@ npx prisma db push
 npm run dev
 ```
 
+## Runtime Modes (API vs Worker)
+
+Use runtime flags to split serving traffic and background rollups.
+
+- Railway API service:
+  - `RUN_API=true`
+  - `RUN_JOBS=false`
+- Local worker process:
+  - `RUN_API=false`
+  - `RUN_JOBS=true`
+
+Example local worker command (run from `backend/`):
+
+```bash
+RUN_API=false RUN_JOBS=true DATABASE_URL=<railway_postgres_url> npm run dev
+```
+
+The local worker must remain online for cron/rollup processing.
+
 ## API Documentation
 
 ### Authentication
@@ -124,4 +143,3 @@ npm test
 ## License
 
 MIT
-

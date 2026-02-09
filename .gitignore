@@ -14,6 +14,7 @@ backend/prisma/migrations/.DS_Store
 prisma/.env
 backend/.env.bak
 backend/.env.local
+backend/.worker.env
 
 # Frontend environment files
 frontend/.env.local

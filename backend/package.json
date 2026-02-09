@@ -30,6 +30,9 @@
     "backfill:active-users": "ts-node src/scripts/backfillActiveUsers.ts",
     "backfill:cohorts": "ts-node src/scripts/backfillCohorts.ts",
     "backfill:monetization": "ts-node src/scripts/backfillMonetization.ts",
+    "worker:start": "bash scripts/worker-start.sh",
+    "worker:redeploy": "bash scripts/worker-redeploy.sh",
+    "worker:auto-update": "bash scripts/worker-auto-update.sh",
     "env:local": "cd .. && ./env local",
     "env:prod": "cd .. && ./env production",
     "env:status": "cd .. && ./env status"

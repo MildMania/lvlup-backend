@@ -18,14 +18,15 @@ import { eventBatchWriter } from './services/EventBatchWriter';
 import { revenueBatchWriter } from './services/RevenueBatchWriter';
 import { sessionHeartbeatBatchWriter } from './services/SessionHeartbeatBatchWriter';
 
-// Load environment variables and override inherited shell vars.
-// This keeps `./switch-env.sh` deterministic without manual `unset DATABASE_URL`.
-dotenv.config({ override: true });
+const runApi = process.env.RUN_API !== 'false';
+const runJobs = process.env.RUN_JOBS !== 'false';
+
+// In worker-only mode, keep externally provided env (e.g. PM2/.worker.env) ahead of .env.
+// In other modes, keep prior behavior where .env overrides inherited shell vars.
+dotenv.config({ override: !(runJobs && !runApi) });
 
 const app = express();
 const PORT = process.env.PORT ? parseInt(process.env.PORT) : 3000;
-const runApi = process.env.RUN_API !== 'false';
-const runJobs = process.env.RUN_JOBS !== 'false';
 let apiStarted = false;
 let jobsStarted = false;
 

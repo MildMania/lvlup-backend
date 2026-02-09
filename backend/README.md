@@ -83,6 +83,31 @@ RUN_API=false RUN_JOBS=true DATABASE_URL=<railway_postgres_url> npm run dev
 
 The local worker must remain online for cron/rollup processing.
 
+### PM2 Worker Operations
+
+Start worker with PM2 (from `backend/`):
+
+```bash
+cat > .worker.env <<'EOF'
+DATABASE_URL=<railway_postgres_url>
+EOF
+npm run worker:start
+```
+
+Redeploy worker after new commits:
+
+```bash
+npm run worker:redeploy
+```
+
+Auto-update worker when new commits are pushed (polling mode):
+
+```bash
+*/2 * * * * cd /Users/emre/Desktop/MM-Projects/lvlup-backend/backend && npm run worker:auto-update >> /tmp/lvlup-worker-auto-update.log 2>&1
+```
+
+Install the cron line with `crontab -e`. This checks every 2 minutes and redeploys only when `origin/main` changed.
+
 ## API Documentation
 
 ### Authentication

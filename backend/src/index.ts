@@ -18,13 +18,24 @@ import { eventBatchWriter } from './services/EventBatchWriter';
 import { revenueBatchWriter } from './services/RevenueBatchWriter';
 import { sessionHeartbeatBatchWriter } from './services/SessionHeartbeatBatchWriter';
 
-// Load environment variables and override inherited shell vars.
-// This keeps `./switch-env.sh` deterministic without manual `unset DATABASE_URL`.
-dotenv.config({ override: true });
+const runApi = process.env.RUN_API !== 'false';
+const runJobs = process.env.RUN_JOBS !== 'false';
+
+// In worker-only mode, keep externally provided env (e.g. PM2/.worker.env) ahead of .env.
+// In other modes, keep prior behavior where .env overrides inherited shell vars.
+dotenv.config({ override: !(runJobs && !runApi) });
 
 const app = express();
 const PORT = process.env.PORT ? parseInt(process.env.PORT) : 3000;
 const REQUEST_BODY_LIMIT = process.env.REQUEST_BODY_LIMIT || '2mb';
+
+let apiStarted = false;
+let jobsStarted = false;
+
+if (!runApi && !runJobs) {
+    logger.error('Invalid runtime configuration: RUN_API and RUN_JOBS are both false');
+    process.exit(1);
+}
 
 // Apply middleware
 const allowedOrigins = [
@@ -295,18 +306,15 @@ app.use((err: any, req: Request, res: Response, next: any) => {
     });
 });
 
-// Start server
-app.listen(PORT, '0.0.0.0', () => {
-    logger.info(`LvlUp server running at http://0.0.0.0:${PORT}`);
-    
+function startJobs(): void {
     // Start session heartbeat monitoring service
     sessionHeartbeatService.start();
     logger.info('Session heartbeat service started');
-    
+
     // Start data retention service
     dataRetentionService.start();
     logger.info('Data retention service started');
-    
+
     // Start level metrics aggregation cron job
     startLevelMetricsAggregationJob();
     logger.info('Level metrics aggregation cron job started');
@@ -338,35 +346,47 @@ app.listen(PORT, '0.0.0.0', () => {
 
     startFxRatesSyncJob();
     logger.info('FX rates sync cron job started');
-});
+    jobsStarted = true;
+}
+
+if (runApi) {
+    app.listen(PORT, '0.0.0.0', () => {
+        logger.info(`LvlUp server running at http://0.0.0.0:${PORT}`);
+        apiStarted = true;
+
+        if (runJobs) {
+            startJobs();
+        }
+    });
+} else if (runJobs) {
+    startJobs();
+}
 
 // Graceful shutdown
-process.on('SIGTERM', async () => {
-    logger.info('SIGTERM signal received: closing HTTP server');
-    
-    // Flush remaining events, revenue records, and heartbeats before shutdown
-    await Promise.all([
-        eventBatchWriter.shutdown(),
-        revenueBatchWriter.shutdown(),
-        sessionHeartbeatBatchWriter.shutdown()
-    ]);
-    
-    sessionHeartbeatService.stop();
-    dataRetentionService.stop();
+const gracefulShutdown = async (signal: string): Promise<void> => {
+    logger.info(`${signal} signal received: closing process`);
+
+    if (apiStarted || jobsStarted) {
+        // Flush remaining events, revenue records, and heartbeats before shutdown
+        await Promise.all([
+            eventBatchWriter.shutdown(),
+            revenueBatchWriter.shutdown(),
+            sessionHeartbeatBatchWriter.shutdown()
+        ]);
+    }
+
+    if (jobsStarted) {
+        sessionHeartbeatService.stop();
+        dataRetentionService.stop();
+    }
+
     process.exit(0);
+};
+
+process.on('SIGTERM', () => {
+    void gracefulShutdown('SIGTERM');
 });
 
-process.on('SIGINT', async () => {
-    logger.info('SIGINT signal received: closing HTTP server');
-    
-    // Flush remaining events, revenue records, and heartbeats before shutdown
-    await Promise.all([
-        eventBatchWriter.shutdown(),
-        revenueBatchWriter.shutdown(),
-        sessionHeartbeatBatchWriter.shutdown()
-    ]);
-    
-    sessionHeartbeatService.stop();
-    dataRetentionService.stop();
-    process.exit(0);
+process.on('SIGINT', () => {
+    void gracefulShutdown('SIGINT');
 });

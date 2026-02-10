@@ -124,7 +124,7 @@ export class RevenueService {
                     adNetworkPlacement: revenueData.adNetworkPlacement || null,
                 });
                 
-                logger.info(`Ad impression enqueued: ${revenueData.adNetworkName} ${revenueData.adFormat} - $${revenueData.revenue} - ad: ${adImpressionId}`);
+                logger.debug(`Ad impression enqueued: ${revenueData.adNetworkName} ${revenueData.adFormat} - $${revenueData.revenue} - ad: ${adImpressionId}`);
             } else if (revenueData.revenueType === RevenueType.IN_APP_PURCHASE) {
                 // Generate deterministic transactionId using hash of purchase data
                 // Same purchase data = same hash, so retries will have identical IDs
@@ -156,7 +156,7 @@ export class RevenueService {
                     subscriptionPeriod: revenueData.subscriptionPeriod || null,
                 });
                 
-                logger.info(`IAP enqueued: ${revenueData.productId} - $${revenueData.revenue} (${revenueData.store}) - txn: ${transactionId}`);
+                logger.debug(`IAP enqueued: ${revenueData.productId} - $${revenueData.revenue} (${revenueData.store}) - txn: ${transactionId}`);
             }
 
             // Enqueue revenue record for batched insertion (non-blocking)

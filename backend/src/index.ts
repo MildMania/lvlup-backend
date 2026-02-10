@@ -24,6 +24,7 @@ dotenv.config({ override: true });
 
 const app = express();
 const PORT = process.env.PORT ? parseInt(process.env.PORT) : 3000;
+const REQUEST_BODY_LIMIT = process.env.REQUEST_BODY_LIMIT || '2mb';
 
 // Apply middleware
 const allowedOrigins = [
@@ -47,8 +48,8 @@ app.use(cors({
     credentials: true, // Allow cookies
 }));
 app.use(helmet());
-app.use(express.json({ limit: '2mb' })); // Increased limit for batch events
-app.use(express.urlencoded({ extended: true }));
+app.use(express.json({ limit: REQUEST_BODY_LIMIT }));
+app.use(express.urlencoded({ extended: true, limit: REQUEST_BODY_LIMIT }));
 app.use(cookieParser());
 
 const enableHttpAccessLog =
@@ -273,6 +274,20 @@ app.use('/api', apiRoutes);
 
 // Error handling middleware
 app.use((err: any, req: Request, res: Response, next: any) => {
+    if (err?.type === 'entity.too.large' || err?.status === 413) {
+        logger.warn('Request entity too large', {
+            method: req.method,
+            path: req.originalUrl || req.path,
+            contentLength: req.headers['content-length'] || null,
+            userAgent: req.headers['user-agent'] || null,
+            requestBodyLimit: REQUEST_BODY_LIMIT,
+        });
+        return res.status(413).json({
+            success: false,
+            error: 'Request entity too large'
+        });
+    }
+
     logger.error(`Error: ${err.message}`, { stack: err.stack });
     res.status(err.status || 500).json({
         success: false,

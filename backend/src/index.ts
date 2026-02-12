@@ -9,16 +9,33 @@ import logger from './utils/logger';
 import prismaInstance from './prisma';
 import { sessionHeartbeatService } from './services/SessionHeartbeatService';
 import dataRetentionService from './services/DataRetentionService';
-import { startLevelMetricsAggregationJob } from './jobs/levelMetricsAggregation';
+import { startLevelMetricsAggregationJob, startLevelMetricsHourlyTodayJob } from './jobs/levelMetricsAggregation';
+import { startActiveUsersAggregationJob, startActiveUsersHourlyTodayJob } from './jobs/activeUsersAggregation';
+import { startCohortAggregationJob, startCohortHourlyTodayJob } from './jobs/cohortAggregation';
+import { startMonetizationAggregationJob, startMonetizationHourlyTodayJob } from './jobs/monetizationAggregation';
+import { startFxRatesSyncJob } from './jobs/fxRatesSync';
 import { eventBatchWriter } from './services/EventBatchWriter';
 import { revenueBatchWriter } from './services/RevenueBatchWriter';
 import { sessionHeartbeatBatchWriter } from './services/SessionHeartbeatBatchWriter';
 
-// Load environment variables
-dotenv.config();
+const runApi = process.env.RUN_API !== 'false';
+const runJobs = process.env.RUN_JOBS !== 'false';
+
+// In worker-only mode, keep externally provided env (e.g. PM2/.worker.env) ahead of .env.
+// In other modes, keep prior behavior where .env overrides inherited shell vars.
+dotenv.config({ override: !(runJobs && !runApi) });
 
 const app = express();
 const PORT = process.env.PORT ? parseInt(process.env.PORT) : 3000;
+const REQUEST_BODY_LIMIT = process.env.REQUEST_BODY_LIMIT || '2mb';
+
+let apiStarted = false;
+let jobsStarted = false;
+
+if (!runApi && !runJobs) {
+    logger.error('Invalid runtime configuration: RUN_API and RUN_JOBS are both false');
+    process.exit(1);
+}
 
 // Apply middleware
 const allowedOrigins = [
@@ -42,10 +59,66 @@ app.use(cors({
     credentials: true, // Allow cookies
 }));
 app.use(helmet());
-app.use(express.json({ limit: '2mb' })); // Increased limit for batch events
-app.use(express.urlencoded({ extended: true }));
+app.use(express.json({ limit: REQUEST_BODY_LIMIT }));
+app.use(express.urlencoded({ extended: true, limit: REQUEST_BODY_LIMIT }));
 app.use(cookieParser());
-app.use(morgan('combined')); // HTTP request logging
+
+const enableHttpAccessLog =
+    process.env.HTTP_ACCESS_LOG === '1' ||
+    process.env.HTTP_ACCESS_LOG === 'true' ||
+    process.env.NODE_ENV !== 'production';
+
+if (enableHttpAccessLog) {
+    app.use(morgan('combined'));
+} else {
+    // In production, log only error responses unless explicitly enabled
+    app.use(
+        morgan('combined', {
+            skip: (_req, res) => res.statusCode < 400
+        })
+    );
+}
+
+if (process.env.ANALYTICS_TRACE === '1' || process.env.ANALYTICS_TRACE === 'true') {
+    app.use((req, res, next) => {
+        const path = req.path;
+        const isHeavyAnalytics =
+            req.method === 'GET' &&
+            (path.startsWith('/api/analytics/summary') ||
+                path.startsWith('/api/analytics/level-funnel') ||
+                path.startsWith('/api/analytics/cohort') ||
+                path.startsWith('/api/analytics/metrics'));
+
+        if (!isHeavyAnalytics) {
+            return next();
+        }
+
+        const start = Date.now();
+        const memStart = process.memoryUsage();
+        const rssStart = memStart.rss;
+        const heapStart = memStart.heapUsed;
+
+        res.on('finish', () => {
+            const memEnd = process.memoryUsage();
+            const rssEnd = memEnd.rss;
+            const heapEnd = memEnd.heapUsed;
+            logger.warn('[AnalyticsTrace] request', {
+                method: req.method,
+                path: req.originalUrl,
+                status: res.statusCode,
+                durationMs: Date.now() - start,
+                rssStart,
+                rssEnd,
+                heapStart,
+                heapEnd,
+                rssDelta: rssEnd - rssStart,
+                heapDelta: heapEnd - heapStart,
+            });
+        });
+
+        next();
+    });
+}
 
 // Health check endpoint for Railway (root level)
 app.get('/health', (_req: Request, res: Response) => {
@@ -212,6 +285,20 @@ app.use('/api', apiRoutes);
 
 // Error handling middleware
 app.use((err: any, req: Request, res: Response, next: any) => {
+    if (err?.type === 'entity.too.large' || err?.status === 413) {
+        logger.warn('Request entity too large', {
+            method: req.method,
+            path: req.originalUrl || req.path,
+            contentLength: req.headers['content-length'] || null,
+            userAgent: req.headers['user-agent'] || null,
+            requestBodyLimit: REQUEST_BODY_LIMIT,
+        });
+        return res.status(413).json({
+            success: false,
+            error: 'Request entity too large'
+        });
+    }
+
     logger.error(`Error: ${err.message}`, { stack: err.stack });
     res.status(err.status || 500).json({
         success: false,
@@ -219,50 +306,87 @@ app.use((err: any, req: Request, res: Response, next: any) => {
     });
 });
 
-// Start server
-app.listen(PORT, '0.0.0.0', () => {
-    logger.info(`LvlUp server running at http://0.0.0.0:${PORT}`);
-    
+function startJobs(): void {
     // Start session heartbeat monitoring service
     sessionHeartbeatService.start();
     logger.info('Session heartbeat service started');
-    
+
     // Start data retention service
     dataRetentionService.start();
     logger.info('Data retention service started');
-    
+
     // Start level metrics aggregation cron job
     startLevelMetricsAggregationJob();
     logger.info('Level metrics aggregation cron job started');
-});
+
+    // Start hourly aggregation for today (partial day)
+    startLevelMetricsHourlyTodayJob();
+    logger.info('Level metrics hourly aggregation job started');
+
+    // Start active users aggregation jobs
+    startActiveUsersAggregationJob();
+    logger.info('Active users aggregation cron job started');
+
+    startActiveUsersHourlyTodayJob();
+    logger.info('Active users hourly aggregation job started');
+
+    // Start cohort aggregation jobs
+    startCohortAggregationJob();
+    logger.info('Cohort aggregation cron job started');
+
+    startCohortHourlyTodayJob();
+    logger.info('Cohort hourly aggregation job started');
+
+    // Start monetization aggregation jobs
+    startMonetizationAggregationJob();
+    logger.info('Monetization aggregation cron job started');
+
+    startMonetizationHourlyTodayJob();
+    logger.info('Monetization hourly aggregation job started');
+
+    startFxRatesSyncJob();
+    logger.info('FX rates sync cron job started');
+    jobsStarted = true;
+}
+
+if (runApi) {
+    app.listen(PORT, '0.0.0.0', () => {
+        logger.info(`LvlUp server running at http://0.0.0.0:${PORT}`);
+        apiStarted = true;
+
+        if (runJobs) {
+            startJobs();
+        }
+    });
+} else if (runJobs) {
+    startJobs();
+}
 
 // Graceful shutdown
-process.on('SIGTERM', async () => {
-    logger.info('SIGTERM signal received: closing HTTP server');
-    
-    // Flush remaining events, revenue records, and heartbeats before shutdown
-    await Promise.all([
-        eventBatchWriter.shutdown(),
-        revenueBatchWriter.shutdown(),
-        sessionHeartbeatBatchWriter.shutdown()
-    ]);
-    
-    sessionHeartbeatService.stop();
-    dataRetentionService.stop();
+const gracefulShutdown = async (signal: string): Promise<void> => {
+    logger.info(`${signal} signal received: closing process`);
+
+    if (apiStarted || jobsStarted) {
+        // Flush remaining events, revenue records, and heartbeats before shutdown
+        await Promise.all([
+            eventBatchWriter.shutdown(),
+            revenueBatchWriter.shutdown(),
+            sessionHeartbeatBatchWriter.shutdown()
+        ]);
+    }
+
+    if (jobsStarted) {
+        sessionHeartbeatService.stop();
+        dataRetentionService.stop();
+    }
+
     process.exit(0);
+};
+
+process.on('SIGTERM', () => {
+    void gracefulShutdown('SIGTERM');
 });
 
-process.on('SIGINT', async () => {
-    logger.info('SIGINT signal received: closing HTTP server');
-    
-    // Flush remaining events, revenue records, and heartbeats before shutdown
-    await Promise.all([
-        eventBatchWriter.shutdown(),
-        revenueBatchWriter.shutdown(),
-        sessionHeartbeatBatchWriter.shutdown()
-    ]);
-    
-    sessionHeartbeatService.stop();
-    dataRetentionService.stop();
-    process.exit(0);
+process.on('SIGINT', () => {
+    void gracefulShutdown('SIGINT');
 });

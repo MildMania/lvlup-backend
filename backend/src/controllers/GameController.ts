@@ -91,35 +91,19 @@ export class GameController {
                     name: true,
                     description: true,
                     apiKey: true, // Include API key for frontend
-                    createdAt: true,
-                    _count: {
-                        select: {
-                            events: true,
-                            users: true,
-                            sessions: true,
-                            checkpoints: true,
-                            playerCheckpoints: true
-                        }
-                    }
+                    createdAt: true
                 },
                 orderBy: {
                     createdAt: 'desc'
                 }
             });
 
-            const formattedGames = games.map((game: GameWithCounts) => ({
+            const formattedGames = games.map((game) => ({
                 id: game.id,
                 name: game.name,
                 description: game.description,
                 apiKey: game.apiKey, // Include in response
-                createdAt: game.createdAt,
-                stats: {
-                    events: game._count?.events || 0,
-                    users: game._count?.users || 0,
-                    sessions: game._count?.sessions || 0,
-                    checkpoints: game._count?.checkpoints || 0,
-                    playerJourneys: game._count?.playerCheckpoints || 0
-                }
+                createdAt: game.createdAt
             }));
 
             res.status(200).json({

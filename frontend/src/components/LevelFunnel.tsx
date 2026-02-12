@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useMemo } from 'react';
 import { RefreshCw } from 'lucide-react';
 import { useGame } from '../contexts/GameContext';
 import apiClient from '../lib/apiClient';
@@ -11,15 +11,14 @@ const METRIC_TOOLTIPS: Record<string, string> = {
     'Completed': 'Unique players who triggered level_complete event',
     'Funnel Rate': '(Nth level completed users / 1st level started users) × 100',
     'Churn (Total)': 'Total % of users lost: users who didn\'t complete + users who completed but didn\'t start next level',
-    'Churn (Start)': '% of users who started but never completed (out of started users)',
+    'Churn (Self)': '% of users who started but never completed (out of started users)',
     'Churn (Next)': '% of users who completed this level but never started the next level (out of completed users)',
     'Completion Rate': '(Unique players completed / Unique players started) × 100',
     'Win Rate': '(Completed attempts / (Completed + Failed attempts)) × 100. Only counts users who finished (excludes incomplete attempts)',
     'Fail Rate': '(Failed attempts / (Completed + Failed attempts)) × 100',
-    'APS Raw': 'All starts from completing users, including orphaned starts from crashes/network issues',
-    'APS Clean': 'Only starts with matching conclusions (complete/fail). Filters out orphaned start events for cleaner data',
+    'APS': 'All starts from completing users, including orphaned starts from crashes/network issues',
     'AVG Time': 'Average time to complete the level in seconds',
-    'Cumulative AVG Time': 'Total cumulative average time from level 1 to this level in seconds',
+    'Cumulative AVG Time': 'Total cumulative average time from level 1 to this level in minutes',
     'Booster': '% of completing/failing users who used at least one booster',
     'EGP': 'End Game Purchase - % of failing users who made a purchase'
 };
@@ -78,7 +77,6 @@ interface LevelMetrics {
     churnStartComplete: number;
     churnCompleteNext: number;
     apsRaw: number; // All starts from completing users (includes orphaned starts)
-    apsClean: number; // Only starts with matching conclusions (filters out orphaned starts)
     meanCompletionDuration: number;
     meanFailDuration: number;
     cumulativeAvgTime: number;
@@ -98,6 +96,9 @@ interface LevelFunnelProps {
     isCollapsed?: boolean;
 }
 
+type SortField = 'apsRaw' | 'churnTotal' | 'churnStartComplete' | 'winRate' | 'meanCompletionDuration';
+type SortDirection = 'asc' | 'desc';
+
 export default function LevelFunnel({ isCollapsed = false }: LevelFunnelProps) {
     const { currentGame } = useGame();
     const [levels, setLevels] = useState<LevelMetrics[]>([]);
@@ -115,6 +116,8 @@ export default function LevelFunnel({ isCollapsed = false }: LevelFunnelProps) {
 
     // Level limit state
     const [levelLimit, setLevelLimit] = useState<number>(100);
+    const [sortField, setSortField] = useState<SortField | null>(null);
+    const [sortDirection, setSortDirection] = useState<SortDirection>('desc');
 
     // Multi-select filter states
     const [selectedCountries, setSelectedCountries] = useState<string[]>([]);
@@ -274,6 +277,39 @@ export default function LevelFunnel({ isCollapsed = false }: LevelFunnelProps) {
         }
     };
 
+    const sortedLevels = useMemo(() => {
+        if (!sortField) return levels;
+
+        const sorted = [...levels].sort((a, b) => {
+            const aValue = a[sortField];
+            const bValue = b[sortField];
+            return sortDirection === 'asc' ? aValue - bValue : bValue - aValue;
+        });
+
+        return sorted;
+    }, [levels, sortField, sortDirection]);
+
+    const toggleSort = (field: SortField) => {
+        if (sortField !== field) {
+            setSortField(field);
+            setSortDirection('asc');
+            return;
+        }
+
+        if (sortDirection === 'asc') {
+            setSortDirection('desc');
+            return;
+        }
+
+        setSortField(null);
+        setSortDirection('asc');
+    };
+
+    const sortIndicator = (field: SortField) => {
+        if (sortField !== field) return '↕';
+        return sortDirection === 'asc' ? '↑' : '↓';
+    };
+
     const exportToCSV = () => {
         if (levels.length === 0) return;
 
@@ -289,10 +325,9 @@ export default function LevelFunnel({ isCollapsed = false }: LevelFunnelProps) {
             'Completion Rate (%)',
             'Win Rate (%)',
             'Fail Rate (%)',
-            'APS Raw',
-            'APS Clean',
+            'APS',
             'Avg Completion Time (s)',
-            'Cumulative Avg Time (s)',
+            'Cumulative Avg Time (m)',
             'Booster Usage (%)',
             'EGP Rate (%)'
         ];
@@ -310,9 +345,8 @@ export default function LevelFunnel({ isCollapsed = false }: LevelFunnelProps) {
             level.winRate.toFixed(2),
             level.failRate.toFixed(2),
             level.apsRaw.toFixed(2),
-            level.apsClean.toFixed(2),
             level.meanCompletionDuration.toFixed(2),
-            level.cumulativeAvgTime.toFixed(2),
+            (level.cumulativeAvgTime / 60).toFixed(2),
             level.boosterUsage.toFixed(2),
             level.egpRate.toFixed(2)
         ]);
@@ -631,34 +665,69 @@ export default function LevelFunnel({ isCollapsed = false }: LevelFunnelProps) {
                                 <th><MetricTooltip text={METRIC_TOOLTIPS['Started']}>Started</MetricTooltip></th>
                                 <th><MetricTooltip text={METRIC_TOOLTIPS['Completed']}>Completed</MetricTooltip></th>
                                 <th><MetricTooltip text={METRIC_TOOLTIPS['Funnel Rate']}>Funnel Rate</MetricTooltip></th>
-                                <th 
-                                    className="churn-header-expandable"
-                                    onClick={() => setIsChurnExpanded(!isChurnExpanded)}
-                                    style={{ cursor: 'pointer' }}
-                                >
+                                <th className="churn-header-expandable">
                                     <MetricTooltip text={METRIC_TOOLTIPS['Churn (Total)']}>
-                                        Churn (Total) {isChurnExpanded ? '▼' : '▶'}
+                                        <span
+                                            onClick={() => toggleSort('churnTotal')}
+                                            style={{ cursor: 'pointer', marginRight: '8px' }}
+                                        >
+                                            Churn (Total) {sortIndicator('churnTotal')}
+                                        </span>
                                     </MetricTooltip>
+                                    <span
+                                        onClick={() => setIsChurnExpanded(!isChurnExpanded)}
+                                        style={{ cursor: 'pointer' }}
+                                        title={isChurnExpanded ? 'Collapse churn detail columns' : 'Expand churn detail columns'}
+                                    >
+                                        {isChurnExpanded ? '▼' : '▶'}
+                                    </span>
                                 </th>
                                 {isChurnExpanded && (
                                     <>
-                                        <th><MetricTooltip text={METRIC_TOOLTIPS['Churn (Start)']}>Churn (Start)</MetricTooltip></th>
+                                        <th
+                                            onClick={() => toggleSort('churnStartComplete')}
+                                            style={{ cursor: 'pointer' }}
+                                        >
+                                            <MetricTooltip text={METRIC_TOOLTIPS['Churn (Self)']}>
+                                                Churn (Self) {sortIndicator('churnStartComplete')}
+                                            </MetricTooltip>
+                                        </th>
                                         <th><MetricTooltip text={METRIC_TOOLTIPS['Churn (Next)']}>Churn (Next)</MetricTooltip></th>
                                     </>
                                 )}
                                 <th><MetricTooltip text={METRIC_TOOLTIPS['Completion Rate']}>Completion Rate</MetricTooltip></th>
-                                <th><MetricTooltip text={METRIC_TOOLTIPS['Win Rate']}>Win Rate</MetricTooltip></th>
+                                <th
+                                    onClick={() => toggleSort('winRate')}
+                                    style={{ cursor: 'pointer' }}
+                                >
+                                    <MetricTooltip text={METRIC_TOOLTIPS['Win Rate']}>
+                                        Win Rate {sortIndicator('winRate')}
+                                    </MetricTooltip>
+                                </th>
                                 <th><MetricTooltip text={METRIC_TOOLTIPS['Fail Rate']}>Fail Rate</MetricTooltip></th>
-                                <th><MetricTooltip text={METRIC_TOOLTIPS['APS Raw']}>APS Raw</MetricTooltip></th>
-                                <th><MetricTooltip text={METRIC_TOOLTIPS['APS Clean']}>APS Clean</MetricTooltip></th>
-                                <th><MetricTooltip text={METRIC_TOOLTIPS['AVG Time']}>AVG Time</MetricTooltip></th>
+                                <th
+                                    onClick={() => toggleSort('apsRaw')}
+                                    style={{ cursor: 'pointer' }}
+                                >
+                                    <MetricTooltip text={METRIC_TOOLTIPS['APS']}>
+                                        APS {sortIndicator('apsRaw')}
+                                    </MetricTooltip>
+                                </th>
+                                <th
+                                    onClick={() => toggleSort('meanCompletionDuration')}
+                                    style={{ cursor: 'pointer' }}
+                                >
+                                    <MetricTooltip text={METRIC_TOOLTIPS['AVG Time']}>
+                                        AVG Time {sortIndicator('meanCompletionDuration')}
+                                    </MetricTooltip>
+                                </th>
                                 <th><MetricTooltip text={METRIC_TOOLTIPS['Cumulative AVG Time']}>Cumulative AVG Time</MetricTooltip></th>
                                 <th><MetricTooltip text={METRIC_TOOLTIPS['Booster']}>Booster %</MetricTooltip></th>
                                 <th><MetricTooltip text={METRIC_TOOLTIPS['EGP']}>EGP %</MetricTooltip></th>
                             </tr>
                         </thead>
                         <tbody>
-                            {levels.map((level) => (
+                            {sortedLevels.map((level) => (
                                 <tr key={level.levelId}>
                                     <td>{level.levelName || `Level ${level.levelId}`}</td>
                                     <td>{level.startedPlayers.toLocaleString()}</td>
@@ -723,9 +792,8 @@ export default function LevelFunnel({ isCollapsed = false }: LevelFunnelProps) {
                                     </td>
                                     <td>{level.failRate.toFixed(1)}%</td>
                                     <td>{level.apsRaw.toFixed(2)}</td>
-                                    <td>{level.apsClean.toFixed(2)}</td>
                                     <td>{level.meanCompletionDuration.toFixed(1)}s</td>
-                                    <td>{level.cumulativeAvgTime.toFixed(1)}s</td>
+                                    <td>{(level.cumulativeAvgTime / 60).toFixed(1)}m</td>
                                     <td>{level.boosterUsage.toFixed(1)}%</td>
                                     <td>{level.egpRate.toFixed(1)}%</td>
                                 </tr>
@@ -795,15 +863,9 @@ LvlUpEvents.TrackLevelFailed(1, "timeout", time);`}
                             </div>
                         </div>
                         <div className="summary-item">
-                            <div className="summary-item-label">Avg APS Raw</div>
+                            <div className="summary-item-label">Avg APS</div>
                             <div className="summary-item-value">
                                 {(levels.reduce((sum, l) => sum + l.apsRaw, 0) / levels.length).toFixed(2)}
-                            </div>
-                        </div>
-                        <div className="summary-item">
-                            <div className="summary-item-label">Avg APS Clean</div>
-                            <div className="summary-item-value">
-                                {(levels.reduce((sum, l) => sum + l.apsClean, 0) / levels.length).toFixed(2)}
                             </div>
                         </div>
                     </div>

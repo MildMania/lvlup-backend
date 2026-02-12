@@ -2,9 +2,9 @@
 import { RevenueData, RevenueType, RevenueAnalytics, MonetizationMetrics } from '../types/revenue';
 import logger from '../utils/logger';
 import prisma from '../prisma';
-import { convertToUSD } from '../utils/currencyConverter';
 import { revenueBatchWriter } from './RevenueBatchWriter';
 import { createHash } from 'crypto';
+import fxRateService from './FxRateService';
 
 export class RevenueService {
     private prisma: PrismaClient;
@@ -28,16 +28,24 @@ export class RevenueService {
             const timestamp = revenueData.timestamp ? new Date(revenueData.timestamp) : new Date();
             const currency = revenueData.currency || 'USD';
             
-            // Use revenueUSD from SDK if provided (and valid), otherwise convert it
+            // Use revenueUSD from SDK if provided (and valid), otherwise convert via daily FX table
             let revenueUSD: number;
             if (revenueData.revenueUSD && revenueData.revenueUSD > 0) {
                 // SDK already converted it, use the provided value
                 revenueUSD = revenueData.revenueUSD;
                 logger.debug(`Using pre-converted revenueUSD: ${revenueUSD} USD`);
             } else {
-                // Backend converts the revenue to USD
-                revenueUSD = convertToUSD(revenueData.revenue, currency);
-                logger.debug(`Backend converted ${revenueData.revenue} ${currency} to ${revenueUSD} USD`);
+                if (currency === 'USD') {
+                    revenueUSD = revenueData.revenue;
+                } else {
+                    const rateToUsd = await fxRateService.getRateToUsd(currency, timestamp);
+                    if (!rateToUsd || rateToUsd <= 0) {
+                        logger.warn(`[Revenue] Missing FX rate for ${currency} at ${timestamp.toISOString()}, skipping record`);
+                        return null;
+                    }
+                    revenueUSD = revenueData.revenue * rateToUsd;
+                    logger.debug(`FX converted ${revenueData.revenue} ${currency} to ${revenueUSD} USD (rate: ${rateToUsd})`);
+                }
             }
             
             // Prepare common revenue fields
@@ -116,7 +124,7 @@ export class RevenueService {
                     adNetworkPlacement: revenueData.adNetworkPlacement || null,
                 });
                 
-                logger.info(`Ad impression enqueued: ${revenueData.adNetworkName} ${revenueData.adFormat} - $${revenueData.revenue} - ad: ${adImpressionId}`);
+                logger.debug(`Ad impression enqueued: ${revenueData.adNetworkName} ${revenueData.adFormat} - $${revenueData.revenue} - ad: ${adImpressionId}`);
             } else if (revenueData.revenueType === RevenueType.IN_APP_PURCHASE) {
                 // Generate deterministic transactionId using hash of purchase data
                 // Same purchase data = same hash, so retries will have identical IDs
@@ -148,7 +156,7 @@ export class RevenueService {
                     subscriptionPeriod: revenueData.subscriptionPeriod || null,
                 });
                 
-                logger.info(`IAP enqueued: ${revenueData.productId} - $${revenueData.revenue} (${revenueData.store}) - txn: ${transactionId}`);
+                logger.debug(`IAP enqueued: ${revenueData.productId} - $${revenueData.revenue} (${revenueData.store}) - txn: ${transactionId}`);
             }
 
             // Enqueue revenue record for batched insertion (non-blocking)
@@ -331,4 +339,3 @@ export class RevenueService {
         }
     }
 }
-

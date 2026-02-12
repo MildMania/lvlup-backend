@@ -4,13 +4,14 @@ import { AuthenticatedRequest } from '../middleware/auth';
 import { ApiResponse } from '../types/api';
 import { requireGameId } from '../utils/gameIdHelper';
 import logger from '../utils/logger';
+import { logAnalyticsMetrics } from '../utils/analyticsDebug';
 
 const playerJourneyService = new PlayerJourneyService();
 
 export class PlayerJourneyController {
     private logMemory(label: string) {
         const mem = process.memoryUsage();
-        logger.warn(`[AnalyticsMetrics] ${label}`, {
+        logAnalyticsMetrics(`[AnalyticsMetrics] ${label}`, {
             rss: mem.rss,
             heapUsed: mem.heapUsed,
             heapTotal: mem.heapTotal,
@@ -145,7 +146,7 @@ export class PlayerJourneyController {
             const data = await playerJourneyService.getJourneyProgress(gameId, startDate, endDate, filters);
 
             this.logMemory('journey progress end');
-            logger.warn(`[AnalyticsMetrics] journey progress duration: ${Date.now() - startTime}ms`);
+            logAnalyticsMetrics(`[AnalyticsMetrics] journey progress duration: ${Date.now() - startTime}ms`);
 
             res.status(200).json({
                 success: true,

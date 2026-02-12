@@ -8,6 +8,7 @@ import { requireGameId } from '../utils/gameIdHelper';
 import logger from '../utils/logger';
 import prisma from '../prisma';
 import { cache } from '../utils/simpleCache';
+import { logAnalyticsMetrics } from '../utils/analyticsDebug';
 
 const analyticsService = new AnalyticsService();
 const monetizationCohortService = new MonetizationCohortService();
@@ -16,7 +17,7 @@ const revenueService = new RevenueService();
 export class AnalyticsController {
     private logMemory(label: string) {
         const mem = process.memoryUsage();
-        logger.warn(`[AnalyticsMetrics] ${label}`, {
+        logAnalyticsMetrics(`[AnalyticsMetrics] ${label}`, {
             rss: mem.rss,
             heapUsed: mem.heapUsed,
             heapTotal: mem.heapTotal,
@@ -377,7 +378,7 @@ export class AnalyticsController {
             });
 
             this.logMemory('dashboard summary end');
-            logger.warn(`[AnalyticsMetrics] dashboard summary duration: ${Date.now() - startTime}ms`);
+            logAnalyticsMetrics(`[AnalyticsMetrics] dashboard summary duration: ${Date.now() - startTime}ms`);
 
             res.status(200).json({
                 success: true,
@@ -426,6 +427,57 @@ export class AnalyticsController {
     async getRevenueSummary(req: AuthenticatedRequest, res: Response<ApiResponse>) {
         try {
             const gameId = requireGameId(req);
+            const useRollups = process.env.USE_MONETIZATION_ROLLUPS === '1' || process.env.USE_MONETIZATION_ROLLUPS === 'true';
+
+            if (useRollups) {
+                const [dailyRows, payingUsersCount, totalUsers] = await Promise.all([
+                    prisma.monetizationDailyRollup.findMany({
+                        where: { gameId },
+                        select: {
+                            totalRevenueUsd: true,
+                            adRevenueUsd: true,
+                            iapRevenueUsd: true,
+                            adImpressionCount: true,
+                            iapCount: true
+                        }
+                    }),
+                    prisma.iapPayer.count({ where: { gameId } }),
+                    prisma.user.count({ where: { gameId } })
+                ]);
+
+                const totals = dailyRows.reduce((acc, row) => {
+                    acc.totalRevenue += row.totalRevenueUsd || 0;
+                    acc.adRevenue += row.adRevenueUsd || 0;
+                    acc.iapRevenue += row.iapRevenueUsd || 0;
+                    acc.adImpressionCount += row.adImpressionCount || 0;
+                    acc.iapCount += row.iapCount || 0;
+                    return acc;
+                }, {
+                    totalRevenue: 0,
+                    adRevenue: 0,
+                    iapRevenue: 0,
+                    adImpressionCount: 0,
+                    iapCount: 0
+                });
+
+                const summary = {
+                    totalRevenue: Math.round(totals.totalRevenue * 100) / 100,
+                    adRevenue: Math.round(totals.adRevenue * 100) / 100,
+                    iapRevenue: Math.round(totals.iapRevenue * 100) / 100,
+                    adImpressionCount: totals.adImpressionCount,
+                    iapCount: totals.iapCount,
+                    payingUsersCount,
+                    totalUsers,
+                    conversionRate: totalUsers > 0 ? (payingUsersCount / totalUsers) * 100 : 0,
+                    arpu: totalUsers > 0 ? totals.totalRevenue / totalUsers : 0,
+                    arppu: payingUsersCount > 0 ? totals.iapRevenue / payingUsersCount : 0
+                };
+
+                return res.status(200).json({
+                    success: true,
+                    data: summary
+                });
+            }
 
             // Get total revenue by type (use revenueUSD for multi-currency support)
             const revenueByType = await prisma.revenue.groupBy({
@@ -591,6 +643,7 @@ export class AnalyticsController {
 
             // Track each revenue item
             const results = [];
+            let skipped = 0;
             for (const revenue of revenueData) {
                 try {
                     const tracked = await revenueService.trackRevenue(
@@ -600,7 +653,11 @@ export class AnalyticsController {
                         revenue,
                         revenue // Pass the revenue object itself as eventMetadata
                     );
-                    results.push(tracked);
+                    if (tracked) {
+                        results.push(tracked);
+                    } else {
+                        skipped++;
+                    }
                 } catch (error) {
                     logger.error(`Failed to track revenue item:`, error);
                     // Continue with next item instead of failing entire batch
@@ -611,6 +668,7 @@ export class AnalyticsController {
                 success: true,
                 data: {
                     tracked: results.length,
+                    skipped,
                     total: revenueData.length
                 }
             });

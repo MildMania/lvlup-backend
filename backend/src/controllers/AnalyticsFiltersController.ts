@@ -16,56 +16,39 @@ export class AnalyticsFiltersController {
         try {
             const gameId = requireGameId(req);
 
-            // Get distinct values for each filter from events
+            // Use rollup tables instead of raw events for filter options
             const [countries, versions, platforms, levelFunnels] = await Promise.all([
-                // Get distinct countries from events
-                prisma.event.findMany({
-                    where: {
-                        gameId,
-                        countryCode: { not: null }
-                    },
-                    select: { countryCode: true },
-                    distinct: ['countryCode'],
-                    orderBy: { countryCode: 'asc' }
-                }),
-
-                // Get distinct versions from events
-                prisma.event.findMany({
-                    where: {
-                        gameId,
-                        appVersion: { not: null }
-                    },
-                    select: { appVersion: true },
-                    distinct: ['appVersion'],
-                    orderBy: { appVersion: 'asc' }
-                }),
-
-                // Get distinct platforms from events
-                prisma.event.findMany({
-                    where: {
-                        gameId,
-                        platform: { not: null }
-                    },
-                    select: { platform: true },
-                    distinct: ['platform'],
-                    orderBy: { platform: 'asc' }
-                }),
-
-                // Get distinct level funnel combinations
-                prisma.event.findMany({
-                    where: {
-                        gameId,
-                        levelFunnel: { not: null },
-                        eventName: {
-                            in: ['level_start', 'level_complete', 'level_failed']
-                        }
-                    },
-                    select: {
-                        levelFunnel: true,
-                        levelFunnelVersion: true
-                    },
-                    distinct: ['levelFunnel', 'levelFunnelVersion']
-                })
+                prisma.$queryRaw<Array<{ countryCode: string; userCount: bigint }>>`
+                    SELECT
+                        "countryCode",
+                        COALESCE(SUM("dau"), 0) AS "userCount"
+                    FROM "active_users_daily"
+                    WHERE "gameId" = ${gameId}
+                      AND "countryCode" <> ''
+                    GROUP BY "countryCode"
+                    ORDER BY "userCount" DESC, "countryCode" ASC
+                `,
+                prisma.$queryRaw<Array<{ appVersion: string }>>`
+                    SELECT DISTINCT "appVersion"
+                    FROM "active_users_daily"
+                    WHERE "gameId" = ${gameId}
+                      AND "appVersion" <> ''
+                    ORDER BY "appVersion" ASC
+                `,
+                prisma.$queryRaw<Array<{ platform: string }>>`
+                    SELECT DISTINCT "platform"
+                    FROM "active_users_daily"
+                    WHERE "gameId" = ${gameId}
+                      AND "platform" <> ''
+                    ORDER BY "platform" ASC
+                `,
+                prisma.$queryRaw<Array<{ levelFunnel: string; levelFunnelVersion: number }>>`
+                    SELECT DISTINCT "levelFunnel", "levelFunnelVersion"
+                    FROM "level_metrics_daily"
+                    WHERE "gameId" = ${gameId}
+                      AND "levelFunnel" <> ''
+                    ORDER BY "levelFunnel" ASC, "levelFunnelVersion" ASC
+                `
             ]);
 
             // Process level funnel options

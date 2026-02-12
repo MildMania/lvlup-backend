@@ -4,13 +4,14 @@ import { AuthenticatedRequest } from '../middleware/auth';
 import { AnalyticsFilterParams, ApiResponse } from '../types/api';
 import { requireGameId } from '../utils/gameIdHelper';
 import logger from '../utils/logger';
+import { logAnalyticsMetrics } from '../utils/analyticsDebug';
 
 const engagementMetricsService = new EngagementMetricsService();
 
 export class EngagementMetricsController {
     private logMemory(label: string) {
         const mem = process.memoryUsage();
-        logger.warn(`[AnalyticsMetrics] ${label}`, {
+        logAnalyticsMetrics(`[AnalyticsMetrics] ${label}`, {
             rss: mem.rss,
             heapUsed: mem.heapUsed,
             heapTotal: mem.heapTotal,
@@ -64,7 +65,7 @@ export class EngagementMetricsController {
             );
 
             this.logMemory('session count end');
-            logger.warn(`[AnalyticsMetrics] session count duration: ${Date.now() - startTime}ms`);
+            logAnalyticsMetrics(`[AnalyticsMetrics] session count duration: ${Date.now() - startTime}ms`);
 
             res.status(200).json({
                 success: true,
@@ -134,7 +135,7 @@ export class EngagementMetricsController {
             );
 
             this.logMemory('session length end');
-            logger.warn(`[AnalyticsMetrics] session length duration: ${Date.now() - startTime}ms`);
+            logAnalyticsMetrics(`[AnalyticsMetrics] session length duration: ${Date.now() - startTime}ms`);
 
             res.status(200).json({
                 success: true,

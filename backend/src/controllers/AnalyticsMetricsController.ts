@@ -4,6 +4,7 @@ import { AuthenticatedRequest } from '../middleware/auth';
 import { AnalyticsFilterParams, ApiResponse } from '../types/api';
 import { requireGameId } from '../utils/gameIdHelper';
 import logger from '../utils/logger';
+import { isAnalyticsMemoryLogEnabled, logAnalyticsMetrics } from '../utils/analyticsDebug';
 
 const analyticsMetricsService = new AnalyticsMetricsService();
 
@@ -45,14 +46,16 @@ export class AnalyticsMetricsController {
                 filters
             );
 
-            const memEnd = process.memoryUsage();
-            logger.warn('[AnalyticsMetrics] retention duration', {
-                durationMs: Date.now() - startTime,
-                rssStart: memStart.rss,
-                rssEnd: memEnd.rss,
-                heapUsedStart: memStart.heapUsed,
-                heapUsedEnd: memEnd.heapUsed
-            });
+            if (isAnalyticsMemoryLogEnabled()) {
+                const memEnd = process.memoryUsage();
+                logAnalyticsMetrics('[AnalyticsMetrics] retention duration', {
+                    durationMs: Date.now() - startTime,
+                    rssStart: memStart.rss,
+                    rssEnd: memEnd.rss,
+                    heapUsedStart: memStart.heapUsed,
+                    heapUsedEnd: memEnd.heapUsed
+                });
+            }
 
             res.status(200).json({
                 success: true,
@@ -98,14 +101,16 @@ export class AnalyticsMetricsController {
                 filters
             );
 
-            const memEnd = process.memoryUsage();
-            logger.warn('[AnalyticsMetrics] active users duration', {
-                durationMs: Date.now() - startTime,
-                rssStart: memStart.rss,
-                rssEnd: memEnd.rss,
-                heapUsedStart: memStart.heapUsed,
-                heapUsedEnd: memEnd.heapUsed
-            });
+            if (isAnalyticsMemoryLogEnabled()) {
+                const memEnd = process.memoryUsage();
+                logAnalyticsMetrics('[AnalyticsMetrics] active users duration', {
+                    durationMs: Date.now() - startTime,
+                    rssStart: memStart.rss,
+                    rssEnd: memEnd.rss,
+                    heapUsedStart: memStart.heapUsed,
+                    heapUsedEnd: memEnd.heapUsed
+                });
+            }
 
             res.status(200).json({
                 success: true,
@@ -151,14 +156,16 @@ export class AnalyticsMetricsController {
                 filters
             );
 
-            const memEnd = process.memoryUsage();
-            logger.warn('[AnalyticsMetrics] playtime duration', {
-                durationMs: Date.now() - startTime,
-                rssStart: memStart.rss,
-                rssEnd: memEnd.rss,
-                heapUsedStart: memStart.heapUsed,
-                heapUsedEnd: memEnd.heapUsed
-            });
+            if (isAnalyticsMemoryLogEnabled()) {
+                const memEnd = process.memoryUsage();
+                logAnalyticsMetrics('[AnalyticsMetrics] playtime duration', {
+                    durationMs: Date.now() - startTime,
+                    rssStart: memStart.rss,
+                    rssEnd: memEnd.rss,
+                    heapUsedStart: memStart.heapUsed,
+                    heapUsedEnd: memEnd.heapUsed
+                });
+            }
 
             res.status(200).json({
                 success: true,

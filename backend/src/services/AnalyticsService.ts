@@ -8,6 +8,7 @@ import prisma from '../prisma';
 import { RevenueService } from './RevenueService';
 import { eventBatchWriter } from './EventBatchWriter';
 import { sessionHeartbeatBatchWriter } from './SessionHeartbeatBatchWriter';
+import { HLL } from '../utils/hll';
 
 export class AnalyticsService {
     private prisma: PrismaClient;
@@ -16,6 +17,13 @@ export class AnalyticsService {
     constructor(prismaClient?: PrismaClient) {
         this.prisma = prismaClient || prisma;
         this.revenueService = new RevenueService(prismaClient);
+    }
+
+    private static readonly IGNORED_EVENT_NAMES = new Set(['app_paused', 'app_resumed']);
+
+    private shouldIgnoreEvent(eventName?: string): boolean {
+        if (!eventName) return false;
+        return AnalyticsService.IGNORED_EVENT_NAMES.has(eventName.toLowerCase());
     }
 
     /**
@@ -216,6 +224,15 @@ export class AnalyticsService {
     // Track single event
     async trackEvent(gameId: string, userId: string, sessionId: string | null, eventData: EventData) {
         try {
+            if (this.shouldIgnoreEvent(eventData.eventName)) {
+                logger.debug(`Ignored event ${eventData.eventName} (user: ${userId})`);
+                return {
+                    id: 'ignored',
+                    timestamp: this.validateClientTimestamp(eventData.clientTs),
+                    eventName: eventData.eventName
+                } as any;
+            }
+
             // Extract levelFunnel fields from properties (new SDK) or top-level (backward compatibility)
             const properties = { ...(eventData.properties || {}) };
             const levelFunnel = (properties as any).levelFunnel ?? eventData.levelFunnel ?? null;
@@ -369,9 +386,18 @@ export class AnalyticsService {
     // Track batch events (for offline queue flush)
     async trackBatchEvents(gameId: string, batchData: BatchEventData) {
         try {
+            const eventsToTrack = batchData.events.filter(
+                (eventData) => !this.shouldIgnoreEvent(eventData.eventName)
+            );
+
+            if (eventsToTrack.length === 0) {
+                logger.debug(`Ignored entire batch for user ${batchData.userId} (all events filtered)`);
+                return { count: 0 };
+            }
+
             // Get or create user
             // Extract country from first event if available (EventData has country/countryCode)
-            const firstEvent = batchData.events[0];
+            const firstEvent = eventsToTrack[0];
             const userProfile: UserProfile = {
                 externalId: batchData.userId,
                 ...(batchData.deviceInfo?.deviceId && { deviceId: batchData.deviceInfo.deviceId }),
@@ -389,7 +415,7 @@ export class AnalyticsService {
 
             // Enqueue all events for batched insertion
             // Prioritize event-level metadata over batch deviceInfo
-            batchData.events.forEach(eventData => {
+            eventsToTrack.forEach(eventData => {
                 // Extract levelFunnel fields from properties (new SDK) or top-level (backward compatibility)
                 const properties = { ...(eventData.properties || {}) };
                 const levelFunnel = (properties as any).levelFunnel ?? eventData.levelFunnel ?? null;
@@ -451,10 +477,10 @@ export class AnalyticsService {
                 eventBatchWriter.enqueue(eventRecord);
             });
 
-            logger.info(`Batch enqueued ${batchData.events.length} events for user ${batchData.userId}`);
+            logger.info(`Batch enqueued ${eventsToTrack.length} events for user ${batchData.userId}`);
             
             // Return count of enqueued events
-            return { count: batchData.events.length };
+            return { count: eventsToTrack.length };
         } catch (error) {
             logger.error('Error tracking batch events:', error);
             throw error;
@@ -500,24 +526,10 @@ export class AnalyticsService {
             logger.debug(`Cache miss for analytics: ${cacheKey}, fetching from database`);
 
             const [
-                totalEvents,
                 newUsers,
                 totalActiveUsers,
-                totalSessions,
-                avgSessionDuration,
-                topEvents
+                sessionTotals
             ] = await Promise.all([
-                // Total events
-                this.prisma.event.count({
-                    where: {
-                        gameId: gameId,
-                        timestamp: {
-                            gte: startDate,
-                            lte: endDate
-                        }
-                    }
-                }),
-
                 // New users (registered in date range)
                 this.prisma.user.count({
                     where: {
@@ -529,99 +541,21 @@ export class AnalyticsService {
                     }
                 }),
 
-                // Total active users (had activity in date range)
-                this.prisma.$queryRaw<{ count: bigint }[]>(Prisma.sql`
-                    SELECT COUNT(DISTINCT user_id) AS count
-                    FROM (
-                        SELECT "userId" AS user_id
-                        FROM "events"
-                        WHERE "gameId" = ${gameId}
-                          AND "timestamp" >= ${startDate}
-                          AND "timestamp" <= ${endDate}
-                        UNION
-                        SELECT "userId" AS user_id
-                        FROM "sessions"
-                        WHERE "gameId" = ${gameId}
-                          AND "startTime" >= ${startDate}
-                          AND "startTime" <= ${endDate}
-                    ) AS active_users
-                `).then((rows) => Number(rows[0]?.count || 0)),
+                // Total active users (approximate HLL union)
+                this.getActiveUsersApprox(gameId, startDate, endDate),
 
-                // Total sessions
-                this.prisma.session.count({
-                    where: {
-                        gameId: gameId,
-                        startTime: {
-                            gte: startDate,
-                            lte: endDate
-                        }
-                    }
-                }),
-
-                // Average session duration
-                this.prisma.session.aggregate({
-                    where: {
-                        gameId: gameId,
-                        startTime: {
-                            gte: startDate,
-                            lte: endDate
-                        },
-                        duration: {
-                            not: null
-                        }
-                    },
-                    _avg: {
-                        duration: true
-                    }
-                }),
-
-                // Top events
-                includeTopEvents
-                    ? this.prisma.event.groupBy({
-                        by: ['eventName'],
-                        where: {
-                            gameId: gameId,
-                            timestamp: {
-                                gte: startDate,
-                                lte: endDate
-                            }
-                        },
-                        _count: {
-                            eventName: true
-                        },
-                        orderBy: {
-                            _count: {
-                                eventName: 'desc'
-                            }
-                        },
-                        take: 10
-                    })
-                    : Promise.resolve([])
+                // Session totals from rollups
+                this.getSessionTotalsFromRollups(gameId, startDate, endDate)
             ]);
 
             // Calculate average sessions per user
+            const totalSessions = sessionTotals.totalSessions;
+            const totalSessionDuration = sessionTotals.totalDurationSec;
+            const avgSessionDuration = totalSessions > 0 ? Math.round(totalSessionDuration / totalSessions) : 0;
             const avgSessionsPerUser = totalActiveUsers > 0 ?
                 Math.round((totalSessions / totalActiveUsers) * 100) / 100 : 0;
-
-            // Calculate average playtime duration (total session duration / total active users)
-            const totalSessionDuration = await this.prisma.session.aggregate({
-                where: {
-                    gameId: gameId,
-                    startTime: {
-                        gte: startDate,
-                        lte: endDate
-                    },
-                    duration: {
-                        not: null
-                    }
-                },
-                _sum: {
-                    duration: true
-                }
-            });
-
             const avgPlaytimeDuration = totalActiveUsers > 0 ?
-                Math.round((totalSessionDuration._sum.duration || 0) / totalActiveUsers) : 0;
+                Math.round(totalSessionDuration / totalActiveUsers) : 0;
 
             let retentionDay1 = 0;
             let retentionDay7 = 0;
@@ -650,33 +584,7 @@ export class AnalyticsService {
                 const tomorrow = new Date(today);
                 tomorrow.setDate(tomorrow.getDate() + 1);
 
-                activeUsersToday = await this.prisma.user.count({
-                    where: {
-                        gameId: gameId,
-                        OR: [
-                            {
-                                events: {
-                                    some: {
-                                        timestamp: {
-                                            gte: today,
-                                            lt: tomorrow
-                                        }
-                                    }
-                                }
-                            },
-                            {
-                                sessions: {
-                                    some: {
-                                        startTime: {
-                                            gte: today,
-                                            lt: tomorrow
-                                        }
-                                    }
-                                }
-                            }
-                        ]
-                    }
-                });
+                activeUsersToday = await this.getActiveUsersApprox(gameId, today, tomorrow);
             }
 
             const result = {
@@ -684,18 +592,15 @@ export class AnalyticsService {
                 totalActiveUsers, // Deprecated but kept for backward compatibility
                 newUsers,
                 totalSessions,
-                totalEvents,
-                avgSessionDuration: Math.round(avgSessionDuration._avg.duration || 0),
+                totalEvents: 0,
+                avgSessionDuration,
                 avgSessionsPerUser,
                 avgPlaytimeDuration,
                 retentionDay1,
                 retentionDay7,
                 activeUsersToday,
-                topEvent: topEvents.length > 0 ? (topEvents[0]?.eventName || 'No events') : 'No events', // Frontend expects single topEvent string
-                topEvents: topEvents.map((event: any) => ({
-                    name: event.eventName,
-                    count: event._count.eventName
-                }))
+                topEvent: 'No events',
+                topEvents: []
             };
 
             // Cache the result for 5 minutes (300 seconds)
@@ -706,6 +611,51 @@ export class AnalyticsService {
             logger.error('Error getting analytics:', error);
             throw error;
         }
+    }
+
+    private async getActiveUsersApprox(gameId: string, startDate: Date, endDate: Date): Promise<number> {
+        const rows = await this.prisma.$queryRaw<Array<{ hll: Buffer }>>(Prisma.sql`
+            SELECT "hll"
+            FROM "active_users_hll_daily"
+            WHERE "gameId" = ${gameId}
+              AND "date" >= ${startDate}
+              AND "date" <= ${endDate}
+        `);
+
+        if (!rows.length) {
+            return 0;
+        }
+
+        const merged = new HLL();
+        for (const row of rows) {
+            if (row?.hll) {
+                merged.union(HLL.fromBuffer(row.hll));
+            }
+        }
+        return merged.count();
+    }
+
+    private async getSessionTotalsFromRollups(
+        gameId: string,
+        startDate: Date,
+        endDate: Date
+    ): Promise<{ totalSessions: number; totalDurationSec: number }> {
+        const rows = await this.prisma.$queryRaw<
+            Array<{ total_sessions: bigint; total_duration: bigint }>
+        >(Prisma.sql`
+            SELECT
+                COALESCE(SUM("totalSessions"), 0)::bigint AS "total_sessions",
+                COALESCE(SUM("totalDurationSec"), 0)::bigint AS "total_duration"
+            FROM "cohort_session_metrics_daily"
+            WHERE "gameId" = ${gameId}
+              AND ("installDate" + ("dayIndex" || ' days')::interval) >= ${startDate}
+              AND ("installDate" + ("dayIndex" || ' days')::interval) <= ${endDate}
+        `);
+
+        return {
+            totalSessions: Number(rows[0]?.total_sessions || 0),
+            totalDurationSec: Number(rows[0]?.total_duration || 0)
+        };
     }
 
     async getEvents(

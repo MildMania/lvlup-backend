@@ -18,12 +18,15 @@ export class AnalyticsFiltersController {
 
             // Use rollup tables instead of raw events for filter options
             const [countries, versions, platforms, levelFunnels] = await Promise.all([
-                prisma.$queryRaw<Array<{ countryCode: string }>>`
-                    SELECT DISTINCT "countryCode"
+                prisma.$queryRaw<Array<{ countryCode: string; userCount: bigint }>>`
+                    SELECT
+                        "countryCode",
+                        COALESCE(SUM("dau"), 0) AS "userCount"
                     FROM "active_users_daily"
                     WHERE "gameId" = ${gameId}
                       AND "countryCode" <> ''
-                    ORDER BY "countryCode" ASC
+                    GROUP BY "countryCode"
+                    ORDER BY "userCount" DESC, "countryCode" ASC
                 `,
                 prisma.$queryRaw<Array<{ appVersion: string }>>`
                     SELECT DISTINCT "appVersion"

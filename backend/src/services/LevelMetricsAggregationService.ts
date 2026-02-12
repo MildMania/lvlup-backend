@@ -332,6 +332,13 @@ export class LevelMetricsAggregationService {
     completed: boolean;
     boosterUsed: boolean;
     egpUsed: boolean;
+    starts: number;
+    completes: number;
+    fails: number;
+    totalCompletionDuration: bigint;
+    completionCount: number;
+    totalFailDuration: bigint;
+    failCount: number;
   }> {
     const userLevelDimensions = new Map<string, {
       levelId: number;
@@ -341,6 +348,10 @@ export class LevelMetricsAggregationService {
       countryCode: string;
       appVersion: string;
     }>();
+
+    // For duration matching, mirror the same start-event index used for aggregate metrics.
+    // Keyed by `${userId}:${levelId}`.
+    const startEventsByUser = new Map<string, any[]>();
 
     const userRows = new Map<string, {
       gameId: string;
@@ -356,12 +367,26 @@ export class LevelMetricsAggregationService {
       completed: boolean;
       boosterUsed: boolean;
       egpUsed: boolean;
+      starts: number;
+      completes: number;
+      fails: number;
+      totalCompletionDuration: bigint;
+      completionCount: number;
+      totalFailDuration: bigint;
+      failCount: number;
     }>();
 
     for (const event of events) {
       const props = event.properties as any;
       const levelId = props?.levelId;
       if (levelId === undefined || levelId === null) continue;
+
+      // Track start events for duration matching
+      if (event.eventName === 'level_start') {
+        const userKey = `${event.userId}:${levelId}`;
+        if (!startEventsByUser.has(userKey)) startEventsByUser.set(userKey, []);
+        startEventsByUser.get(userKey)!.push(event);
+      }
 
       const userLevelKey = `${event.userId}:${levelId}`;
       if (!userLevelDimensions.has(userLevelKey)) {
@@ -392,7 +417,14 @@ export class LevelMetricsAggregationService {
           started: false,
           completed: false,
           boosterUsed: false,
-          egpUsed: false
+          egpUsed: false,
+          starts: 0,
+          completes: 0,
+          fails: 0,
+          totalCompletionDuration: BigInt(0),
+          completionCount: 0,
+          totalFailDuration: BigInt(0),
+          failCount: 0
         });
       }
 
@@ -400,10 +432,25 @@ export class LevelMetricsAggregationService {
 
       if (event.eventName === 'level_start') {
         row.started = true;
+        row.starts++;
       } else if (event.eventName === 'level_complete') {
         row.completed = true;
+        row.completes++;
+
+        const duration = this.findMatchingDuration(event, levelId, startEventsByUser);
+        if (duration !== null) {
+          row.totalCompletionDuration += BigInt(Math.floor(duration));
+          row.completionCount++;
+        }
       } else if (event.eventName === 'level_failed') {
         // No completion flag; keep as-is
+        row.fails++;
+
+        const duration = this.findMatchingDuration(event, levelId, startEventsByUser);
+        if (duration !== null) {
+          row.totalFailDuration += BigInt(Math.floor(duration));
+          row.failCount++;
+        }
       }
 
       // Booster usage

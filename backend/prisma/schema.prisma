@@ -3,7 +3,7 @@ generator client {
 }
 
 datasource db {
-  provider = "postgresql"
+  provider = "sqlite"
   url      = env("DATABASE_URL")
 }
 
@@ -44,6 +44,8 @@ model Game {
   cohortMonetizationDaily CohortMonetizationDaily[]
   monetizationDailyRollups MonetizationDailyRollup[]
   iapPayers IapPayer[]
+  gameConfigSchemaRevisions GameConfigSchemaRevision[]
+  gameConfigChannels GameConfigChannel[]
 
   @@map("games")
 }
@@ -782,6 +784,244 @@ model Deployment {
   @@index([gameId, environment, deployedAt])
   @@index([gameId, environment, version])
   @@map("deployments")
+}
+
+// ============================================
+// GAME CONFIG (Versioned Bundles)
+// ============================================
+
+model GameConfigSchemaRevision {
+  id          String   @id @default(cuid())
+  gameId      String
+  name        String
+  createdBy   String
+  createdAt   DateTime @default(now())
+
+  game        Game     @relation(fields: [gameId], references: [id], onDelete: Cascade)
+  enums       GameConfigEnum[]
+  structures  GameConfigStructure[]
+  templates   GameConfigTemplate[]
+  relations   GameConfigRelation[]
+  channels    GameConfigChannel[]
+
+  @@unique([gameId, name])
+  @@index([gameId, createdAt])
+  @@map("game_config_schema_revisions")
+}
+
+model GameConfigEnum {
+  id               String   @id @default(cuid())
+  schemaRevisionId String
+  name             String
+  values           Json     // ["A","B","C"] (v1: string enums)
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  schemaRevision   GameConfigSchemaRevision @relation(fields: [schemaRevisionId], references: [id], onDelete: Cascade)
+
+  @@unique([schemaRevisionId, name])
+  @@index([schemaRevisionId, name])
+  @@map("game_config_enums")
+}
+
+model GameConfigStructure {
+  id               String   @id @default(cuid())
+  schemaRevisionId String
+  name             String
+  description      String?
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  schemaRevision   GameConfigSchemaRevision @relation(fields: [schemaRevisionId], references: [id], onDelete: Cascade)
+  fields           GameConfigStructureField[]
+
+  @@unique([schemaRevisionId, name])
+  @@index([schemaRevisionId, name])
+  @@map("game_config_structures")
+}
+
+model GameConfigStructureField {
+  id           String   @id @default(cuid())
+  structureId  String
+  name         String
+  type         String   // "string" | "int" | "float" | "bool" | "json" | "list"
+  required     Boolean  @default(false)
+  constraints  Json?    // { structureRef: "Drop", elementType: "...", ... }
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  structure    GameConfigStructure @relation(fields: [structureId], references: [id], onDelete: Cascade)
+
+  @@unique([structureId, name])
+  @@index([structureId])
+  @@map("game_config_structure_fields")
+}
+
+model GameConfigTemplate {
+  id               String   @id @default(cuid())
+  schemaRevisionId String
+  name             String
+  description      String?
+  primaryKey       Json?    // ["ID"] or ["ID","VariantID"]
+  sectionType      String   @default("array") // "array" (v1). Future: "object"
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  schemaRevision   GameConfigSchemaRevision @relation(fields: [schemaRevisionId], references: [id], onDelete: Cascade)
+  fields           GameConfigField[]
+  sectionDrafts    GameConfigSectionDraft[]
+  sectionVersions  GameConfigSectionVersion[]
+
+  @@unique([schemaRevisionId, name])
+  @@index([schemaRevisionId, name])
+  @@map("game_config_templates")
+}
+
+model GameConfigField {
+  id           String   @id @default(cuid())
+  templateId   String
+  name         String
+  type         String   // "string" | "int" | "float" | "bool" | "json" | "list"
+  required     Boolean  @default(false)
+  defaultValue Json?
+  constraints  Json?    // { enum: [...], min: 0, max: 10, regex: "...", maxLength: 64 }
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  template     GameConfigTemplate @relation(fields: [templateId], references: [id], onDelete: Cascade)
+
+  @@unique([templateId, name])
+  @@index([templateId])
+  @@map("game_config_fields")
+}
+
+model GameConfigRelation {
+  id               String   @id @default(cuid())
+  schemaRevisionId String
+  fromTemplateId   String
+  fromPath         String   // e.g. "Drop" or "Stages[].StoreItemId"
+  toTemplateId     String
+  toPath           String   // e.g. "ID" or "ID,VariantID"
+  mode             String   @default("error") // "error" | "warn"
+  createdAt        DateTime @default(now())
+
+  schemaRevision   GameConfigSchemaRevision @relation(fields: [schemaRevisionId], references: [id], onDelete: Cascade)
+
+  @@index([schemaRevisionId])
+  @@map("game_config_relations")
+}
+
+model GameConfigChannel {
+  id               String   @id @default(cuid())
+  gameId           String
+  toolEnvironment  String   // "development" | "staging" | "production"
+  envName          String   // e.g. "live_3.1.0"
+  schemaRevisionId String
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  game             Game     @relation(fields: [gameId], references: [id], onDelete: Cascade)
+  schemaRevision   GameConfigSchemaRevision @relation(fields: [schemaRevisionId], references: [id], onDelete: Restrict)
+  sectionDrafts    GameConfigSectionDraft[]
+  sectionVersions  GameConfigSectionVersion[]
+  bundleDraft      GameConfigBundleDraft?
+  releases         GameConfigBundleRelease[]
+  state            GameConfigChannelState?
+  deployments      GameConfigDeployment[]
+
+  @@unique([gameId, toolEnvironment, envName])
+  @@index([gameId, toolEnvironment, envName])
+  @@map("game_config_channels")
+}
+
+model GameConfigSectionDraft {
+  id         String   @id @default(cuid())
+  channelId  String
+  templateId String
+  rows       Json     // array (v1)
+  updatedBy  String
+  updatedAt  DateTime @updatedAt
+
+  channel    GameConfigChannel  @relation(fields: [channelId], references: [id], onDelete: Cascade)
+  template   GameConfigTemplate @relation(fields: [templateId], references: [id], onDelete: Cascade)
+
+  @@unique([channelId, templateId])
+  @@index([channelId])
+  @@map("game_config_section_drafts")
+}
+
+model GameConfigSectionVersion {
+  id            String   @id @default(cuid())
+  channelId     String
+  templateId    String
+  versionNumber Int
+  label         String?  // e.g. "v3"
+  rows          Json     // snapshot
+  createdBy     String
+  createdAt     DateTime @default(now())
+
+  channel       GameConfigChannel  @relation(fields: [channelId], references: [id], onDelete: Cascade)
+  template      GameConfigTemplate @relation(fields: [templateId], references: [id], onDelete: Cascade)
+
+  @@unique([channelId, templateId, versionNumber])
+  @@index([channelId, templateId, versionNumber])
+  @@map("game_config_section_versions")
+}
+
+model GameConfigBundleDraft {
+  id        String   @id @default(cuid())
+  channelId String   @unique
+  selection Json     // { "Gacha": "<sectionVersionId>", ... }
+  updatedBy String
+  updatedAt DateTime @updatedAt
+
+  channel   GameConfigChannel @relation(fields: [channelId], references: [id], onDelete: Cascade)
+
+  @@map("game_config_bundle_drafts")
+}
+
+model GameConfigBundleRelease {
+  id             String   @id @default(cuid())
+  channelId       String
+  selection       Json     // templateName -> sectionVersionId
+  compiledConfigs Json     // final configs.json payload
+  compiledHash    String   // sha256 (hex)
+  createdBy       String
+  createdAt       DateTime @default(now())
+
+  channel         GameConfigChannel @relation(fields: [channelId], references: [id], onDelete: Cascade)
+
+  @@index([channelId, createdAt])
+  @@map("game_config_bundle_releases")
+}
+
+model GameConfigChannelState {
+  channelId        String   @id
+  currentVersion   Int      @default(0)
+  currentReleaseId String?
+  updatedAt        DateTime @updatedAt
+
+  channel          GameConfigChannel @relation(fields: [channelId], references: [id], onDelete: Cascade)
+
+  @@map("game_config_channel_state")
+}
+
+model GameConfigDeployment {
+  id            String   @id @default(cuid())
+  channelId      String
+  action         String   // "deploy" | "rollback"
+  fromReleaseId  String?
+  toReleaseId    String
+  fromVersion    Int
+  toVersion      Int
+  createdBy      String
+  createdAt      DateTime @default(now())
+  snapshot       Json
+
+  channel        GameConfigChannel @relation(fields: [channelId], references: [id], onDelete: Cascade)
+
+  @@index([channelId, createdAt])
+  @@map("game_config_deployments")
 }
 
 // Enums for Dashboard Authentication

@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Routes, Route, useLocation } from 'react-router-dom';
+import { Routes, Route, useLocation, Navigate } from 'react-router-dom';
 import Sidebar from './Sidebar';
 import Dashboard from './Dashboard';
 import Analytics from './Analytics';
@@ -10,6 +10,7 @@ import TeamManagement from './TeamManagement';
 import UserManagement from './UserManagement';
 import UserProfile from './UserProfile';
 import RemoteConfig from './RemoteConfig';
+import GameConfigBundles from './GameConfigBundles';
 import { AIChatWidget } from './AIChatWidget';
 import { useGame } from '../contexts/GameContext';
 import { setApiKey } from '../lib/apiClient';
@@ -23,7 +24,8 @@ const Layout: React.FC = () => {
   const { currentGame, availableGames, setCurrentGame, refreshGames } = useGame();
 
   // Determine current page from URL path
-  const currentPage = location.pathname.substring(1) || 'dashboard';
+  // Keep sidebar selection stable for nested routes like /game-config/structures.
+  const currentPage = location.pathname.split('/').filter(Boolean)[0] || 'dashboard';
 
   // Update API key when game changes
   useEffect(() => {
@@ -72,6 +74,9 @@ const Layout: React.FC = () => {
           <Route path="/funnels" element={<LevelFunnel isCollapsed={isSidebarCollapsed} />} />
           <Route path="/releases" element={<ReleaseManagement isCollapsed={isSidebarCollapsed} />} />
           <Route path="/remote-config" element={<RemoteConfig isCollapsed={isSidebarCollapsed} />} />
+          {/* Keep a single mounted component for /game-config/* so local edits don't reset on navigation */}
+          <Route path="/game-config" element={<Navigate to="/game-config/dictionary/structures" replace />} />
+          <Route path="/game-config/*" element={<GameConfigBundles isCollapsed={isSidebarCollapsed} />} />
           <Route path="/profile" element={<UserProfile isCollapsed={isSidebarCollapsed} />} />
           <Route path="/games" element={<GameManagement isCollapsed={isSidebarCollapsed} />} />
           <Route path="/settings" element={<div className="page-placeholder">Settings Page - Coming Soon</div>} />

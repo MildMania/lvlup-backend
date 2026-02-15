@@ -9,6 +9,7 @@ import healthRoutes from './health';
 import levelFunnelRoutes from './level-funnel';
 import dataRetentionRoutes from './data-retention';
 import configRoutes from './config';
+import gameConfigRoutes from './game-config';
 
 // Authentication & Authorization routes
 import authRoutes from './auth';
@@ -111,6 +112,7 @@ router.use('/games', gameRoutes); // General game routes
 router.use('/ai-context', aiContextRoutes);
 router.use('/ai-analytics', aiAnalyticsRoutes);
 router.use('/config', configRoutes); // Remote config routes (/api/configs/* and /api/admin/configs/*)
+router.use('/game-config', gameConfigRoutes); // Game config bundle routes
 router.use('/', gameAccessRoutes); // Includes /games/:gameId/access and /users/:userId/games
 
 // Admin Routes

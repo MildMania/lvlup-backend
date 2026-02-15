@@ -20,7 +20,8 @@ import {
   UsersRound,
   User,
   LogOut,
-  Sliders
+  Sliders,
+  Layers
 } from 'lucide-react';
 import { useTheme } from '../contexts/ThemeContext';
 import { useAuth } from '../contexts/AuthContext';
@@ -94,6 +95,7 @@ const Sidebar: React.FC<SidebarProps> = ({
     { id: 'events', label: 'Events', icon: Activity },
     { id: 'funnels', label: 'Funnels', icon: Target },
     { id: 'remote-config', label: 'Remote Config', icon: Sliders },
+    { id: 'game-config', label: 'Game Config', icon: Layers },
     { id: 'releases', label: 'Releases', icon: GitBranch },
   ];
 

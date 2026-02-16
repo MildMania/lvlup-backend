@@ -1,18 +1,26 @@
-import prisma from '../prisma';
 import logger from '../utils/logger';
 
-type AdvisoryLockResult = Array<{ acquired: boolean }>;
+const { Pool } = require('pg');
+
+const advisoryLockPool = new Pool({
+  connectionString: process.env.DATABASE_URL,
+  max: 2,
+});
 
 export async function withJobAdvisoryLock(jobName: string, run: () => Promise<void>): Promise<void> {
   const lockNamespace = 'lvlup_jobs';
   const lockId = `job:${jobName}`;
+  const lockNamespaceHashSql = 'hashtext($1)';
+  const lockIdHashSql = 'hashtext($2)';
+  const client = await advisoryLockPool.connect();
   let acquired = false;
 
   try {
-    const result = await prisma.$queryRaw<AdvisoryLockResult>`
-      SELECT pg_try_advisory_lock(hashtext(${lockNamespace}), hashtext(${lockId})) AS acquired
-    `;
-    acquired = Boolean(result[0]?.acquired);
+    const result = await client.query(
+      `SELECT pg_try_advisory_lock(${lockNamespaceHashSql}, ${lockIdHashSql}) AS acquired`,
+      [lockNamespace, lockId]
+    );
+    acquired = Boolean((result.rows[0] as { acquired?: boolean } | undefined)?.acquired);
 
     if (!acquired) {
       logger.info(`Skipping ${jobName}: advisory lock not acquired`);
@@ -21,10 +29,15 @@ export async function withJobAdvisoryLock(jobName: string, run: () => Promise<vo
 
     await run();
   } finally {
-    if (acquired) {
-      await prisma.$queryRaw`
-        SELECT pg_advisory_unlock(hashtext(${lockNamespace}), hashtext(${lockId}))
-      `;
+    try {
+      if (acquired) {
+        await client.query(
+          `SELECT pg_advisory_unlock(${lockNamespaceHashSql}, ${lockIdHashSql})`,
+          [lockNamespace, lockId]
+        );
+      }
+    } finally {
+      client.release();
     }
   }
 }

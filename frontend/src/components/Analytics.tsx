@@ -83,7 +83,7 @@ const EngagementTab: React.FC<{ gameInfo: any }> = ({ gameInfo }) => {
   const [selectedVersions, setSelectedVersions] = useState<string[]>([]);
 
   // Available days for selection
-  const availableDays = [0, 1, 2, 3, 4, 5, 6, 7, 14, 30, 60, 90, 180, 360, 540, 720];
+  const availableDays = [0, 1, 2, 3, 4, 5, 6, 7, 8,9, 10, 11, 12, 13, 14, 30, 60, 90, 180, 360, 540, 720];
   const [selectedDays, setSelectedDays] = useState<number[]>([0, 1, 2, 3, 4, 5, 6, 7]);
 
   // Filter options from API
@@ -591,9 +591,11 @@ const EngagementTab: React.FC<{ gameInfo: any }> = ({ gameInfo }) => {
                     <td className="install-date">{row.date}</td>
                     <td className="install-count">{row.userCount || 0}</td>
                     {selectedDays.map(day => {
-                      const value = row.metricsByDay?.[day];
+                      const rawValue = row.metricsByDay?.[day];
+                      const value = typeof rawValue === 'number' ? rawValue : Number(rawValue);
+                      const hasNumericValue = Number.isFinite(value);
                       const userCount = row.userCountByDay?.[day];
-                      const isNotAvailable = value === undefined || value === null || value < 0;
+                      const isNotAvailable = !hasNumericValue || value < 0;
                       const formattedValue = isNotAvailable
                         ? 'N/A'
                         : selectedMetric === 'playtime' 
@@ -608,7 +610,7 @@ const EngagementTab: React.FC<{ gameInfo: any }> = ({ gameInfo }) => {
                         ? `L${value.toFixed(0)}`
                         : value.toFixed(1);
                       
-                      const colorClass = getMetricColor(day, value);
+                      const colorClass = getMetricColor(day, isNotAvailable ? undefined : value);
                       
                       return (
                         <td key={day} className={`retention-cell ${colorClass}`}>
@@ -1235,11 +1237,13 @@ const MonetizationTab: React.FC<{ gameInfo: any }> = ({ gameInfo }) => {
                     <td className="install-date">{cohort.cohortDate}</td>
                     <td className="install-count">{cohort.cohortSize}</td>
                     {selectedDays.map(day => {
-                      const value = getMetricValue(cohort.metrics, day);
+                      const rawValue = getMetricValue(cohort.metrics, day);
+                      const value = typeof rawValue === 'number' ? rawValue : Number(rawValue);
+                      const hasNumericValue = Number.isFinite(value);
                       const userCount = getUserCount(cohort.metrics, day);
                       const payingUsers = getPayingUserCount(cohort.metrics, day);
                       // Match Engagement tab: isNotAvailable checks for negative values (backend marker for unreached days)
-                      const isNotAvailable = value === undefined || value === null || value < 0;
+                      const isNotAvailable = !hasNumericValue || value < 0;
                       const formattedValue = isNotAvailable 
                         ? 'N/A' 
                         : selectedMetric === 'conversionRate'

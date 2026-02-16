@@ -88,6 +88,8 @@ interface LevelMetrics {
 interface Filters {
     startDate?: string;
     endDate?: string;
+    installStartDate?: string;
+    installEndDate?: string;
 }
 
 interface LevelFunnelProps {
@@ -104,7 +106,9 @@ export default function LevelFunnel({ isCollapsed = false }: LevelFunnelProps) {
     const [error, setError] = useState<string | null>(null);
     const [filters, setFilters] = useState<Filters>({
         startDate: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
-        endDate: new Date().toISOString().split('T')[0]
+        endDate: new Date().toISOString().split('T')[0],
+        installStartDate: '',
+        installEndDate: ''
     });
 
     // Churn column expansion state
@@ -248,6 +252,9 @@ export default function LevelFunnel({ isCollapsed = false }: LevelFunnelProps) {
                 params.append('levelFunnel', funnels.map(f => f.funnel).join(','));
                 params.append('levelFunnelVersion', funnels.map(f => f.version).join(','));
             }
+
+            if (filters.installStartDate) params.append('installStartDate', filters.installStartDate);
+            if (filters.installEndDate) params.append('installEndDate', filters.installEndDate);
 
             console.log('Fetching level funnel from:', `/analytics/level-funnel?${params}`);
             
@@ -418,6 +425,38 @@ export default function LevelFunnel({ isCollapsed = false }: LevelFunnelProps) {
                                         return { ...prev, startDate: newEndDate, endDate: newEndDate };
                                     }
                                     return { ...prev, endDate: newEndDate };
+                                });
+                            }}
+                        />
+                    </div>
+                    <div className="filter-group">
+                        <label>Install Start</label>
+                        <input
+                            type="date"
+                            value={filters.installStartDate || ''}
+                            onChange={(e) => {
+                                const newInstallStart = e.target.value;
+                                setFilters(prev => {
+                                    if (prev.installEndDate && newInstallStart && newInstallStart > prev.installEndDate) {
+                                        return { ...prev, installStartDate: newInstallStart, installEndDate: newInstallStart };
+                                    }
+                                    return { ...prev, installStartDate: newInstallStart };
+                                });
+                            }}
+                        />
+                    </div>
+                    <div className="filter-group">
+                        <label>Install End</label>
+                        <input
+                            type="date"
+                            value={filters.installEndDate || ''}
+                            onChange={(e) => {
+                                const newInstallEnd = e.target.value;
+                                setFilters(prev => {
+                                    if (prev.installStartDate && newInstallEnd && newInstallEnd < prev.installStartDate) {
+                                        return { ...prev, installStartDate: newInstallEnd, installEndDate: newInstallEnd };
+                                    }
+                                    return { ...prev, installEndDate: newInstallEnd };
                                 });
                             }}
                         />

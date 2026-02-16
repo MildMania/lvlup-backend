@@ -31,6 +31,8 @@ export class LevelFunnelController {
                 gameId,
                 startDate,
                 endDate,
+                installStartDate,
+                installEndDate,
                 country,
                 platform,
                 version,
@@ -53,10 +55,16 @@ export class LevelFunnelController {
             const processedStartDate = startDate ? new Date(startDate as string + 'T00:00:00.000Z') : undefined;
             const processedEndDate = endDate ? new Date(endDate as string + 'T23:59:59.999Z') : undefined;
 
+            // Install cohort date range (filters users by User.createdAt)
+            const processedInstallStartDate = installStartDate ? new Date(installStartDate as string + 'T00:00:00.000Z') : undefined;
+            const processedInstallEndDate = installEndDate ? new Date(installEndDate as string + 'T23:59:59.999Z') : undefined;
+
             const filters = {
                 gameId: gameId as string,
                 startDate: processedStartDate,
                 endDate: processedEndDate,
+                installStartDate: processedInstallStartDate,
+                installEndDate: processedInstallEndDate,
                 country: country as string | undefined,
                 platform: platform as string | undefined,
                 version: version as string | undefined,
@@ -69,6 +77,12 @@ export class LevelFunnelController {
 
             // Check if AB test breakdown is requested
             if (abTestId) {
+                if (processedInstallStartDate || processedInstallEndDate) {
+                    return res.status(400).json({
+                        success: false,
+                        error: 'installStartDate/installEndDate filters are not supported with abTestId breakdown yet'
+                    });
+                }
                 const cohortData = await levelFunnelService.getLevelFunnelWithCohorts(filters);
                 return res.json({
                     success: true,
@@ -90,6 +104,12 @@ export class LevelFunnelController {
 
             // Use fast query by default (unless explicitly disabled)
             const shouldUseFast = true;
+            if (!shouldUseFast && (processedInstallStartDate || processedInstallEndDate)) {
+                return res.status(400).json({
+                    success: false,
+                    error: 'installStartDate/installEndDate filters require useFast=true'
+                });
+            }
             const levels = shouldUseFast 
                 ? await levelFunnelService.getLevelFunnelDataFast(filters)
                 : await levelFunnelService.getLevelFunnelData(filters);

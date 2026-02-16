@@ -7,6 +7,8 @@ interface LevelFunnelFilters {
     gameId: string;
     startDate?: Date | undefined;
     endDate?: Date | undefined;
+    installStartDate?: Date | undefined;
+    installEndDate?: Date | undefined;
     country?: string | undefined;
     platform?: string | undefined;
     version?: string | undefined;
@@ -55,6 +57,8 @@ export class LevelFunnelService {
                 gameId,
                 startDate,
                 endDate,
+                installStartDate,
+                installEndDate,
                 country,
                 platform,
                 version,
@@ -81,10 +85,63 @@ export class LevelFunnelService {
             const daysDifference = Math.ceil((end.getTime() - start.getTime()) / (24 * 60 * 60 * 1000));
             const isMultipleDays = daysDifference > 1;
             
+            const hasInstallCohortFilter = !!(installStartDate || installEndDate);
+
 
             // Ensure today's aggregation exists when range includes today
             if (queryIncludesToday) {
                 await this.ensureDailyAggregation(gameId, today);
+            }
+
+            // Install-date filtering is a user-cohort constraint.
+            // Pre-aggregated `level_metrics_daily` cannot be filtered by install date without losing correctness,
+            // so we switch to aggregating from `level_metrics_daily_users` (per-user daily aggregates) and
+            // apply the install-date filter via a join to `users`.
+            //
+            // Note: We intentionally disable "today raw" in this mode because today's per-user aggregates are only
+            // as fresh as the most recent aggregation snapshot.
+            if (hasInstallCohortFilter) {
+                const cohortMetrics = await this.queryAggregatedMetricsFromDailyUsers(
+                    gameId,
+                    start,
+                    end,
+                    {
+                        country,
+                        platform,
+                        version,
+                        levelFunnel,
+                        levelFunnelVersion,
+                        installStartDate,
+                        installEndDate
+                    }
+                );
+
+                const merged = new Map<number, any>();
+                for (const row of cohortMetrics) {
+                    merged.set(row.levelId, {
+                        levelId: row.levelId,
+                        starts: row.starts,
+                        completes: row.completes,
+                        fails: row.fails,
+                        startedPlayers: row.startedPlayers,
+                        completedPlayers: row.completedPlayers,
+                        boosterUsers: row.boosterUsers,
+                        totalBoosterUsage: 0,
+                        egpUsers: row.egpUsers,
+                        totalEgpUsage: 0,
+                        totalCompletionDuration: BigInt(row.totalCompletionDuration || 0),
+                        completionCount: row.completionCount,
+                        totalFailDuration: BigInt(row.totalFailDuration || 0),
+                        failCount: row.failCount
+                    });
+                }
+
+                const levelMetrics = this.calculateDerivedMetrics(merged, levelLimit);
+                const totalDuration = Date.now() - queryStart;
+                logger.info(
+                    `FAST level funnel (install cohort) completed in ${totalDuration}ms (${levelMetrics.length} levels, includes today: ${queryIncludesToday}, today raw: false)`
+                );
+                return levelMetrics;
             }
 
             // Query pre-aggregated data for event counts (all days)
@@ -186,6 +243,135 @@ export class LevelFunnelService {
             logger.error('Error in getLevelFunnelDataFast:', error);
             throw error;
         }
+    }
+
+    private async queryAggregatedMetricsFromDailyUsers(
+        gameId: string,
+        startDate: Date,
+        endDate: Date,
+        filters: {
+            country?: string;
+            platform?: string;
+            version?: string;
+            levelFunnel?: string;
+            levelFunnelVersion?: string | number;
+            installStartDate?: Date;
+            installEndDate?: Date;
+        }
+    ): Promise<Array<{
+        levelId: number;
+        starts: number;
+        completes: number;
+        fails: number;
+        startedPlayers: number;
+        completedPlayers: number;
+        boosterUsers: number;
+        egpUsers: number;
+        totalCompletionDuration: any;
+        completionCount: number;
+        totalFailDuration: any;
+        failCount: number;
+    }>> {
+        const countries = filters.country
+            ? filters.country.split(',').map(c => c.trim()).filter(c => c)
+            : [];
+        const platforms = filters.platform
+            ? filters.platform.split(',').map(p => p.trim()).filter(p => p)
+            : [];
+        const versions = filters.version
+            ? filters.version.split(',').map(v => v.trim()).filter(v => v)
+            : [];
+
+        let funnelClauses: any = Prisma.sql``;
+        if (filters.levelFunnel) {
+            const funnels = filters.levelFunnel.split(',').map(f => f.trim()).filter(f => f);
+            if (filters.levelFunnelVersion) {
+                const funnelVersions = filters.levelFunnelVersion.toString().split(',').map(v => parseInt(v.trim())).filter(v => !isNaN(v));
+                if (funnels.length === 1 && funnelVersions.length === 1) {
+                    funnelClauses = Prisma.sql`AND l.\"levelFunnel\" = ${funnels[0]} AND l.\"levelFunnelVersion\" = ${funnelVersions[0]}`;
+                } else if (funnels.length > 0 && funnelVersions.length > 0 && funnels.length === funnelVersions.length) {
+                    const pairs = funnels.map((funnel, idx) => Prisma.sql`(l.\"levelFunnel\" = ${funnel} AND l.\"levelFunnelVersion\" = ${funnelVersions[idx]})`);
+                    funnelClauses = Prisma.sql`AND (${Prisma.join(pairs, ' OR ')})`;
+                } else if (funnels.length > 0) {
+                    funnelClauses = Prisma.sql`AND l.\"levelFunnel\" IN (${Prisma.join(funnels)})`;
+                }
+            } else if (funnels.length > 0) {
+                funnelClauses = Prisma.sql`AND l.\"levelFunnel\" IN (${Prisma.join(funnels)})`;
+            }
+        } else if (filters.levelFunnelVersion) {
+            const funnelVersions = filters.levelFunnelVersion.toString().split(',').map(v => parseInt(v.trim())).filter(v => !isNaN(v));
+            if (funnelVersions.length > 0) {
+                funnelClauses = Prisma.sql`AND l.\"levelFunnelVersion\" IN (${Prisma.join(funnelVersions)})`;
+            }
+        }
+
+        const installClauses: any[] = [];
+        if (filters.installStartDate) {
+            installClauses.push(Prisma.sql`u.\"createdAt\" >= ${filters.installStartDate}`);
+        }
+        if (filters.installEndDate) {
+            installClauses.push(Prisma.sql`u.\"createdAt\" <= ${filters.installEndDate}`);
+        }
+        const installWhere = installClauses.length
+            ? Prisma.sql`AND ${Prisma.join(installClauses, ' AND ')}`
+            : Prisma.sql``;
+
+        const rows = await prisma.$queryRaw<
+            Array<{
+                levelId: number;
+                starts: any;
+                completes: any;
+                fails: any;
+                startedPlayers: bigint;
+                completedPlayers: bigint;
+                boosterUsers: bigint;
+                egpUsers: bigint;
+                totalCompletionDuration: any;
+                completionCount: any;
+                totalFailDuration: any;
+                failCount: any;
+            }>
+        >(Prisma.sql`
+            SELECT
+                l."levelId" AS "levelId",
+                COALESCE(SUM(l."starts"), 0) AS "starts",
+                COALESCE(SUM(l."completes"), 0) AS "completes",
+                COALESCE(SUM(l."fails"), 0) AS "fails",
+                COUNT(DISTINCT l."userId") FILTER (WHERE l."started" = true) AS "startedPlayers",
+                COUNT(DISTINCT l."userId") FILTER (WHERE l."completed" = true) AS "completedPlayers",
+                COUNT(DISTINCT l."userId") FILTER (WHERE l."boosterUsed" = true) AS "boosterUsers",
+                COUNT(DISTINCT l."userId") FILTER (WHERE l."egpUsed" = true) AS "egpUsers",
+                COALESCE(SUM(l."totalCompletionDuration"), 0) AS "totalCompletionDuration",
+                COALESCE(SUM(l."completionCount"), 0) AS "completionCount",
+                COALESCE(SUM(l."totalFailDuration"), 0) AS "totalFailDuration",
+                COALESCE(SUM(l."failCount"), 0) AS "failCount"
+            FROM "level_metrics_daily_users" l
+            INNER JOIN "users" u ON u."id" = l."userId" AND u."gameId" = l."gameId"
+            WHERE l."gameId" = ${gameId}
+              AND l."date" >= ${startDate}
+              AND l."date" <= ${endDate}
+              ${installWhere}
+              ${countries.length ? Prisma.sql`AND l."countryCode" IN (${Prisma.join(countries)})` : Prisma.sql``}
+              ${platforms.length ? Prisma.sql`AND l."platform" IN (${Prisma.join(platforms)})` : Prisma.sql``}
+              ${versions.length ? Prisma.sql`AND l."appVersion" IN (${Prisma.join(versions)})` : Prisma.sql``}
+              ${funnelClauses}
+            GROUP BY l."levelId"
+        `);
+
+        return rows.map((r) => ({
+            levelId: r.levelId,
+            starts: Number(r.starts || 0),
+            completes: Number(r.completes || 0),
+            fails: Number(r.fails || 0),
+            startedPlayers: Number(r.startedPlayers || 0),
+            completedPlayers: Number(r.completedPlayers || 0),
+            boosterUsers: Number(r.boosterUsers || 0),
+            egpUsers: Number(r.egpUsers || 0),
+            totalCompletionDuration: r.totalCompletionDuration || 0,
+            completionCount: Number(r.completionCount || 0),
+            totalFailDuration: r.totalFailDuration || 0,
+            failCount: Number(r.failCount || 0)
+        }));
     }
 
     /**

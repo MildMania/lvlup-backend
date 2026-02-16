@@ -544,9 +544,11 @@ const EngagementTab: React.FC<{ gameInfo: any }> = ({ gameInfo }) => {
                     <td className="install-date">{cohort.installDate}</td>
                     <td className="install-count">{cohort.installCount}</td>
                     {selectedDays.map(day => {
-                      const value = cohort.retentionByDay[day];
+                      const rawValue = cohort.retentionByDay?.[day];
+                      const value = typeof rawValue === 'number' ? rawValue : Number(rawValue);
+                      const hasNumericValue = Number.isFinite(value);
                       const userCount = cohort.userCountByDay?.[day];
-                      const isNotAvailable = value < 0;
+                      const isNotAvailable = !hasNumericValue || value < 0;
                       const formattedValue = isNotAvailable ? 'N/A' : `${value.toFixed(1)}%`;
                       return (
                         <td

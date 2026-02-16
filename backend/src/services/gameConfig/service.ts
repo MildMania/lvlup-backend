@@ -651,12 +651,6 @@ export async function upsertSectionDraft(
     primaryKey: (template.primaryKey as any) || null,
   });
 
-  if (!ok) {
-    const err = new Error('Validation failed');
-    (err as any).issues = issues;
-    throw err;
-  }
-
   const refRes = await validateRefFieldsAgainstDrafts({
     channelId: channel.id,
     schemaRevisionId: channel.schemaRevisionId,
@@ -665,11 +659,7 @@ export async function upsertSectionDraft(
     rows: rows as any,
     primaryKey: (template.primaryKey as any) || null,
   });
-  if (!refRes.ok) {
-    const err = new Error('Validation failed');
-    (err as any).issues = [...issues, ...refRes.issues];
-    throw err;
-  }
+  const allIssues = [...issues, ...refRes.issues];
 
   const draft = await prisma.gameConfigSectionDraft.upsert({
     where: {
@@ -684,7 +674,7 @@ export async function upsertSectionDraft(
     },
   });
 
-  return { draft, issues };
+  return { draft, issues: allIssues, ok: ok && refRes.ok };
 }
 
 export async function freezeSectionVersion(

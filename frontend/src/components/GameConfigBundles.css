@@ -687,6 +687,17 @@
   box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
 }
 
+/* Validation highlighting */
+.gc-invalid {
+  border-color: rgba(239, 68, 68, 0.65) !important;
+  box-shadow: 0 0 0 3px rgba(239, 68, 68, 0.12) !important;
+}
+
+.gc-warn {
+  border-color: rgba(245, 158, 11, 0.65) !important;
+  box-shadow: 0 0 0 3px rgba(245, 158, 11, 0.12) !important;
+}
+
 .gc-actions {
   display: flex;
   gap: 10px;

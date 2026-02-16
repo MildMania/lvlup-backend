@@ -70,6 +70,7 @@ type EnumDef = {
 };
 
 type Status = { kind: 'idle' | 'loading' | 'ok' | 'error'; message?: string };
+type ValidationIssue = { severity: 'error' | 'warn'; template: string; rowRef: string; path: string; message: string };
 
 function emptyTemplate(name = 'NewTab'): TemplateDef {
   return {
@@ -242,6 +243,15 @@ const GameConfigBundles: React.FC<{ isCollapsed?: boolean; page?: GameConfigPage
     return out;
   }, [schemaDetail]);
 
+  const primaryKeysByTemplate = useMemo(() => {
+    const out: Record<string, string[] | null> = {};
+    for (const t of schemaDetail?.templates || []) {
+      const pk = (t as any)?.primaryKey;
+      out[t.name] = Array.isArray(pk) && pk.length > 0 ? pk : null;
+    }
+    return out;
+  }, [schemaDetail]);
+
   const enumDefsByName = useMemo(() => {
     const out: Record<string, unknown[]> = {};
     for (const e of schemaDetail?.enums || []) {
@@ -263,6 +273,46 @@ const GameConfigBundles: React.FC<{ isCollapsed?: boolean; page?: GameConfigPage
     return out;
   }, [schemaDetail]);
 
+  function makeCompositeKey(values: unknown[]): string {
+    return values.map((v) => JSON.stringify(v)).join('|');
+  }
+
+  function rowRefFor(templateName: string, rowIndex: number, rowObj: any): string {
+    const pk = primaryKeysByTemplate[templateName];
+    if (!pk || pk.length === 0) return String(rowIndex);
+    const vals = pk.map((k) => rowObj?.[k]);
+    if (vals.some((v) => v === undefined || v === null || v === '')) return String(rowIndex);
+    return makeCompositeKey(vals);
+  }
+
+  function issueSeverityFor(templateName: string, rowIndex: number, rowObj: any, fieldName: string): 'error' | 'warn' | null {
+    const issues = issuesByTemplate[templateName] || [];
+    if (issues.length === 0) return null;
+    const rowRef = rowRefFor(templateName, rowIndex, rowObj);
+    const hits = issues.filter((i) => i.template === templateName && i.rowRef === rowRef);
+    if (hits.length === 0) return null;
+
+    // Issues can come in as "ID,VariantID" for PK problems.
+    const matchesField = (path: string) =>
+      path === fieldName || path.split(',').map((s) => s.trim()).includes(fieldName);
+
+    const fieldHits = hits.filter((h) => matchesField(h.path));
+    if (fieldHits.some((h) => h.severity === 'error')) return 'error';
+    if (fieldHits.some((h) => h.severity === 'warn')) return 'warn';
+    return null;
+  }
+
+  function issueCounts(templateName: string): { errors: number; warns: number } {
+    const issues = issuesByTemplate[templateName] || [];
+    let errors = 0;
+    let warns = 0;
+    for (const i of issues) {
+      if (i.severity === 'error') errors++;
+      else warns++;
+    }
+    return { errors, warns };
+  }
+
   // Data editor
   const [activeDataTab, setActiveDataTab] = useState<string>('');
   const [rowsByTemplate, setRowsByTemplate] = useState<Record<string, any[]>>({});
@@ -271,6 +321,7 @@ const GameConfigBundles: React.FC<{ isCollapsed?: boolean; page?: GameConfigPage
   const [loadedFrozenByTemplate, setLoadedFrozenByTemplate] = useState<
     Record<string, null | { id: string; label?: string; versionNumber?: number; createdAt?: string }>
   >({});
+  const [issuesByTemplate, setIssuesByTemplate] = useState<Record<string, ValidationIssue[]>>({});
   const sheetFoldStorageKey = useMemo(() => {
     if (!gameId) return '';
     if (!devChannelId) return `lvlup:game-config:sheetFold:${gameId}:no-channel`;
@@ -416,6 +467,7 @@ const GameConfigBundles: React.FC<{ isCollapsed?: boolean; page?: GameConfigPage
         setBundleSelection({});
         setActiveDataTab('');
         setLoadedFrozenByTemplate({});
+        setIssuesByTemplate({});
         return;
       }
       setRebindSchemaRevisionId(devChannel.schemaRevisionId);
@@ -438,6 +490,7 @@ const GameConfigBundles: React.FC<{ isCollapsed?: boolean; page?: GameConfigPage
         setRowsByTemplate(rowsMap);
         setDirtyTemplates({});
         setLoadedFrozenByTemplate({});
+        setIssuesByTemplate({});
 
         // Load bundle draft selection
         const b = await apiClient.get(`/game-config/admin/channels/${devChannel.id}/bundle-draft`);
@@ -654,6 +707,7 @@ const GameConfigBundles: React.FC<{ isCollapsed?: boolean; page?: GameConfigPage
   function setRows(templateName: string, rows: any[]) {
     setRowsByTemplate((m) => ({ ...m, [templateName]: rows }));
     setDirtyTemplates((d) => ({ ...d, [templateName]: true }));
+    setIssuesByTemplate((m) => ({ ...m, [templateName]: [] })); // saved validation is stale once edited
   }
 
   async function onSaveTemplateDraft(templateName: string) {
@@ -664,7 +718,17 @@ const GameConfigBundles: React.FC<{ isCollapsed?: boolean; page?: GameConfigPage
       const res = await upsertSectionDraft(devChannelId, templateName, rows);
       if (!res.success) throw new Error(res.error || 'Failed');
       setDirtyTemplates((d) => ({ ...d, [templateName]: false }));
-      setStatus({ kind: 'ok', message: `${templateName} saved` });
+      const issues = Array.isArray(res.issues) ? (res.issues as ValidationIssue[]) : [];
+      setIssuesByTemplate((m) => ({ ...m, [templateName]: issues }));
+      const errors = issues.filter((i) => i.severity === 'error').length;
+      const warns = issues.filter((i) => i.severity === 'warn').length;
+      if (errors > 0) {
+        setStatus({ kind: 'error', message: `${templateName} saved with ${errors} error(s) and ${warns} warning(s). Fix errors to freeze/deploy.` });
+      } else if (warns > 0) {
+        setStatus({ kind: 'ok', message: `${templateName} saved with ${warns} warning(s).` });
+      } else {
+        setStatus({ kind: 'ok', message: `${templateName} saved` });
+      }
       // Keep the "loaded from frozen" indicator; it's still a valid source reference.
     } catch (e: any) {
       const issues = e?.response?.data?.issues;
@@ -2310,6 +2374,15 @@ const GameConfigBundles: React.FC<{ isCollapsed?: boolean; page?: GameConfigPage
                                   <code>unsaved changes</code>
                                 </span>
                               ) : null}
+                              {(() => {
+                                const c = issueCounts(activeDataTab);
+                                if (c.errors === 0 && c.warns === 0) return null;
+                                return (
+                                  <span style={{ marginLeft: 10, opacity: 0.9 }}>
+                                    <code>{c.errors} errors</code> <code>{c.warns} warnings</code>
+                                  </span>
+                                );
+                              })()}
                             </>
                           )
                         : (
@@ -2319,12 +2392,28 @@ const GameConfigBundles: React.FC<{ isCollapsed?: boolean; page?: GameConfigPage
                                   <code>unsaved changes</code>
                                 </span>
                               ) : null}
+                              {(() => {
+                                const c = issueCounts(activeDataTab);
+                                if (c.errors === 0 && c.warns === 0) return null;
+                                return (
+                                  <span style={{ marginLeft: 10, opacity: 0.9 }}>
+                                    <code>{c.errors} errors</code> <code>{c.warns} warnings</code>
+                                  </span>
+                                );
+                              })()}
                             </>
                           )}
                     </div>
                     <div className="gc-actions" style={{ marginTop: 10 }}>
                       <button className="gc-btn gc-btn-primary" onClick={() => onSaveTemplateDraft(activeDataTab)}>Save Draft</button>
-                      <button className="gc-btn" onClick={() => onFreezeTemplate(activeDataTab)}>Freeze Version</button>
+                      <button
+                        className="gc-btn"
+                        onClick={() => onFreezeTemplate(activeDataTab)}
+                        disabled={issueCounts(activeDataTab).errors > 0}
+                        title={issueCounts(activeDataTab).errors > 0 ? 'Fix draft errors before freezing' : 'Freeze version'}
+                      >
+                        Freeze Version
+                      </button>
                       <button
                         className="gc-btn"
                         onClick={() => {
@@ -2622,6 +2711,8 @@ const GameConfigBundles: React.FC<{ isCollapsed?: boolean; page?: GameConfigPage
                                     const c = tc.name;
                                     const v = r?.[c];
                                     const def = tc.def;
+                                    const sev = issueSeverityFor(activeDataTab, idx, r, c);
+                                    const cls = sev === 'error' ? 'gc-invalid' : sev === 'warn' ? 'gc-warn' : '';
 
                                     if (def?.type === 'list') {
                                       return (
@@ -2679,6 +2770,7 @@ const GameConfigBundles: React.FC<{ isCollapsed?: boolean; page?: GameConfigPage
                                       return (
                                         <td key={c}>
                                           <select
+                                            className={cls}
                                             value={typeof v === 'string' ? v : ''}
                                             onChange={(e) => {
                                               const val = e.target.value;
@@ -2709,6 +2801,7 @@ const GameConfigBundles: React.FC<{ isCollapsed?: boolean; page?: GameConfigPage
                                       return (
                                         <td key={c}>
                                           <select
+                                            className={cls}
                                             value={typeof v === 'string' ? v : ''}
                                             onChange={(e) => {
                                               const val = e.target.value;
@@ -2746,6 +2839,7 @@ const GameConfigBundles: React.FC<{ isCollapsed?: boolean; page?: GameConfigPage
                                       return (
                                         <td key={c}>
                                           <input
+                                            className={cls}
                                             type="number"
                                             step={def.type === 'int' ? 1 : 'any'}
                                             value={v === undefined || v === null ? '' : String(v)}
@@ -2770,6 +2864,7 @@ const GameConfigBundles: React.FC<{ isCollapsed?: boolean; page?: GameConfigPage
                                     return (
                                       <td key={c}>
                                         <input
+                                          className={cls}
                                           value={v === undefined || v === null ? '' : String(v)}
                                           onChange={(e) => {
                                             const val = e.target.value;
@@ -2832,7 +2927,7 @@ const GameConfigBundles: React.FC<{ isCollapsed?: boolean; page?: GameConfigPage
                             );
                           }
 
-                          function renderFieldEditor(def: any, value: any, onChange: (v: any) => void) {
+                          function renderFieldEditor(def: any, value: any, onChange: (v: any) => void, className?: string) {
                             const enumVals = Array.isArray(def?.constraints?.enum)
                               ? (def.constraints.enum as any[]).filter((x: any) => typeof x === 'string')
                               : (typeof def?.constraints?.enumRef === 'string' && enumDefsByName[def.constraints.enumRef])
@@ -2840,7 +2935,7 @@ const GameConfigBundles: React.FC<{ isCollapsed?: boolean; page?: GameConfigPage
                                 : [];
                             if (enumVals.length > 0) {
                               return (
-                                <select value={typeof value === 'string' ? value : ''} onChange={(e) => onChange(e.target.value)}>
+                                <select className={className} value={typeof value === 'string' ? value : ''} onChange={(e) => onChange(e.target.value)}>
                                   <option value="">Select...</option>
                                   {enumVals.map((vv: string) => (
                                     <option key={vv} value={vv}>{vv}</option>
@@ -2862,7 +2957,7 @@ const GameConfigBundles: React.FC<{ isCollapsed?: boolean; page?: GameConfigPage
                                 )
                               ).sort((a, b) => String(a).localeCompare(String(b)));
                               return (
-                                <select value={typeof value === 'string' ? value : ''} onChange={(e) => onChange(e.target.value)}>
+                                <select className={className} value={typeof value === 'string' ? value : ''} onChange={(e) => onChange(e.target.value)}>
                                   <option value="">{refTemplate ? 'Select...' : 'Configure ref...'}</option>
                                   {ids.map((idVal) => (
                                     <option key={idVal} value={idVal}>{idVal}</option>
@@ -2878,6 +2973,7 @@ const GameConfigBundles: React.FC<{ isCollapsed?: boolean; page?: GameConfigPage
                             if (def.type === 'int' || def.type === 'float') {
                               return (
                                 <input
+                                  className={className}
                                   type="number"
                                   step={def.type === 'int' ? 1 : 'any'}
                                   value={value === undefined || value === null ? '' : String(value)}
@@ -2934,6 +3030,7 @@ const GameConfigBundles: React.FC<{ isCollapsed?: boolean; page?: GameConfigPage
 
                             return (
                               <input
+                                className={className}
                                 value={value === undefined || value === null ? '' : String(value)}
                                 onChange={(e) => onChange(e.target.value)}
                               />
@@ -2980,16 +3077,18 @@ const GameConfigBundles: React.FC<{ isCollapsed?: boolean; page?: GameConfigPage
                                     <div className="gc-kv">
                                       {scalarDefs.map((d) => {
                                         const v = r?.[d.name];
+                                        const sev = issueSeverityFor(activeDataTab, idx, r, d.name);
+                                        const cls = sev === 'error' ? 'gc-invalid' : sev === 'warn' ? 'gc-warn' : '';
                                         return (
                                           <div key={d.name} className="gc-kv-row">
                                             <div className="gc-kv-key">{d.name}</div>
                                             <div className="gc-kv-val">
-                                              {renderFieldEditor(d, v, (nv) => setField(idx, d.name, nv))}
+                                              {renderFieldEditor(d, v, (nv) => setField(idx, d.name, nv), cls)}
                                             </div>
                                           </div>
-                                      );
-                                    })}
-                                  </div>
+                                        );
+                                      })}
+                                    </div>
 
                                     {listDefs.map((ld) => {
                                       const v = r?.[ld.name];

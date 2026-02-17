@@ -13,6 +13,7 @@ export interface MonetizationCohortData {
             iapRevenue: number;
             adRevenue: number;
             totalRevenue: number;
+            ltv: number;
             iapPayingUsers: number;
             arpuIap: number;
             arppuIap: number;
@@ -135,6 +136,7 @@ export class MonetizationCohortService {
             for (const cohort of retentionCohorts) {
                 const cohortDate = cohort.installDate;
                 const dayMap = monetizationByInstallDay.get(cohortDate) || new Map();
+                let cumulativeRevenue = 0;
 
                 const metrics: MonetizationCohortData['metrics'] = {};
 
@@ -148,6 +150,7 @@ export class MonetizationCohortService {
                             iapRevenue: -1,
                             adRevenue: -1,
                             totalRevenue: -1,
+                            ltv: -1,
                             iapPayingUsers: -1,
                             arpuIap: -1,
                             arppuIap: -1,
@@ -163,6 +166,7 @@ export class MonetizationCohortService {
                             iapRevenue: 0,
                             adRevenue: 0,
                             totalRevenue: 0,
+                            ltv: 0,
                             iapPayingUsers: 0,
                             arpuIap: 0,
                             arppuIap: 0,
@@ -181,12 +185,15 @@ export class MonetizationCohortService {
                     const arppuIap = iapPayingUsers > 0 ? iapRevenue / iapPayingUsers : 0;
                     const arpu = returningUsers > 0 ? totalRevenue / returningUsers : 0;
                     const conversionRate = returningUsers > 0 ? (iapPayingUsers / returningUsers) * 100 : 0;
+                    cumulativeRevenue += totalRevenue;
+                    const ltv = cohort.installCount > 0 ? cumulativeRevenue / cohort.installCount : 0;
 
                     metrics[`day${dayOffset}`] = {
                         returningUsers,
                         iapRevenue: Math.round(iapRevenue * 100) / 100,
                         adRevenue: Math.round(adRevenue * 100) / 100,
                         totalRevenue: Math.round(totalRevenue * 100) / 100,
+                        ltv: Math.round(ltv * 100) / 100,
                         iapPayingUsers,
                         arpuIap: Math.round(arpuIap * 100) / 100,
                         arppuIap: Math.round(arppuIap * 100) / 100,

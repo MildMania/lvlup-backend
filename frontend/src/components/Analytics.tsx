@@ -83,7 +83,7 @@ const EngagementTab: React.FC<{ gameInfo: any }> = ({ gameInfo }) => {
   const [selectedVersions, setSelectedVersions] = useState<string[]>([]);
 
   // Available days for selection
-  const availableDays = [0, 1, 2, 3, 4, 5, 6, 7, 8,9, 10, 11, 12, 13, 14, 30, 60, 90, 180, 360, 540, 720];
+  const availableDays = [0, 1, 2, 3, 4, 5, 6, 7, 14, 30, 60, 90, 180, 360, 540, 720];
   const [selectedDays, setSelectedDays] = useState<number[]>([0, 1, 2, 3, 4, 5, 6, 7]);
 
   // Filter options from API

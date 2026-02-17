@@ -320,8 +320,7 @@ export default function LevelFunnel({ isCollapsed = false }: LevelFunnelProps) {
         if (value <= 1.1) return 'metric-value-high';
         if (value <= 1.4) return 'metric-value-medium';
         if (value <= 2.5) return 'metric-value-light-red';
-        if (value <= 4.5) return 'metric-value-low';
-        return 'metric-value-dark-red';
+        return 'metric-value-low';
     };
 
     const exportToCSV = () => {

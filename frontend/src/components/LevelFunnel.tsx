@@ -310,6 +310,20 @@ export default function LevelFunnel({ isCollapsed = false }: LevelFunnelProps) {
         return sortDirection === 'asc' ? '↑' : '↓';
     };
 
+    const getChurnColorClass = (value: number) => {
+        if (value <= 7) return 'metric-value-high';
+        if (value <= 10) return 'metric-value-medium';
+        return 'metric-value-low';
+    };
+
+    const getApsColorClass = (value: number) => {
+        if (value <= 1.1) return 'metric-value-high';
+        if (value <= 1.4) return 'metric-value-medium';
+        if (value <= 2.5) return 'metric-value-light-red';
+        if (value <= 4.5) return 'metric-value-low';
+        return 'metric-value-dark-red';
+    };
+
     const exportToCSV = () => {
         if (levels.length === 0) return;
 
@@ -756,31 +770,19 @@ export default function LevelFunnel({ isCollapsed = false }: LevelFunnelProps) {
                                         </span>
                                     </td>
                                     <td>
-                                        <span className={
-                                            level.churnTotal >= 30 ? 'metric-value-low' : 
-                                            level.churnTotal >= 15 ? 'metric-value-medium' : 
-                                            'metric-value-high'
-                                        }>
+                                        <span className={getChurnColorClass(level.churnTotal)}>
                                             {level.churnTotal.toFixed(1)}%
                                         </span>
                                     </td>
                                     {isChurnExpanded && (
                                         <>
                                             <td>
-                                                <span className={
-                                                    level.churnStartComplete >= 30 ? 'metric-value-low' : 
-                                                    level.churnStartComplete >= 15 ? 'metric-value-medium' : 
-                                                    'metric-value-high'
-                                                }>
+                                                <span className={getChurnColorClass(level.churnStartComplete)}>
                                                     {level.churnStartComplete.toFixed(1)}%
                                                 </span>
                                             </td>
                                             <td>
-                                                <span className={
-                                                    level.churnCompleteNext >= 30 ? 'metric-value-low' : 
-                                                    level.churnCompleteNext >= 15 ? 'metric-value-medium' : 
-                                                    'metric-value-high'
-                                                }>
+                                                <span className={getChurnColorClass(level.churnCompleteNext)}>
                                                     {level.churnCompleteNext.toFixed(1)}%
                                                 </span>
                                             </td>
@@ -805,7 +807,11 @@ export default function LevelFunnel({ isCollapsed = false }: LevelFunnelProps) {
                                         </span>
                                     </td>
                                     <td>{level.failRate.toFixed(1)}%</td>
-                                    <td>{level.apsRaw.toFixed(2)}</td>
+                                    <td>
+                                        <span className={getApsColorClass(level.apsRaw)}>
+                                            {level.apsRaw.toFixed(2)}
+                                        </span>
+                                    </td>
                                     <td>{level.meanCompletionDuration.toFixed(1)}s</td>
                                     <td>{(level.cumulativeAvgTime / 60).toFixed(1)}m</td>
                                     <td>{level.boosterUsage.toFixed(1)}%</td>

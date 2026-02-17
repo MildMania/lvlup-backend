@@ -674,7 +674,7 @@ const MonetizationTab: React.FC<{ gameInfo: any }> = ({ gameInfo }) => {
   const [revenueSummary, setRevenueSummary] = useState<any>(null);
   const [revenueSummaryLoaded, setRevenueSummaryLoaded] = useState(false);
   const [loading, setLoading] = useState(false);
-  const [selectedMetric, setSelectedMetric] = useState<'totalRevenue' | 'iapRevenue' | 'adRevenue' | 'arpu' | 'arpuIap' | 'arppuIap' | 'conversionRate'>('totalRevenue');
+  const [selectedMetric, setSelectedMetric] = useState<'totalRevenue' | 'iapRevenue' | 'adRevenue' | 'arpu' | 'arpuIap' | 'arppuIap' | 'conversionRate' | 'ltv'>('totalRevenue');
   const [showDaySelector, setShowDaySelector] = useState(false);
   const [showPlatformSelector, setShowPlatformSelector] = useState(false);
   const [showCountrySelector, setShowCountrySelector] = useState(false);
@@ -818,9 +818,18 @@ const MonetizationTab: React.FC<{ gameInfo: any }> = ({ gameInfo }) => {
         return data.arpu;
       case 'conversionRate':
         return data.conversionRate;
+      case 'ltv':
+        return data.ltv;
       default:
         return undefined;
     }
+  };
+
+  const formatCompactCurrency = (value: number) => {
+    if (!Number.isFinite(value)) return '$0.00';
+    if (Math.abs(value) >= 1_000_000) return `$${(value / 1_000_000).toFixed(1)}M`;
+    if (Math.abs(value) >= 1_000) return `$${(value / 1_000).toFixed(1)}K`;
+    return `$${value.toFixed(2)}`;
   };
 
   const getUserCount = (metrics: any, day: number) => {
@@ -950,7 +959,7 @@ const MonetizationTab: React.FC<{ gameInfo: any }> = ({ gameInfo }) => {
               boxShadow: '0 4px 6px rgba(0,0,0,0.1)'
             }}>
               <div style={{ fontSize: '14px', opacity: 0.9, marginBottom: '8px' }}>Total Revenue</div>
-              <div style={{ fontSize: '32px', fontWeight: '700' }}>${revenueSummary.totalRevenue.toFixed(2)}</div>
+              <div style={{ fontSize: '32px', fontWeight: '700' }}>{formatCompactCurrency(revenueSummary.totalRevenue)}</div>
               <div style={{ fontSize: '12px', opacity: 0.8, marginTop: '8px' }}>
                 {revenueSummary.adImpressionCount + revenueSummary.iapCount} events
               </div>
@@ -964,7 +973,7 @@ const MonetizationTab: React.FC<{ gameInfo: any }> = ({ gameInfo }) => {
               boxShadow: '0 4px 6px rgba(0,0,0,0.1)'
             }}>
               <div style={{ fontSize: '14px', opacity: 0.9, marginBottom: '8px' }}>IAP Revenue</div>
-              <div style={{ fontSize: '32px', fontWeight: '700' }}>${revenueSummary.iapRevenue.toFixed(2)}</div>
+              <div style={{ fontSize: '32px', fontWeight: '700' }}>{formatCompactCurrency(revenueSummary.iapRevenue)}</div>
               <div style={{ fontSize: '12px', opacity: 0.8, marginTop: '8px' }}>
                 {revenueSummary.iapCount} purchases
               </div>
@@ -978,7 +987,7 @@ const MonetizationTab: React.FC<{ gameInfo: any }> = ({ gameInfo }) => {
               boxShadow: '0 4px 6px rgba(0,0,0,0.1)'
             }}>
               <div style={{ fontSize: '14px', opacity: 0.9, marginBottom: '8px' }}>Ad Revenue</div>
-              <div style={{ fontSize: '32px', fontWeight: '700' }}>${revenueSummary.adRevenue.toFixed(2)}</div>
+              <div style={{ fontSize: '32px', fontWeight: '700' }}>{formatCompactCurrency(revenueSummary.adRevenue)}</div>
               <div style={{ fontSize: '12px', opacity: 0.8, marginTop: '8px' }}>
                 {revenueSummary.adImpressionCount} impressions
               </div>
@@ -995,6 +1004,22 @@ const MonetizationTab: React.FC<{ gameInfo: any }> = ({ gameInfo }) => {
               <div style={{ fontSize: '32px', fontWeight: '700' }}>${revenueSummary.arpu.toFixed(4)}</div>
               <div style={{ fontSize: '12px', opacity: 0.8, marginTop: '8px' }}>
                 {revenueSummary.totalUsers} users
+              </div>
+            </div>
+
+            <div style={{ 
+              background: 'linear-gradient(135deg, #43e97b 0%, #38f9d7 100%)', 
+              padding: '20px', 
+              borderRadius: '12px',
+              color: '#123',
+              boxShadow: '0 4px 6px rgba(0,0,0,0.1)'
+            }}>
+              <div style={{ fontSize: '14px', opacity: 0.9, marginBottom: '8px' }}>LTV</div>
+              <div style={{ fontSize: '32px', fontWeight: '700' }}>
+                ${Number(revenueSummary.arpu || 0).toFixed(4)}
+              </div>
+              <div style={{ fontSize: '12px', opacity: 0.8, marginTop: '8px' }}>
+                Revenue per installed user
               </div>
             </div>
 
@@ -1045,6 +1070,7 @@ const MonetizationTab: React.FC<{ gameInfo: any }> = ({ gameInfo }) => {
             <option value="iapRevenue">Revenue (IAP)</option>
             <option value="adRevenue">Revenue (Ad)</option>
             <option value="arpu">ARPU (Total)</option>
+            <option value="ltv">LTV</option>
             <option value="arpuIap">ARPU (IAP)</option>
             <option value="arppuIap">ARPPU (IAP)</option>
             <option value="conversionRate">Conversion Rate</option>

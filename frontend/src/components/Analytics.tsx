@@ -671,6 +671,7 @@ const HealthTab: React.FC<{ gameInfo: any }> = ({ gameInfo }) => {
 // Monetization Tab Component
 const MonetizationTab: React.FC<{ gameInfo: any }> = ({ gameInfo }) => {
   const [cohortData, setCohortData] = useState<any[]>([]);
+  const [payerRatioSummary, setPayerRatioSummary] = useState<{ day1: number; day3: number; day7: number } | null>(null);
   const [revenueSummary, setRevenueSummary] = useState<any>(null);
   const [revenueSummaryLoaded, setRevenueSummaryLoaded] = useState(false);
   const [loading, setLoading] = useState(false);
@@ -741,6 +742,7 @@ const MonetizationTab: React.FC<{ gameInfo: any }> = ({ gameInfo }) => {
 
       if (response.data.success && response.data.data) {
         setCohortData(response.data.data);
+        setPayerRatioSummary(response.data.summary?.payerRatio || null);
       } else {
         console.error('API returned unsuccessful response:', response.data);
       }
@@ -947,7 +949,7 @@ const MonetizationTab: React.FC<{ gameInfo: any }> = ({ gameInfo }) => {
           <h3 style={{ marginBottom: '15px', fontSize: '18px', fontWeight: '600' }}>All-Time Revenue Summary</h3>
           <div style={{ 
             display: 'grid', 
-            gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', 
+            gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', 
             gap: '15px',
             marginBottom: '20px'
           }}>
@@ -1049,6 +1051,32 @@ const MonetizationTab: React.FC<{ gameInfo: any }> = ({ gameInfo }) => {
               <div style={{ fontSize: '12px', opacity: 0.7, marginTop: '8px' }}>
                 Per paying user
               </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {payerRatioSummary && (
+        <div style={{ marginBottom: '30px' }}>
+          <h3 style={{ marginBottom: '15px', fontSize: '18px', fontWeight: '600' }}>Cohort Payer Ratio Summary</h3>
+          <div
+            style={{
+              display: 'grid',
+              gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))',
+              gap: '15px'
+            }}
+          >
+            <div style={{ background: '#1f2a3d', padding: '16px', borderRadius: '10px', border: '1px solid #2f3f5c' }}>
+              <div style={{ fontSize: '13px', opacity: 0.8, marginBottom: '6px' }}>D1 Payer %</div>
+              <div style={{ fontSize: '28px', fontWeight: 700 }}>{payerRatioSummary.day1.toFixed(2)}%</div>
+            </div>
+            <div style={{ background: '#1f2a3d', padding: '16px', borderRadius: '10px', border: '1px solid #2f3f5c' }}>
+              <div style={{ fontSize: '13px', opacity: 0.8, marginBottom: '6px' }}>D3 Payer %</div>
+              <div style={{ fontSize: '28px', fontWeight: 700 }}>{payerRatioSummary.day3.toFixed(2)}%</div>
+            </div>
+            <div style={{ background: '#1f2a3d', padding: '16px', borderRadius: '10px', border: '1px solid #2f3f5c' }}>
+              <div style={{ fontSize: '13px', opacity: 0.8, marginBottom: '6px' }}>D7 Payer %</div>
+              <div style={{ fontSize: '28px', fontWeight: 700 }}>{payerRatioSummary.day7.toFixed(2)}%</div>
             </div>
           </div>
         </div>

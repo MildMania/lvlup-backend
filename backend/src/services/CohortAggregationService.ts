@@ -97,6 +97,26 @@ export class CohortAggregationService {
           monetizationMetrics.totalRevenueUsd,
           monetizationMetrics.iapPayingUsers
         );
+
+        const newPayers = await this.getNewPayersByDimensions(
+          gameId,
+          installDate,
+          installEnd,
+          target,
+          targetEnd,
+          cohort.platform,
+          cohort.countryCode,
+          cohort.appVersion
+        );
+        await this.upsertPayerMetrics(
+          gameId,
+          installDate,
+          dayIndex,
+          cohort.platform,
+          cohort.countryCode,
+          cohort.appVersion,
+          newPayers
+        );
       }
     }
   }
@@ -274,6 +294,7 @@ export class CohortAggregationService {
 
     await this.aggregateSessionAndCompletesForTargetDay(gameId, targetDay, COHORT_DAY_INDICES);
     await this.aggregateMonetizationForTargetDay(gameId, targetDay, COHORT_DAY_INDICES);
+    await this.aggregatePayersForTargetDay(gameId, targetDay, COHORT_DAY_INDICES);
   }
 
   async backfill(gameId: string, startDate: Date, endDate: Date, dayIndices = COHORT_DAY_INDICES): Promise<void> {
@@ -289,6 +310,23 @@ export class CohortAggregationService {
       processed++;
       if (processed % 10 === 0) {
         logger.info(`Cohort rollup backfill progress: ${processed} days processed`);
+      }
+    }
+  }
+
+  async backfillPayersOnly(gameId: string, startDate: Date, endDate: Date, dayIndices = COHORT_DAY_INDICES): Promise<void> {
+    const cursor = new Date(startDate);
+    cursor.setUTCHours(0, 0, 0, 0);
+    const end = new Date(endDate);
+    end.setUTCHours(0, 0, 0, 0);
+
+    let processed = 0;
+    while (cursor <= end) {
+      await this.aggregatePayersForTargetDay(gameId, new Date(cursor), dayIndices);
+      cursor.setUTCDate(cursor.getUTCDate() + 1);
+      processed++;
+      if (processed % 10 === 0) {
+        logger.info(`Cohort payer rollup backfill progress: ${processed} days processed`);
       }
     }
   }
@@ -680,6 +718,102 @@ export class CohortAggregationService {
     `;
   }
 
+  private async getNewPayersByDimensions(
+    gameId: string,
+    installStart: Date,
+    installEnd: Date,
+    targetStart: Date,
+    targetEnd: Date,
+    platform: string,
+    countryCode: string,
+    appVersion: string
+  ): Promise<number> {
+    const result = await this.prisma.$queryRaw<Array<{ new_payers: bigint }>>(Prisma.sql`
+      WITH cohort_users AS (
+        SELECT u."id"
+        FROM "users" u
+        WHERE u."gameId" = ${gameId}
+          AND u."createdAt" >= ${installStart}
+          AND u."createdAt" < ${installEnd}
+      ),
+      first_event AS (
+        SELECT DISTINCT ON (e."userId")
+          e."userId" AS "userId",
+          e."platform" AS "platform",
+          e."countryCode" AS "countryCode",
+          e."appVersion" AS "appVersion"
+        FROM "events" e
+        JOIN cohort_users cu ON cu."id" = e."userId"
+        WHERE e."gameId" = ${gameId}
+          AND e."timestamp" >= ${installStart}
+          AND e."timestamp" < ${installEnd}
+        ORDER BY e."userId", e."timestamp" ASC
+      ),
+      cohort AS (
+        SELECT cu."id"
+        FROM cohort_users cu
+        LEFT JOIN first_event f ON f."userId" = cu."id"
+        WHERE COALESCE(f."platform",'') = ${platform}
+          AND COALESCE(f."countryCode",'') = ${countryCode}
+          AND COALESCE(f."appVersion",'') = ${appVersion}
+      )
+      SELECT COUNT(*)::bigint AS "new_payers"
+      FROM "iap_payers" p
+      JOIN cohort c ON c."id" = p."userId"
+      WHERE p."gameId" = ${gameId}
+        AND p."firstSeen" >= ${targetStart}
+        AND p."firstSeen" < ${targetEnd}
+    `);
+
+    return Number(result[0]?.new_payers || 0);
+  }
+
+  private async upsertPayerMetrics(
+    gameId: string,
+    installDate: Date,
+    dayIndex: number,
+    platform: string,
+    countryCode: string,
+    appVersion: string,
+    newPayers: number
+  ): Promise<void> {
+    // Keep sparse like cohort monetization rows.
+    if (newPayers <= 0) {
+      await this.prisma.cohortPayersDaily.deleteMany({
+        where: {
+          gameId,
+          installDate,
+          dayIndex,
+          platform,
+          countryCode,
+          appVersion
+        }
+      });
+      return;
+    }
+
+    await this.prisma.$executeRaw`
+      INSERT INTO "cohort_payers_daily"
+        ("id","gameId","installDate","dayIndex","platform","countryCode","appVersion","newPayers","createdAt","updatedAt")
+      VALUES (
+        ${this.buildId('cpd', gameId, installDate, dayIndex, platform, countryCode, appVersion)},
+        ${gameId},
+        ${installDate},
+        ${dayIndex},
+        ${platform},
+        ${countryCode},
+        ${appVersion},
+        ${newPayers},
+        now(),
+        now()
+      )
+      ON CONFLICT ("gameId","installDate","dayIndex","platform","countryCode","appVersion")
+      DO UPDATE SET
+        "newPayers" = EXCLUDED."newPayers",
+        "updatedAt" = now()
+    `;
+  }
+
   private async aggregateMonetizationForTargetDay(
     gameId: string,
     targetDay: Date,
@@ -723,6 +857,51 @@ export class CohortAggregationService {
           monetizationMetrics.adRevenueUsd,
           monetizationMetrics.totalRevenueUsd,
           monetizationMetrics.iapPayingUsers
+        );
+      }
+    }
+  }
+
+  private async aggregatePayersForTargetDay(
+    gameId: string,
+    targetDay: Date,
+    dayIndices = COHORT_DAY_INDICES
+  ): Promise<void> {
+    const target = new Date(targetDay);
+    target.setUTCHours(0, 0, 0, 0);
+    const targetEnd = new Date(target);
+    targetEnd.setUTCDate(targetEnd.getUTCDate() + 1);
+
+    for (const dayIndex of dayIndices) {
+      const installDate = new Date(target);
+      installDate.setUTCDate(installDate.getUTCDate() - dayIndex);
+      installDate.setUTCHours(0, 0, 0, 0);
+      const installEnd = new Date(installDate);
+      installEnd.setUTCDate(installEnd.getUTCDate() + 1);
+
+      const cohorts = await this.getCohortSizesByDimensions(gameId, installDate, installEnd);
+      if (cohorts.length === 0) continue;
+
+      for (const cohort of cohorts) {
+        const newPayers = await this.getNewPayersByDimensions(
+          gameId,
+          installDate,
+          installEnd,
+          target,
+          targetEnd,
+          cohort.platform,
+          cohort.countryCode,
+          cohort.appVersion
+        );
+
+        await this.upsertPayerMetrics(
+          gameId,
+          installDate,
+          dayIndex,
+          cohort.platform,
+          cohort.countryCode,
+          cohort.appVersion,
+          newPayers
         );
       }
     }

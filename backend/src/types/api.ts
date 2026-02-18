@@ -6,6 +6,7 @@
 export interface ApiResponse {
     success: boolean;
     data?: any;
+    summary?: any;
     error?: string;
     message?: string;
 }

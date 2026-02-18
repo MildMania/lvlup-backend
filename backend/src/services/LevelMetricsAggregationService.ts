@@ -172,6 +172,405 @@ export class LevelMetricsAggregationService {
   }
 
   /**
+   * Incremental hourly aggregation for today's rolling window.
+   * Updates only users/dimensions touched in the given window.
+   */
+  async aggregateHourlyMetricsIncremental(
+    gameId: string,
+    hourStart: Date,
+    hourEnd: Date
+  ): Promise<void> {
+    const dayStart = new Date(hourEnd);
+    dayStart.setUTCHours(0, 0, 0, 0);
+    const boundedStart = hourStart > dayStart ? hourStart : dayStart;
+
+    if (boundedStart >= hourEnd) return;
+
+    const hourEvents = await this.prisma.event.findMany({
+      where: {
+        gameId,
+        eventName: { in: ['level_start', 'level_complete', 'level_failed'] },
+        timestamp: {
+          gte: boundedStart,
+          lt: hourEnd
+        }
+      },
+      select: {
+        userId: true,
+        eventName: true,
+        timestamp: true,
+        levelFunnel: true,
+        levelFunnelVersion: true,
+        platform: true,
+        countryCode: true,
+        appVersion: true,
+        properties: true
+      },
+      orderBy: {
+        timestamp: 'asc'
+      }
+    });
+
+    if (hourEvents.length === 0) {
+      return;
+    }
+
+    const touchedUserIds = Array.from(new Set(hourEvents.map((e) => e.userId)));
+    const existingRows = await this.prisma.levelMetricsDailyUser.findMany({
+      where: {
+        gameId,
+        date: dayStart,
+        userId: { in: touchedUserIds }
+      },
+      select: {
+        userId: true,
+        levelId: true,
+        levelFunnel: true,
+        levelFunnelVersion: true,
+        platform: true,
+        countryCode: true,
+        appVersion: true
+      }
+    });
+
+    const canonicalDimensions = new Map<string, {
+      levelId: number;
+      levelFunnel: string;
+      levelFunnelVersion: number;
+      platform: string;
+      countryCode: string;
+      appVersion: string;
+    }>();
+
+    for (const row of existingRows) {
+      const key = `${row.userId}:${row.levelId}`;
+      if (!canonicalDimensions.has(key)) {
+        canonicalDimensions.set(key, {
+          levelId: row.levelId,
+          levelFunnel: row.levelFunnel,
+          levelFunnelVersion: row.levelFunnelVersion,
+          platform: row.platform,
+          countryCode: row.countryCode,
+          appVersion: row.appVersion
+        });
+      }
+    }
+
+    const warmStartEvents = await this.prisma.event.findMany({
+      where: {
+        gameId,
+        userId: { in: touchedUserIds },
+        eventName: 'level_start',
+        timestamp: {
+          gte: dayStart,
+          lt: boundedStart
+        }
+      },
+      select: {
+        userId: true,
+        timestamp: true,
+        properties: true
+      },
+      orderBy: {
+        timestamp: 'asc'
+      }
+    });
+
+    const startEventsByUser = new Map<string, Array<{ timestamp: Date }>>();
+    for (const warmStart of warmStartEvents) {
+      const props = warmStart.properties as any;
+      const levelId = props?.levelId;
+      if (levelId === undefined || levelId === null) continue;
+      const userLevelKey = `${warmStart.userId}:${levelId}`;
+      if (!startEventsByUser.has(userLevelKey)) {
+        startEventsByUser.set(userLevelKey, []);
+      }
+      startEventsByUser.get(userLevelKey)!.push({ timestamp: warmStart.timestamp });
+    }
+
+    type HourlyUserRow = {
+      levelId: number;
+      levelFunnel: string;
+      levelFunnelVersion: number;
+      platform: string;
+      countryCode: string;
+      appVersion: string;
+      userId: string;
+      started: boolean;
+      completed: boolean;
+      boosterUsed: boolean;
+      egpUsed: boolean;
+      starts: number;
+      completes: number;
+      fails: number;
+      totalCompletionDuration: bigint;
+      completionCount: number;
+      totalFailDuration: bigint;
+      failCount: number;
+    };
+
+    const hourlyUserRows = new Map<string, HourlyUserRow>();
+    const usageIncrements = new Map<string, { booster: number; egp: number }>();
+
+    for (const event of hourEvents) {
+      const props = event.properties as any;
+      const levelId = props?.levelId;
+      if (levelId === undefined || levelId === null) continue;
+
+      const userLevelKey = `${event.userId}:${levelId}`;
+      if (!canonicalDimensions.has(userLevelKey)) {
+        canonicalDimensions.set(userLevelKey, {
+          levelId,
+          levelFunnel: event.levelFunnel || '',
+          levelFunnelVersion: event.levelFunnelVersion || 0,
+          platform: event.platform || '',
+          countryCode: event.countryCode || '',
+          appVersion: event.appVersion || ''
+        });
+      }
+
+      const dims = canonicalDimensions.get(userLevelKey)!;
+      const rowKey = `${dims.levelId}:${dims.levelFunnel}:${dims.levelFunnelVersion}:${dims.platform}:${dims.countryCode}:${dims.appVersion}:${event.userId}`;
+
+      if (!hourlyUserRows.has(rowKey)) {
+        hourlyUserRows.set(rowKey, {
+          levelId: dims.levelId,
+          levelFunnel: dims.levelFunnel,
+          levelFunnelVersion: dims.levelFunnelVersion,
+          platform: dims.platform,
+          countryCode: dims.countryCode,
+          appVersion: dims.appVersion,
+          userId: event.userId,
+          started: false,
+          completed: false,
+          boosterUsed: false,
+          egpUsed: false,
+          starts: 0,
+          completes: 0,
+          fails: 0,
+          totalCompletionDuration: BigInt(0),
+          completionCount: 0,
+          totalFailDuration: BigInt(0),
+          failCount: 0
+        });
+      }
+
+      const row = hourlyUserRows.get(rowKey)!;
+      const dimKey = `${dims.levelId}:${dims.levelFunnel}:${dims.levelFunnelVersion}:${dims.platform}:${dims.countryCode}:${dims.appVersion}`;
+
+      if (event.eventName === 'level_start') {
+        row.started = true;
+        row.starts++;
+
+        if (!startEventsByUser.has(userLevelKey)) {
+          startEventsByUser.set(userLevelKey, []);
+        }
+        startEventsByUser.get(userLevelKey)!.push({ timestamp: event.timestamp });
+      } else if (event.eventName === 'level_complete') {
+        row.completed = true;
+        row.completes++;
+        const duration = this.findMatchingDuration(event, levelId, startEventsByUser as any);
+        if (duration !== null) {
+          row.totalCompletionDuration += BigInt(Math.floor(duration));
+          row.completionCount++;
+        }
+      } else if (event.eventName === 'level_failed') {
+        row.fails++;
+        const duration = this.findMatchingDuration(event, levelId, startEventsByUser as any);
+        if (duration !== null) {
+          row.totalFailDuration += BigInt(Math.floor(duration));
+          row.failCount++;
+        }
+      }
+
+      if (event.eventName === 'level_complete' || event.eventName === 'level_failed') {
+        if (props?.boosters && typeof props.boosters === 'object' && Object.keys(props.boosters).length > 0) {
+          row.boosterUsed = true;
+          const boosterCount = Object.values(props.boosters).reduce((sum: number, val: any) => {
+            return sum + (typeof val === 'number' ? val : 0);
+          }, 0);
+          const currentUsage = usageIncrements.get(dimKey) || { booster: 0, egp: 0 };
+          currentUsage.booster += boosterCount;
+          usageIncrements.set(dimKey, currentUsage);
+        }
+
+        const egpValue = props?.egp ?? props?.endGamePurchase;
+        if ((typeof egpValue === 'number' && egpValue > 0) || egpValue === true) {
+          row.egpUsed = true;
+          const egpCount = typeof egpValue === 'number' ? egpValue : 1;
+          const currentUsage = usageIncrements.get(dimKey) || { booster: 0, egp: 0 };
+          currentUsage.egp += egpCount;
+          usageIncrements.set(dimKey, currentUsage);
+        }
+      }
+    }
+
+    const affectedDimensions = new Set<string>();
+
+    for (const row of hourlyUserRows.values()) {
+      await this.prisma.$executeRaw`
+        INSERT INTO "level_metrics_daily_users"
+          ("id","gameId","date","levelId","levelFunnel","levelFunnelVersion","platform","countryCode","appVersion","userId",
+           "started","completed","boosterUsed","egpUsed","starts","completes","fails","totalCompletionDuration","completionCount","totalFailDuration","failCount","createdAt")
+        VALUES (
+          concat('lmdu_', md5(${gameId}::text || '|' || ${dayStart}::text || '|' || ${row.levelId}::text || '|' || ${row.levelFunnel} || '|' || ${row.levelFunnelVersion}::text || '|' || ${row.platform} || '|' || ${row.countryCode} || '|' || ${row.appVersion} || '|' || ${row.userId}::text)),
+          ${gameId},
+          ${dayStart},
+          ${row.levelId},
+          ${row.levelFunnel},
+          ${row.levelFunnelVersion},
+          ${row.platform},
+          ${row.countryCode},
+          ${row.appVersion},
+          ${row.userId},
+          ${row.started},
+          ${row.completed},
+          ${row.boosterUsed},
+          ${row.egpUsed},
+          ${row.starts},
+          ${row.completes},
+          ${row.fails},
+          ${row.totalCompletionDuration},
+          ${row.completionCount},
+          ${row.totalFailDuration},
+          ${row.failCount},
+          now()
+        )
+        ON CONFLICT ("gameId","date","levelId","levelFunnel","levelFunnelVersion","platform","countryCode","appVersion","userId")
+        DO UPDATE SET
+          "started" = "level_metrics_daily_users"."started" OR EXCLUDED."started",
+          "completed" = "level_metrics_daily_users"."completed" OR EXCLUDED."completed",
+          "boosterUsed" = "level_metrics_daily_users"."boosterUsed" OR EXCLUDED."boosterUsed",
+          "egpUsed" = "level_metrics_daily_users"."egpUsed" OR EXCLUDED."egpUsed",
+          "starts" = "level_metrics_daily_users"."starts" + EXCLUDED."starts",
+          "completes" = "level_metrics_daily_users"."completes" + EXCLUDED."completes",
+          "fails" = "level_metrics_daily_users"."fails" + EXCLUDED."fails",
+          "totalCompletionDuration" = "level_metrics_daily_users"."totalCompletionDuration" + EXCLUDED."totalCompletionDuration",
+          "completionCount" = "level_metrics_daily_users"."completionCount" + EXCLUDED."completionCount",
+          "totalFailDuration" = "level_metrics_daily_users"."totalFailDuration" + EXCLUDED."totalFailDuration",
+          "failCount" = "level_metrics_daily_users"."failCount" + EXCLUDED."failCount"
+      `;
+
+      affectedDimensions.add(
+        `${row.levelId}:${row.levelFunnel}:${row.levelFunnelVersion}:${row.platform}:${row.countryCode}:${row.appVersion}`
+      );
+    }
+
+    for (const dimKey of affectedDimensions) {
+      const [
+        levelIdStr,
+        levelFunnel = '',
+        levelFunnelVersionStr = '0',
+        platform = '',
+        countryCode = '',
+        appVersion = ''
+      ] = dimKey.split(':');
+      const levelId = Number(levelIdStr);
+      const levelFunnelVersion = Number(levelFunnelVersionStr);
+
+      const aggregates = await this.prisma.$queryRaw<
+        Array<{
+          starts: bigint;
+          completes: bigint;
+          fails: bigint;
+          startedPlayers: bigint;
+          completedPlayers: bigint;
+          boosterUsers: bigint;
+          egpUsers: bigint;
+          totalCompletionDuration: bigint;
+          completionCount: bigint;
+          totalFailDuration: bigint;
+          failCount: bigint;
+        }>
+      >`
+        SELECT
+          COALESCE(SUM("starts"), 0)::bigint AS "starts",
+          COALESCE(SUM("completes"), 0)::bigint AS "completes",
+          COALESCE(SUM("fails"), 0)::bigint AS "fails",
+          COALESCE(COUNT(*) FILTER (WHERE "started" = true), 0)::bigint AS "startedPlayers",
+          COALESCE(COUNT(*) FILTER (WHERE "completed" = true), 0)::bigint AS "completedPlayers",
+          COALESCE(COUNT(*) FILTER (WHERE "boosterUsed" = true), 0)::bigint AS "boosterUsers",
+          COALESCE(COUNT(*) FILTER (WHERE "egpUsed" = true), 0)::bigint AS "egpUsers",
+          COALESCE(SUM("totalCompletionDuration"), 0)::bigint AS "totalCompletionDuration",
+          COALESCE(SUM("completionCount"), 0)::bigint AS "completionCount",
+          COALESCE(SUM("totalFailDuration"), 0)::bigint AS "totalFailDuration",
+          COALESCE(SUM("failCount"), 0)::bigint AS "failCount"
+        FROM "level_metrics_daily_users"
+        WHERE "gameId" = ${gameId}
+          AND "date" = ${dayStart}
+          AND "levelId" = ${levelId}
+          AND "levelFunnel" = ${levelFunnel}
+          AND "levelFunnelVersion" = ${levelFunnelVersion}
+          AND "platform" = ${platform}
+          AND "countryCode" = ${countryCode}
+          AND "appVersion" = ${appVersion}
+      `;
+
+      const row = aggregates[0];
+      if (!row) continue;
+      const usageIncrement = usageIncrements.get(dimKey) || { booster: 0, egp: 0 };
+
+      await this.prisma.levelMetricsDaily.upsert({
+        where: {
+          unique_daily_metrics: {
+            gameId,
+            date: dayStart,
+            levelId,
+            levelFunnel,
+            levelFunnelVersion,
+            platform,
+            countryCode,
+            appVersion
+          }
+        },
+        create: {
+          gameId,
+          date: dayStart,
+          levelId,
+          levelFunnel,
+          levelFunnelVersion,
+          platform,
+          countryCode,
+          appVersion,
+          starts: Number(row.starts || 0),
+          completes: Number(row.completes || 0),
+          fails: Number(row.fails || 0),
+          startedPlayers: Number(row.startedPlayers || 0),
+          completedPlayers: Number(row.completedPlayers || 0),
+          boosterUsers: Number(row.boosterUsers || 0),
+          totalBoosterUsage: usageIncrement.booster,
+          egpUsers: Number(row.egpUsers || 0),
+          totalEgpUsage: usageIncrement.egp,
+          totalCompletionDuration: row.totalCompletionDuration || BigInt(0),
+          completionCount: Number(row.completionCount || 0),
+          totalFailDuration: row.totalFailDuration || BigInt(0),
+          failCount: Number(row.failCount || 0)
+        },
+        update: {
+          starts: Number(row.starts || 0),
+          completes: Number(row.completes || 0),
+          fails: Number(row.fails || 0),
+          startedPlayers: Number(row.startedPlayers || 0),
+          completedPlayers: Number(row.completedPlayers || 0),
+          boosterUsers: Number(row.boosterUsers || 0),
+          totalBoosterUsage: {
+            increment: usageIncrement.booster
+          },
+          egpUsers: Number(row.egpUsers || 0),
+          totalEgpUsage: {
+            increment: usageIncrement.egp
+          },
+          totalCompletionDuration: row.totalCompletionDuration || BigInt(0),
+          completionCount: Number(row.completionCount || 0),
+          totalFailDuration: row.totalFailDuration || BigInt(0),
+          failCount: Number(row.failCount || 0),
+          updatedAt: new Date()
+        }
+      });
+    }
+  }
+
+  /**
    * Group events by all dimensions and aggregate metrics
    * Matches the calculation logic from LevelFunnelService.calculateLevelMetrics()
    */

@@ -2,7 +2,15 @@ import { Prisma, PrismaClient } from '@prisma/client';
 import prisma from '../prisma';
 import logger from '../utils/logger';
 
-export const COHORT_DAY_INDICES = [0, 1, 2, 3, 4, 5, 6, 7, 14, 30, 60, 90, 180, 360, 540, 720];
+export const COHORT_DAY_INDICES = [
+  ...Array.from({ length: 31 }, (_, i) => i), // 0..30 (contiguous for cumulative progression metrics)
+  60,
+  90,
+  180,
+  360,
+  540,
+  720
+];
 
 export class CohortAggregationService {
   private prisma: PrismaClient;

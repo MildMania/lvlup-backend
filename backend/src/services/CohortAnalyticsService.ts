@@ -285,9 +285,46 @@ export class CohortAnalyticsService {
         days: number[],
         filters?: CohortAnalyticsParams
     ): Promise<CohortData[]> {
-        const rows = await this.getRetentionRowsForRollups(gameId, startDate, endDate, days, filters);
-        const byInstall = new Map<string, Map<number, typeof rows[number]>>();
-        for (const row of rows) {
+        const platformFilter = this.normalizeFilter(filters?.platform);
+        const countryFilter = this.normalizeFilter(filters?.country);
+        const versionFilter = this.normalizeFilter(filters?.version);
+        const maxDay = Math.max(...days);
+
+        // IMPORTANT:
+        // Avg Reached Level is cumulative by horizon day (dN), so we must read
+        // contiguous day indices 0..N. Using only selected sparse days (e.g. 0..7,14)
+        // undercounts d14/d30 by skipping d8..d13.
+        const rows = await this.prisma.$queryRaw<
+            Array<{ installDate: Date; dayIndex: number; cohortSize: bigint; retainedUsers: bigint; retainedLevelCompletes: bigint }>
+        >(Prisma.sql`
+            SELECT
+                "installDate" AS "installDate",
+                "dayIndex" AS "dayIndex",
+                COALESCE(SUM("cohortSize"), 0)::bigint AS "cohortSize",
+                COALESCE(SUM("retainedUsers"), 0)::bigint AS "retainedUsers",
+                COALESCE(SUM("retainedLevelCompletes"), 0)::bigint AS "retainedLevelCompletes"
+            FROM "cohort_retention_daily"
+            WHERE "gameId" = ${gameId}
+              AND "installDate" >= ${startDate}
+              AND "installDate" <= ${endDate}
+              AND "dayIndex" >= 0
+              AND "dayIndex" <= ${maxDay}
+              ${platformFilter.length ? Prisma.sql`AND "platform" IN (${Prisma.join(platformFilter)})` : Prisma.sql``}
+              ${countryFilter.length ? Prisma.sql`AND "countryCode" IN (${Prisma.join(countryFilter)})` : Prisma.sql``}
+              ${versionFilter.length ? Prisma.sql`AND "appVersion" IN (${Prisma.join(versionFilter)})` : Prisma.sql``}
+            GROUP BY "installDate","dayIndex"
+        `);
+
+        const normalizedRows = rows.map((row) => ({
+            installDate: row.installDate,
+            dayIndex: row.dayIndex,
+            cohortSize: Number(row.cohortSize || 0),
+            retainedUsers: Number(row.retainedUsers || 0),
+            retainedLevelCompletes: Number(row.retainedLevelCompletes || 0)
+        }));
+
+        const byInstall = new Map<string, Map<number, typeof normalizedRows[number]>>();
+        for (const row of normalizedRows) {
             const key = row.installDate.toISOString().split('T')[0];
             if (!key) continue;
             if (!byInstall.has(key)) byInstall.set(key, new Map());
@@ -304,9 +341,16 @@ export class CohortAnalyticsService {
             const retentionByDay: { [day: number]: number } = {};
             const userCountByDay: { [day: number]: number } = {};
             const cohortSize = Number(dayMap.values().next().value?.cohortSize || 0);
-
+            const sortedDays = [...days].sort((a, b) => a - b);
             const dailyAvg: Record<number, number> = {};
-            for (const day of days) {
+            for (let d = 0; d <= maxDay; d++) {
+                const row = dayMap.get(d);
+                const retainedUsers = Number(row?.retainedUsers || 0);
+                const completes = Number(row?.retainedLevelCompletes || 0);
+                dailyAvg[d] = retainedUsers > 0 ? completes / retainedUsers : 0;
+            }
+
+            for (const day of sortedDays) {
                 const target = new Date(installDateObj);
                 target.setUTCDate(target.getUTCDate() + day);
                 const targetStart = new Date(target);
@@ -319,14 +363,10 @@ export class CohortAnalyticsService {
 
                 const row = dayMap.get(day);
                 const retainedUsers = Number(row?.retainedUsers || 0);
-                const completes = Number(row?.retainedLevelCompletes || 0);
-                dailyAvg[day] = retainedUsers > 0 ? completes / retainedUsers : 0;
 
                 let cumulative = 0;
-                for (const d of days) {
-                    if (d <= day && dailyAvg[d] !== undefined) {
-                        cumulative += dailyAvg[d];
-                    }
+                for (let d = 0; d <= day; d++) {
+                    cumulative += dailyAvg[d] || 0;
                 }
                 retentionByDay[day] = cumulative > 0 ? Math.round(cumulative * 10) / 10 : 0;
                 userCountByDay[day] = retainedUsers;

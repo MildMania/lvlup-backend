@@ -120,12 +120,8 @@ export default function LevelFunnel({ isCollapsed = false }: LevelFunnelProps) {
     const [sortDirection, setSortDirection] = useState<SortDirection>('desc');
 
     // Multi-select filter states
-    const [selectedCountries, setSelectedCountries] = useState<string[]>([]);
     const [selectedPlatforms, setSelectedPlatforms] = useState<string[]>([]);
-    const [selectedVersions, setSelectedVersions] = useState<string[]>([]);
-    const [showCountrySelector, setShowCountrySelector] = useState(false);
     const [showPlatformSelector, setShowPlatformSelector] = useState(false);
-    const [showVersionSelector, setShowVersionSelector] = useState(false);
 
     // Level funnel filter state
     const [availableLevelFunnels, setAvailableLevelFunnels] = useState<{ funnel: string; version: number; label: string }[]>([]);
@@ -133,14 +129,10 @@ export default function LevelFunnel({ isCollapsed = false }: LevelFunnelProps) {
     const [showLevelFunnelSelector, setShowLevelFunnelSelector] = useState(false);
 
     // Filter options from API
-    const [availableCountries, setAvailableCountries] = useState<string[]>([]);
     const [availablePlatforms, setAvailablePlatforms] = useState<string[]>([]);
-    const [availableVersions, setAvailableVersions] = useState<string[]>([]);
 
     // Refs for dropdowns
-    const countryDropdownRef = useRef<HTMLDivElement>(null);
     const platformDropdownRef = useRef<HTMLDivElement>(null);
-    const versionDropdownRef = useRef<HTMLDivElement>(null);
     const levelFunnelDropdownRef = useRef<HTMLDivElement>(null);
 
     console.log('LevelFunnel rendered', { currentGame, loading, error, levelsCount: levels.length });
@@ -148,14 +140,8 @@ export default function LevelFunnel({ isCollapsed = false }: LevelFunnelProps) {
     // Click outside to close dropdowns
     useEffect(() => {
         const handleClickOutside = (event: MouseEvent) => {
-            if (countryDropdownRef.current && !countryDropdownRef.current.contains(event.target as Node)) {
-                setShowCountrySelector(false);
-            }
             if (platformDropdownRef.current && !platformDropdownRef.current.contains(event.target as Node)) {
                 setShowPlatformSelector(false);
-            }
-            if (versionDropdownRef.current && !versionDropdownRef.current.contains(event.target as Node)) {
-                setShowVersionSelector(false);
             }
             if (levelFunnelDropdownRef.current && !levelFunnelDropdownRef.current.contains(event.target as Node)) {
                 setShowLevelFunnelSelector(false);
@@ -167,27 +153,11 @@ export default function LevelFunnel({ isCollapsed = false }: LevelFunnelProps) {
     }, []);
 
     // Toggle functions for multi-select
-    const toggleCountry = (country: string) => {
-        setSelectedCountries(prev =>
-            prev.includes(country)
-                ? prev.filter(c => c !== country)
-                : [...prev, country]
-        );
-    };
-
     const togglePlatform = (platform: string) => {
         setSelectedPlatforms(prev =>
             prev.includes(platform)
                 ? prev.filter(p => p !== platform)
                 : [...prev, platform]
-        );
-    };
-
-    const toggleVersion = (version: string) => {
-        setSelectedVersions(prev =>
-            prev.includes(version)
-                ? prev.filter(v => v !== version)
-                : [...prev, version]
         );
     };
 
@@ -205,9 +175,7 @@ export default function LevelFunnel({ isCollapsed = false }: LevelFunnelProps) {
             try {
                 const response = await apiClient.get(`/analytics/filters/options?gameId=${currentGame.id}`);
                 if (response.data.success) {
-                    setAvailableCountries(['All', ...response.data.data.countries]);
                     setAvailablePlatforms(['All', ...response.data.data.platforms]);
-                    setAvailableVersions(['All', ...response.data.data.versions]);
                     setAvailableLevelFunnels(response.data.data.levelFunnels || []);
                 }
             } catch (error) {
@@ -226,7 +194,7 @@ export default function LevelFunnel({ isCollapsed = false }: LevelFunnelProps) {
         } else {
             setLoading(false);
         }
-    }, [currentGame, filters, selectedCountries, selectedPlatforms, selectedVersions, selectedLevelFunnels, levelLimit]);
+    }, [currentGame, filters, selectedPlatforms, selectedLevelFunnels, levelLimit]);
 
     const fetchLevelFunnelData = async () => {
         try {
@@ -240,9 +208,7 @@ export default function LevelFunnel({ isCollapsed = false }: LevelFunnelProps) {
 
             if (filters.startDate) params.append('startDate', filters.startDate);
             if (filters.endDate) params.append('endDate', filters.endDate);
-            if (selectedCountries.length > 0) params.append('country', selectedCountries.join(','));
             if (selectedPlatforms.length > 0) params.append('platform', selectedPlatforms.join(','));
-            if (selectedVersions.length > 0) params.append('version', selectedVersions.join(','));
             if (selectedLevelFunnels.length > 0) {
                 // Parse selected funnels and send as separate params
                 const funnels = selectedLevelFunnels.map(key => {
@@ -474,45 +440,6 @@ export default function LevelFunnel({ isCollapsed = false }: LevelFunnelProps) {
                             }}
                         />
                     </div>
-                    <div className="filter-group multi-select-group" ref={countryDropdownRef}>
-                        <label>Country</label>
-                        <button
-                            className="multi-select-button"
-                            onClick={() => setShowCountrySelector(!showCountrySelector)}
-                        >
-                            {selectedCountries.length > 0 ? `${selectedCountries.length} selected` : 'All countries'} ▾
-                        </button>
-                        {showCountrySelector && (
-                            <div className="multi-select-dropdown">
-                                <div className="multi-select-header">
-                                    <button
-                                        onClick={() => setSelectedCountries(availableCountries.filter(c => c !== 'All'))}
-                                        className="multi-select-action-btn"
-                                    >
-                                        Select All
-                                    </button>
-                                    <button
-                                        onClick={() => setSelectedCountries([])}
-                                        className="multi-select-action-btn"
-                                    >
-                                        Clear All
-                                    </button>
-                                </div>
-                                <div className="multi-select-list">
-                                    {availableCountries.filter(c => c !== 'All').map(country => (
-                                        <label key={country} className="multi-select-checkbox-label">
-                                            <input
-                                                type="checkbox"
-                                                checked={selectedCountries.includes(country)}
-                                                onChange={() => toggleCountry(country)}
-                                            />
-                                            <span>{country}</span>
-                                        </label>
-                                    ))}
-                                </div>
-                            </div>
-                        )}
-                    </div>
                     <div className="filter-group multi-select-group" ref={platformDropdownRef}>
                         <label>Platform</label>
                         <button
@@ -546,45 +473,6 @@ export default function LevelFunnel({ isCollapsed = false }: LevelFunnelProps) {
                                                 onChange={() => togglePlatform(platform)}
                                             />
                                             <span>{platform}</span>
-                                        </label>
-                                    ))}
-                                </div>
-                            </div>
-                        )}
-                    </div>
-                    <div className="filter-group multi-select-group" ref={versionDropdownRef}>
-                        <label>App Version</label>
-                        <button
-                            className="multi-select-button"
-                            onClick={() => setShowVersionSelector(!showVersionSelector)}
-                        >
-                            {selectedVersions.length > 0 ? `${selectedVersions.length} selected` : 'All versions'} ▾
-                        </button>
-                        {showVersionSelector && (
-                            <div className="multi-select-dropdown">
-                                <div className="multi-select-header">
-                                    <button
-                                        onClick={() => setSelectedVersions(availableVersions.filter(v => v !== 'All'))}
-                                        className="multi-select-action-btn"
-                                    >
-                                        Select All
-                                    </button>
-                                    <button
-                                        onClick={() => setSelectedVersions([])}
-                                        className="multi-select-action-btn"
-                                    >
-                                        Clear All
-                                    </button>
-                                </div>
-                                <div className="multi-select-list">
-                                    {availableVersions.filter(v => v !== 'All').map(version => (
-                                        <label key={version} className="multi-select-checkbox-label">
-                                            <input
-                                                type="checkbox"
-                                                checked={selectedVersions.includes(version)}
-                                                onChange={() => toggleVersion(version)}
-                                            />
-                                            <span>{version}</span>
                                         </label>
                                     ))}
                                 </div>
@@ -842,7 +730,7 @@ export default function LevelFunnel({ isCollapsed = false }: LevelFunnelProps) {
                         </li>
                         <li>
                             <span>•</span>
-                            <span>The country or version filters are excluding all data</span>
+                            <span>The selected platform or level funnel filters are excluding all data</span>
                         </li>
                     </ul>
                     <div className="empty-state-code-block">

@@ -7,9 +7,9 @@ import prisma from '../prisma';
  * Automatically cleans up old data to prevent database bloat
  * 
  * Retention Policies:
- * - Events: 90 days
+ * - Events: 30 days
  * - CrashLogs: 30 days
- * - Sessions: 60 days
+ * - Sessions: 30 days
  * - AiQueries: 7 days
  * - Users/PlayerCheckpoints: Indefinite (user data)
  */
@@ -19,9 +19,9 @@ export class DataRetentionService {
 
     // Retention periods in days
     private readonly RETENTION_PERIODS = {
-        events: 90,
+        events: 30,
         crashLogs: 30,
-        sessions: 60,
+        sessions: 30,
         aiQueries: 7,
         aiInsights: 30,
         businessEvents: 90,
@@ -410,4 +410,3 @@ export class DataRetentionService {
 // Export singleton instance
 export const dataRetentionService = new DataRetentionService();
 export default dataRetentionService;
-

@@ -24,6 +24,18 @@ export class LevelMetricsAggregationService {
   }
 
   /**
+   * Level funnel rollups intentionally ignore country/appVersion to keep cardinality bounded.
+   * We preserve platform + funnel + funnelVersion because they are used for analysis.
+   */
+  private normalizeLevelFunnelRollupCountryCode(_countryCode: string | null | undefined): string {
+    return '';
+  }
+
+  private normalizeLevelFunnelRollupAppVersion(_appVersion: string | null | undefined): string {
+    return '';
+  }
+
+  /**
    * Aggregate level metrics for a specific day
    * Should be run daily via cron job for the previous day's data
    */
@@ -324,8 +336,8 @@ export class LevelMetricsAggregationService {
           levelFunnel: event.levelFunnel || '',
           levelFunnelVersion: event.levelFunnelVersion || 0,
           platform: event.platform || '',
-          countryCode: event.countryCode || '',
-          appVersion: event.appVersion || ''
+          countryCode: this.normalizeLevelFunnelRollupCountryCode(event.countryCode),
+          appVersion: this.normalizeLevelFunnelRollupAppVersion(event.appVersion)
         });
       }
 
@@ -638,8 +650,8 @@ export class LevelMetricsAggregationService {
           levelFunnel: event.levelFunnel || '',
           levelFunnelVersion: event.levelFunnelVersion || 0,
           platform: event.platform || '',
-          countryCode: event.countryCode || '',
-          appVersion: event.appVersion || '',
+          countryCode: this.normalizeLevelFunnelRollupCountryCode(event.countryCode),
+          appVersion: this.normalizeLevelFunnelRollupAppVersion(event.appVersion),
           starts: 0,
           completes: 0,
           fails: 0,
@@ -794,8 +806,8 @@ export class LevelMetricsAggregationService {
           levelFunnel: event.levelFunnel || '',
           levelFunnelVersion: event.levelFunnelVersion || 0,
           platform: event.platform || '',
-          countryCode: event.countryCode || '',
-          appVersion: event.appVersion || ''
+          countryCode: this.normalizeLevelFunnelRollupCountryCode(event.countryCode),
+          appVersion: this.normalizeLevelFunnelRollupAppVersion(event.appVersion)
         });
       }
 
@@ -976,7 +988,7 @@ export class LevelMetricsAggregationService {
     countryCode: string | null,
     appVersion: string | null
   ): string {
-    return `${levelId}:${levelFunnel || ''}:${levelFunnelVersion || 0}:${platform || ''}:${countryCode || ''}:${appVersion || ''}`;
+    return `${levelId}:${levelFunnel || ''}:${levelFunnelVersion || 0}:${platform || ''}:${this.normalizeLevelFunnelRollupCountryCode(countryCode)}:${this.normalizeLevelFunnelRollupAppVersion(appVersion)}`;
   }
 
   /**

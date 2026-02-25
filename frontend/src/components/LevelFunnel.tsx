@@ -96,7 +96,7 @@ interface LevelFunnelProps {
     isCollapsed?: boolean;
 }
 
-type SortField = 'apsRaw' | 'churnTotal' | 'churnStartComplete' | 'winRate' | 'meanCompletionDuration';
+type SortField = 'apsRaw' | 'churnTotal' | 'churnStartComplete' | 'winRate' | 'meanCompletionDuration' | 'boosterUsage' | 'egpRate';
 type SortDirection = 'asc' | 'desc';
 
 export default function LevelFunnel({ isCollapsed = false }: LevelFunnelProps) {
@@ -120,12 +120,8 @@ export default function LevelFunnel({ isCollapsed = false }: LevelFunnelProps) {
     const [sortDirection, setSortDirection] = useState<SortDirection>('desc');
 
     // Multi-select filter states
-    const [selectedCountries, setSelectedCountries] = useState<string[]>([]);
     const [selectedPlatforms, setSelectedPlatforms] = useState<string[]>([]);
-    const [selectedVersions, setSelectedVersions] = useState<string[]>([]);
-    const [showCountrySelector, setShowCountrySelector] = useState(false);
     const [showPlatformSelector, setShowPlatformSelector] = useState(false);
-    const [showVersionSelector, setShowVersionSelector] = useState(false);
 
     // Level funnel filter state
     const [availableLevelFunnels, setAvailableLevelFunnels] = useState<{ funnel: string; version: number; label: string }[]>([]);
@@ -133,14 +129,10 @@ export default function LevelFunnel({ isCollapsed = false }: LevelFunnelProps) {
     const [showLevelFunnelSelector, setShowLevelFunnelSelector] = useState(false);
 
     // Filter options from API
-    const [availableCountries, setAvailableCountries] = useState<string[]>([]);
     const [availablePlatforms, setAvailablePlatforms] = useState<string[]>([]);
-    const [availableVersions, setAvailableVersions] = useState<string[]>([]);
 
     // Refs for dropdowns
-    const countryDropdownRef = useRef<HTMLDivElement>(null);
     const platformDropdownRef = useRef<HTMLDivElement>(null);
-    const versionDropdownRef = useRef<HTMLDivElement>(null);
     const levelFunnelDropdownRef = useRef<HTMLDivElement>(null);
 
     console.log('LevelFunnel rendered', { currentGame, loading, error, levelsCount: levels.length });
@@ -148,14 +140,8 @@ export default function LevelFunnel({ isCollapsed = false }: LevelFunnelProps) {
     // Click outside to close dropdowns
     useEffect(() => {
         const handleClickOutside = (event: MouseEvent) => {
-            if (countryDropdownRef.current && !countryDropdownRef.current.contains(event.target as Node)) {
-                setShowCountrySelector(false);
-            }
             if (platformDropdownRef.current && !platformDropdownRef.current.contains(event.target as Node)) {
                 setShowPlatformSelector(false);
-            }
-            if (versionDropdownRef.current && !versionDropdownRef.current.contains(event.target as Node)) {
-                setShowVersionSelector(false);
             }
             if (levelFunnelDropdownRef.current && !levelFunnelDropdownRef.current.contains(event.target as Node)) {
                 setShowLevelFunnelSelector(false);
@@ -167,27 +153,11 @@ export default function LevelFunnel({ isCollapsed = false }: LevelFunnelProps) {
     }, []);
 
     // Toggle functions for multi-select
-    const toggleCountry = (country: string) => {
-        setSelectedCountries(prev =>
-            prev.includes(country)
-                ? prev.filter(c => c !== country)
-                : [...prev, country]
-        );
-    };
-
     const togglePlatform = (platform: string) => {
         setSelectedPlatforms(prev =>
             prev.includes(platform)
                 ? prev.filter(p => p !== platform)
                 : [...prev, platform]
-        );
-    };
-
-    const toggleVersion = (version: string) => {
-        setSelectedVersions(prev =>
-            prev.includes(version)
-                ? prev.filter(v => v !== version)
-                : [...prev, version]
         );
     };
 
@@ -205,9 +175,7 @@ export default function LevelFunnel({ isCollapsed = false }: LevelFunnelProps) {
             try {
                 const response = await apiClient.get(`/analytics/filters/options?gameId=${currentGame.id}`);
                 if (response.data.success) {
-                    setAvailableCountries(['All', ...response.data.data.countries]);
                     setAvailablePlatforms(['All', ...response.data.data.platforms]);
-                    setAvailableVersions(['All', ...response.data.data.versions]);
                     setAvailableLevelFunnels(response.data.data.levelFunnels || []);
                 }
             } catch (error) {
@@ -226,7 +194,7 @@ export default function LevelFunnel({ isCollapsed = false }: LevelFunnelProps) {
         } else {
             setLoading(false);
         }
-    }, [currentGame, filters, selectedCountries, selectedPlatforms, selectedVersions, selectedLevelFunnels, levelLimit]);
+    }, [currentGame, filters, selectedPlatforms, selectedLevelFunnels, levelLimit]);
 
     const fetchLevelFunnelData = async () => {
         try {
@@ -240,9 +208,7 @@ export default function LevelFunnel({ isCollapsed = false }: LevelFunnelProps) {
 
             if (filters.startDate) params.append('startDate', filters.startDate);
             if (filters.endDate) params.append('endDate', filters.endDate);
-            if (selectedCountries.length > 0) params.append('country', selectedCountries.join(','));
             if (selectedPlatforms.length > 0) params.append('platform', selectedPlatforms.join(','));
-            if (selectedVersions.length > 0) params.append('version', selectedVersions.join(','));
             if (selectedLevelFunnels.length > 0) {
                 // Parse selected funnels and send as separate params
                 const funnels = selectedLevelFunnels.map(key => {
@@ -308,6 +274,19 @@ export default function LevelFunnel({ isCollapsed = false }: LevelFunnelProps) {
     const sortIndicator = (field: SortField) => {
         if (sortField !== field) return '↕';
         return sortDirection === 'asc' ? '↑' : '↓';
+    };
+
+    const getChurnColorClass = (value: number) => {
+        if (value <= 7) return 'metric-value-high';
+        if (value <= 10) return 'metric-value-medium';
+        return 'metric-value-low';
+    };
+
+    const getApsColorClass = (value: number) => {
+        if (value <= 1.1) return 'metric-value-high';
+        if (value <= 1.4) return 'metric-value-medium';
+        if (value <= 2.5) return 'metric-value-light-red';
+        return 'metric-value-low';
     };
 
     const exportToCSV = () => {
@@ -461,45 +440,6 @@ export default function LevelFunnel({ isCollapsed = false }: LevelFunnelProps) {
                             }}
                         />
                     </div>
-                    <div className="filter-group multi-select-group" ref={countryDropdownRef}>
-                        <label>Country</label>
-                        <button
-                            className="multi-select-button"
-                            onClick={() => setShowCountrySelector(!showCountrySelector)}
-                        >
-                            {selectedCountries.length > 0 ? `${selectedCountries.length} selected` : 'All countries'} ▾
-                        </button>
-                        {showCountrySelector && (
-                            <div className="multi-select-dropdown">
-                                <div className="multi-select-header">
-                                    <button
-                                        onClick={() => setSelectedCountries(availableCountries.filter(c => c !== 'All'))}
-                                        className="multi-select-action-btn"
-                                    >
-                                        Select All
-                                    </button>
-                                    <button
-                                        onClick={() => setSelectedCountries([])}
-                                        className="multi-select-action-btn"
-                                    >
-                                        Clear All
-                                    </button>
-                                </div>
-                                <div className="multi-select-list">
-                                    {availableCountries.filter(c => c !== 'All').map(country => (
-                                        <label key={country} className="multi-select-checkbox-label">
-                                            <input
-                                                type="checkbox"
-                                                checked={selectedCountries.includes(country)}
-                                                onChange={() => toggleCountry(country)}
-                                            />
-                                            <span>{country}</span>
-                                        </label>
-                                    ))}
-                                </div>
-                            </div>
-                        )}
-                    </div>
                     <div className="filter-group multi-select-group" ref={platformDropdownRef}>
                         <label>Platform</label>
                         <button
@@ -533,45 +473,6 @@ export default function LevelFunnel({ isCollapsed = false }: LevelFunnelProps) {
                                                 onChange={() => togglePlatform(platform)}
                                             />
                                             <span>{platform}</span>
-                                        </label>
-                                    ))}
-                                </div>
-                            </div>
-                        )}
-                    </div>
-                    <div className="filter-group multi-select-group" ref={versionDropdownRef}>
-                        <label>App Version</label>
-                        <button
-                            className="multi-select-button"
-                            onClick={() => setShowVersionSelector(!showVersionSelector)}
-                        >
-                            {selectedVersions.length > 0 ? `${selectedVersions.length} selected` : 'All versions'} ▾
-                        </button>
-                        {showVersionSelector && (
-                            <div className="multi-select-dropdown">
-                                <div className="multi-select-header">
-                                    <button
-                                        onClick={() => setSelectedVersions(availableVersions.filter(v => v !== 'All'))}
-                                        className="multi-select-action-btn"
-                                    >
-                                        Select All
-                                    </button>
-                                    <button
-                                        onClick={() => setSelectedVersions([])}
-                                        className="multi-select-action-btn"
-                                    >
-                                        Clear All
-                                    </button>
-                                </div>
-                                <div className="multi-select-list">
-                                    {availableVersions.filter(v => v !== 'All').map(version => (
-                                        <label key={version} className="multi-select-checkbox-label">
-                                            <input
-                                                type="checkbox"
-                                                checked={selectedVersions.includes(version)}
-                                                onChange={() => toggleVersion(version)}
-                                            />
-                                            <span>{version}</span>
                                         </label>
                                     ))}
                                 </div>
@@ -722,8 +623,22 @@ export default function LevelFunnel({ isCollapsed = false }: LevelFunnelProps) {
                                     </MetricTooltip>
                                 </th>
                                 <th><MetricTooltip text={METRIC_TOOLTIPS['Cumulative AVG Time']}>Cumulative AVG Time</MetricTooltip></th>
-                                <th><MetricTooltip text={METRIC_TOOLTIPS['Booster']}>Booster %</MetricTooltip></th>
-                                <th><MetricTooltip text={METRIC_TOOLTIPS['EGP']}>EGP %</MetricTooltip></th>
+                                <th
+                                    onClick={() => toggleSort('boosterUsage')}
+                                    style={{ cursor: 'pointer' }}
+                                >
+                                    <MetricTooltip text={METRIC_TOOLTIPS['Booster']}>
+                                        Booster % {sortIndicator('boosterUsage')}
+                                    </MetricTooltip>
+                                </th>
+                                <th
+                                    onClick={() => toggleSort('egpRate')}
+                                    style={{ cursor: 'pointer' }}
+                                >
+                                    <MetricTooltip text={METRIC_TOOLTIPS['EGP']}>
+                                        EGP % {sortIndicator('egpRate')}
+                                    </MetricTooltip>
+                                </th>
                             </tr>
                         </thead>
                         <tbody>
@@ -742,31 +657,19 @@ export default function LevelFunnel({ isCollapsed = false }: LevelFunnelProps) {
                                         </span>
                                     </td>
                                     <td>
-                                        <span className={
-                                            level.churnTotal >= 30 ? 'metric-value-low' : 
-                                            level.churnTotal >= 15 ? 'metric-value-medium' : 
-                                            'metric-value-high'
-                                        }>
+                                        <span className={getChurnColorClass(level.churnTotal)}>
                                             {level.churnTotal.toFixed(1)}%
                                         </span>
                                     </td>
                                     {isChurnExpanded && (
                                         <>
                                             <td>
-                                                <span className={
-                                                    level.churnStartComplete >= 30 ? 'metric-value-low' : 
-                                                    level.churnStartComplete >= 15 ? 'metric-value-medium' : 
-                                                    'metric-value-high'
-                                                }>
+                                                <span className={getChurnColorClass(level.churnStartComplete)}>
                                                     {level.churnStartComplete.toFixed(1)}%
                                                 </span>
                                             </td>
                                             <td>
-                                                <span className={
-                                                    level.churnCompleteNext >= 30 ? 'metric-value-low' : 
-                                                    level.churnCompleteNext >= 15 ? 'metric-value-medium' : 
-                                                    'metric-value-high'
-                                                }>
+                                                <span className={getChurnColorClass(level.churnCompleteNext)}>
                                                     {level.churnCompleteNext.toFixed(1)}%
                                                 </span>
                                             </td>
@@ -791,7 +694,11 @@ export default function LevelFunnel({ isCollapsed = false }: LevelFunnelProps) {
                                         </span>
                                     </td>
                                     <td>{level.failRate.toFixed(1)}%</td>
-                                    <td>{level.apsRaw.toFixed(2)}</td>
+                                    <td>
+                                        <span className={getApsColorClass(level.apsRaw)}>
+                                            {level.apsRaw.toFixed(2)}
+                                        </span>
+                                    </td>
                                     <td>{level.meanCompletionDuration.toFixed(1)}s</td>
                                     <td>{(level.cumulativeAvgTime / 60).toFixed(1)}m</td>
                                     <td>{level.boosterUsage.toFixed(1)}%</td>
@@ -823,7 +730,7 @@ export default function LevelFunnel({ isCollapsed = false }: LevelFunnelProps) {
                         </li>
                         <li>
                             <span>•</span>
-                            <span>The country or version filters are excluding all data</span>
+                            <span>The selected platform or level funnel filters are excluding all data</span>
                         </li>
                     </ul>
                     <div className="empty-state-code-block">

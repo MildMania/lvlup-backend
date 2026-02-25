@@ -42,6 +42,7 @@ model Game {
   cohortSessionMetricsDaily CohortSessionMetricsDaily[]
   cohortRetentionUsersHourly CohortRetentionUsersHourly[]
   cohortMonetizationDaily CohortMonetizationDaily[]
+  cohortPayersDaily CohortPayersDaily[]
   monetizationDailyRollups MonetizationDailyRollup[]
   iapPayers IapPayer[]
 
@@ -1047,6 +1048,28 @@ model CohortMonetizationDaily {
   @@index([gameId, installDate, platform, countryCode, appVersion])
   @@unique([gameId, installDate, dayIndex, platform, countryCode, appVersion], name: "unique_cohort_monetization_daily")
   @@map("cohort_monetization_daily")
+}
+
+model CohortPayersDaily {
+  id          String   @id @default(cuid())
+  gameId      String
+  installDate DateTime // Cohort install date (UTC date only)
+  dayIndex    Int      // Day offset from install date (first purchase day)
+  platform    String   @default("")
+  countryCode String   @default("")
+  appVersion  String   @default("")
+  newPayers   Int      @default(0) // Unique payers whose first IAP falls on this dayIndex
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  game Game @relation(fields: [gameId], references: [id], onDelete: Cascade)
+
+  @@index([gameId, installDate])
+  @@index([gameId, dayIndex])
+  @@index([gameId, installDate, platform, countryCode, appVersion])
+  @@unique([gameId, installDate, dayIndex, platform, countryCode, appVersion], name: "unique_cohort_payers_daily")
+  @@map("cohort_payers_daily")
 }
 
 model MonetizationDailyRollup {

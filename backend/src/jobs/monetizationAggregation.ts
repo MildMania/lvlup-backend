@@ -51,11 +51,13 @@ export function startMonetizationHourlyTodayJob(): void {
           return;
         }
 
-        const today = new Date();
-        today.setUTCHours(0, 0, 0, 0);
+        const hourEnd = new Date();
+        hourEnd.setUTCSeconds(0, 0);
+        const hourStart = new Date(hourEnd);
+        hourStart.setUTCHours(hourStart.getUTCHours() - 1);
 
         for (const gameId of games) {
-          await monetizationAggregationService.aggregateDaily(gameId, today);
+          await monetizationAggregationService.aggregateHourlyIncrementForToday(gameId, hourStart, hourEnd);
         }
 
         logger.info(`Hourly monetization aggregation complete for ${games.length} games`);

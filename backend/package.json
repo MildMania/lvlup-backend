@@ -29,6 +29,7 @@
     "backfill:level-metrics": "ts-node src/scripts/backfillLevelMetrics.ts",
     "backfill:active-users": "ts-node src/scripts/backfillActiveUsers.ts",
     "backfill:cohorts": "ts-node src/scripts/backfillCohorts.ts",
+    "backfill:cohort-payers": "ts-node src/scripts/backfillCohortPayers.ts",
     "backfill:monetization": "ts-node src/scripts/backfillMonetization.ts",
     "worker:start": "bash scripts/worker-start.sh",
     "worker:redeploy": "bash scripts/worker-redeploy.sh",

@@ -587,7 +587,7 @@ export class AnalyticsController {
                 filters.version = req.query.version;
             }
 
-            const cohorts = await monetizationCohortService.getMonetizationCohorts(
+            const result = await monetizationCohortService.getMonetizationCohorts(
                 gameId,
                 startDate,
                 endDate,
@@ -598,7 +598,8 @@ export class AnalyticsController {
 
             res.status(200).json({
                 success: true,
-                data: cohorts
+                data: result.cohorts,
+                summary: result.summary
             });
         } catch (error) {
             logger.error('Error in getMonetizationCohorts controller:', error);

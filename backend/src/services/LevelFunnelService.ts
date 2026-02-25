@@ -67,6 +67,14 @@ export class LevelFunnelService {
                 levelLimit = 100
             } = filters;
 
+            if (country || version) {
+                logger.warn('Level funnel rollups ignore country/appVersion filters to reduce rollup cardinality', {
+                    gameId,
+                    countryFilterProvided: !!country,
+                    appVersionFilterProvided: !!version
+                });
+            }
+
             logger.info(`Starting FAST level funnel query (hybrid) for game ${gameId}`);
             const queryStart = Date.now();
 
@@ -272,15 +280,11 @@ export class LevelFunnelService {
         totalFailDuration: any;
         failCount: number;
     }>> {
-        const countries = filters.country
-            ? filters.country.split(',').map(c => c.trim()).filter(c => c)
-            : [];
+        const countries: string[] = [];
         const platforms = filters.platform
             ? filters.platform.split(',').map(p => p.trim()).filter(p => p)
             : [];
-        const versions = filters.version
-            ? filters.version.split(',').map(v => v.trim()).filter(v => v)
-            : [];
+        const versions: string[] = [];
 
         let funnelClauses: any = Prisma.sql``;
         if (filters.levelFunnel) {
@@ -394,15 +398,11 @@ export class LevelFunnelService {
         boosterUsers: number;
         egpUsers: number;
     }>> {
-        const countries = filters.country
-            ? filters.country.split(',').map(c => c.trim()).filter(c => c)
-            : [];
+        const countries: string[] = [];
         const platforms = filters.platform
             ? filters.platform.split(',').map(p => p.trim()).filter(p => p)
             : [];
-        const versions = filters.version
-            ? filters.version.split(',').map(v => v.trim()).filter(v => v)
-            : [];
+        const versions: string[] = [];
 
         let funnelClauses: any = Prisma.sql``;
         if (filters.levelFunnel) {
@@ -504,15 +504,11 @@ export class LevelFunnelService {
             levelFunnelVersion?: string | number;
         }
     ): Promise<any[]> {
-        const countries = filters.country
-            ? filters.country.split(',').map(c => c.trim()).filter(c => c)
-            : [];
+        const countries: string[] = [];
         const platforms = filters.platform
             ? filters.platform.split(',').map(p => p.trim()).filter(p => p)
             : [];
-        const versions = filters.version
-            ? filters.version.split(',').map(v => v.trim()).filter(v => v)
-            : [];
+        const versions: string[] = [];
 
         let funnelClauses: any = Prisma.sql``;
         if (filters.levelFunnel) {

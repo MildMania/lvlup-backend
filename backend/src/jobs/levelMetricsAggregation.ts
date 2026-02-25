@@ -78,15 +78,17 @@ export function startLevelMetricsHourlyTodayJob(): void {
           return;
         }
 
-        const today = new Date();
-        today.setUTCHours(0, 0, 0, 0);
+        const hourEnd = new Date();
+        hourEnd.setUTCSeconds(0, 0);
+        const hourStart = new Date(hourEnd);
+        hourStart.setUTCHours(hourStart.getUTCHours() - 1);
 
         let successCount = 0;
         let errorCount = 0;
 
         for (const gameId of games) {
           try {
-            await aggregationService.aggregateDailyMetrics(gameId, today);
+            await aggregationService.aggregateHourlyMetricsIncremental(gameId, hourStart, hourEnd);
             successCount++;
           } catch (error) {
             logger.error(`Error aggregating today's metrics for game ${gameId}:`, error);

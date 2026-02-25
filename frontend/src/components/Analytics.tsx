@@ -544,15 +544,18 @@ const EngagementTab: React.FC<{ gameInfo: any }> = ({ gameInfo }) => {
                     <td className="install-date">{cohort.installDate}</td>
                     <td className="install-count">{cohort.installCount}</td>
                     {selectedDays.map(day => {
-                      const value = cohort.retentionByDay[day];
+                      const rawValue = cohort.retentionByDay?.[day];
+                      const value = typeof rawValue === 'number' ? rawValue : Number(rawValue);
+                      const hasNumericValue = Number.isFinite(value);
                       const userCount = cohort.userCountByDay?.[day];
-                      const isNotAvailable = value < 0;
+                      const isNotAvailable = !hasNumericValue || value < 0;
+                      const formattedValue = isNotAvailable ? 'N/A' : `${value.toFixed(1)}%`;
                       return (
                         <td
                           key={day}
                           className={`retention-cell ${isNotAvailable ? 'not-available' : getRetentionColor(value)}`}
                         >
-                          <div className="metric-value">{isNotAvailable ? 'N/A' : `${value}%`}</div>
+                          <div className="metric-value">{formattedValue}</div>
                           {!isNotAvailable && userCount !== undefined && (
                             <div className="metric-user-count">{userCount} users</div>
                           )}
@@ -590,9 +593,11 @@ const EngagementTab: React.FC<{ gameInfo: any }> = ({ gameInfo }) => {
                     <td className="install-date">{row.date}</td>
                     <td className="install-count">{row.userCount || 0}</td>
                     {selectedDays.map(day => {
-                      const value = row.metricsByDay?.[day];
+                      const rawValue = row.metricsByDay?.[day];
+                      const value = typeof rawValue === 'number' ? rawValue : Number(rawValue);
+                      const hasNumericValue = Number.isFinite(value);
                       const userCount = row.userCountByDay?.[day];
-                      const isNotAvailable = value === undefined || value === null || value < 0;
+                      const isNotAvailable = !hasNumericValue || value < 0;
                       const formattedValue = isNotAvailable
                         ? 'N/A'
                         : selectedMetric === 'playtime' 
@@ -607,7 +612,7 @@ const EngagementTab: React.FC<{ gameInfo: any }> = ({ gameInfo }) => {
                         ? `L${value.toFixed(0)}`
                         : value.toFixed(1);
                       
-                      const colorClass = getMetricColor(day, value);
+                      const colorClass = getMetricColor(day, isNotAvailable ? undefined : value);
                       
                       return (
                         <td key={day} className={`retention-cell ${colorClass}`}>
@@ -666,10 +671,11 @@ const HealthTab: React.FC<{ gameInfo: any }> = ({ gameInfo }) => {
 // Monetization Tab Component
 const MonetizationTab: React.FC<{ gameInfo: any }> = ({ gameInfo }) => {
   const [cohortData, setCohortData] = useState<any[]>([]);
+  const [payerRatioSummary, setPayerRatioSummary] = useState<{ day1: number; day3: number; day7: number } | null>(null);
   const [revenueSummary, setRevenueSummary] = useState<any>(null);
   const [revenueSummaryLoaded, setRevenueSummaryLoaded] = useState(false);
   const [loading, setLoading] = useState(false);
-  const [selectedMetric, setSelectedMetric] = useState<'totalRevenue' | 'iapRevenue' | 'adRevenue' | 'arpu' | 'arpuIap' | 'arppuIap' | 'conversionRate'>('totalRevenue');
+  const [selectedMetric, setSelectedMetric] = useState<'totalRevenue' | 'iapRevenue' | 'adRevenue' | 'arpu' | 'arpuIap' | 'arppuIap' | 'conversionRate' | 'ltv'>('totalRevenue');
   const [showDaySelector, setShowDaySelector] = useState(false);
   const [showPlatformSelector, setShowPlatformSelector] = useState(false);
   const [showCountrySelector, setShowCountrySelector] = useState(false);
@@ -736,6 +742,7 @@ const MonetizationTab: React.FC<{ gameInfo: any }> = ({ gameInfo }) => {
 
       if (response.data.success && response.data.data) {
         setCohortData(response.data.data);
+        setPayerRatioSummary(response.data.summary?.payerRatio || null);
       } else {
         console.error('API returned unsuccessful response:', response.data);
       }
@@ -813,9 +820,18 @@ const MonetizationTab: React.FC<{ gameInfo: any }> = ({ gameInfo }) => {
         return data.arpu;
       case 'conversionRate':
         return data.conversionRate;
+      case 'ltv':
+        return data.ltv;
       default:
         return undefined;
     }
+  };
+
+  const formatCompactCurrency = (value: number) => {
+    if (!Number.isFinite(value)) return '$0.00';
+    if (Math.abs(value) >= 1_000_000) return `$${(value / 1_000_000).toFixed(1)}M`;
+    if (Math.abs(value) >= 1_000) return `$${(value / 1_000).toFixed(1)}K`;
+    return `$${value.toFixed(2)}`;
   };
 
   const getUserCount = (metrics: any, day: number) => {
@@ -933,7 +949,7 @@ const MonetizationTab: React.FC<{ gameInfo: any }> = ({ gameInfo }) => {
           <h3 style={{ marginBottom: '15px', fontSize: '18px', fontWeight: '600' }}>All-Time Revenue Summary</h3>
           <div style={{ 
             display: 'grid', 
-            gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', 
+            gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', 
             gap: '15px',
             marginBottom: '20px'
           }}>
@@ -945,7 +961,7 @@ const MonetizationTab: React.FC<{ gameInfo: any }> = ({ gameInfo }) => {
               boxShadow: '0 4px 6px rgba(0,0,0,0.1)'
             }}>
               <div style={{ fontSize: '14px', opacity: 0.9, marginBottom: '8px' }}>Total Revenue</div>
-              <div style={{ fontSize: '32px', fontWeight: '700' }}>${revenueSummary.totalRevenue.toFixed(2)}</div>
+              <div style={{ fontSize: '32px', fontWeight: '700' }}>{formatCompactCurrency(revenueSummary.totalRevenue)}</div>
               <div style={{ fontSize: '12px', opacity: 0.8, marginTop: '8px' }}>
                 {revenueSummary.adImpressionCount + revenueSummary.iapCount} events
               </div>
@@ -959,7 +975,7 @@ const MonetizationTab: React.FC<{ gameInfo: any }> = ({ gameInfo }) => {
               boxShadow: '0 4px 6px rgba(0,0,0,0.1)'
             }}>
               <div style={{ fontSize: '14px', opacity: 0.9, marginBottom: '8px' }}>IAP Revenue</div>
-              <div style={{ fontSize: '32px', fontWeight: '700' }}>${revenueSummary.iapRevenue.toFixed(2)}</div>
+              <div style={{ fontSize: '32px', fontWeight: '700' }}>{formatCompactCurrency(revenueSummary.iapRevenue)}</div>
               <div style={{ fontSize: '12px', opacity: 0.8, marginTop: '8px' }}>
                 {revenueSummary.iapCount} purchases
               </div>
@@ -973,7 +989,7 @@ const MonetizationTab: React.FC<{ gameInfo: any }> = ({ gameInfo }) => {
               boxShadow: '0 4px 6px rgba(0,0,0,0.1)'
             }}>
               <div style={{ fontSize: '14px', opacity: 0.9, marginBottom: '8px' }}>Ad Revenue</div>
-              <div style={{ fontSize: '32px', fontWeight: '700' }}>${revenueSummary.adRevenue.toFixed(2)}</div>
+              <div style={{ fontSize: '32px', fontWeight: '700' }}>{formatCompactCurrency(revenueSummary.adRevenue)}</div>
               <div style={{ fontSize: '12px', opacity: 0.8, marginTop: '8px' }}>
                 {revenueSummary.adImpressionCount} impressions
               </div>
@@ -990,6 +1006,22 @@ const MonetizationTab: React.FC<{ gameInfo: any }> = ({ gameInfo }) => {
               <div style={{ fontSize: '32px', fontWeight: '700' }}>${revenueSummary.arpu.toFixed(4)}</div>
               <div style={{ fontSize: '12px', opacity: 0.8, marginTop: '8px' }}>
                 {revenueSummary.totalUsers} users
+              </div>
+            </div>
+
+            <div style={{ 
+              background: 'linear-gradient(135deg, #43e97b 0%, #38f9d7 100%)', 
+              padding: '20px', 
+              borderRadius: '12px',
+              color: '#123',
+              boxShadow: '0 4px 6px rgba(0,0,0,0.1)'
+            }}>
+              <div style={{ fontSize: '14px', opacity: 0.9, marginBottom: '8px' }}>LTV</div>
+              <div style={{ fontSize: '32px', fontWeight: '700' }}>
+                ${Number(revenueSummary.arpu || 0).toFixed(4)}
+              </div>
+              <div style={{ fontSize: '12px', opacity: 0.8, marginTop: '8px' }}>
+                Revenue per installed user
               </div>
             </div>
 
@@ -1024,6 +1056,32 @@ const MonetizationTab: React.FC<{ gameInfo: any }> = ({ gameInfo }) => {
         </div>
       )}
 
+      {payerRatioSummary && (
+        <div style={{ marginBottom: '30px' }}>
+          <h3 style={{ marginBottom: '15px', fontSize: '18px', fontWeight: '600' }}>Cohort Payer Ratio Summary</h3>
+          <div
+            style={{
+              display: 'grid',
+              gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))',
+              gap: '15px'
+            }}
+          >
+            <div style={{ background: '#1f2a3d', padding: '16px', borderRadius: '10px', border: '1px solid #2f3f5c' }}>
+              <div style={{ fontSize: '13px', opacity: 0.8, marginBottom: '6px' }}>D1 Payer %</div>
+              <div style={{ fontSize: '28px', fontWeight: 700 }}>{payerRatioSummary.day1.toFixed(2)}%</div>
+            </div>
+            <div style={{ background: '#1f2a3d', padding: '16px', borderRadius: '10px', border: '1px solid #2f3f5c' }}>
+              <div style={{ fontSize: '13px', opacity: 0.8, marginBottom: '6px' }}>D3 Payer %</div>
+              <div style={{ fontSize: '28px', fontWeight: 700 }}>{payerRatioSummary.day3.toFixed(2)}%</div>
+            </div>
+            <div style={{ background: '#1f2a3d', padding: '16px', borderRadius: '10px', border: '1px solid #2f3f5c' }}>
+              <div style={{ fontSize: '13px', opacity: 0.8, marginBottom: '6px' }}>D7 Payer %</div>
+              <div style={{ fontSize: '28px', fontWeight: 700 }}>{payerRatioSummary.day7.toFixed(2)}%</div>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Cohort Analysis Section */}
       <h3 style={{ marginTop: '30px', marginBottom: '15px', fontSize: '18px', fontWeight: '600' }}>Cohort Analysis</h3>
 
@@ -1040,6 +1098,7 @@ const MonetizationTab: React.FC<{ gameInfo: any }> = ({ gameInfo }) => {
             <option value="iapRevenue">Revenue (IAP)</option>
             <option value="adRevenue">Revenue (Ad)</option>
             <option value="arpu">ARPU (Total)</option>
+            <option value="ltv">LTV</option>
             <option value="arpuIap">ARPU (IAP)</option>
             <option value="arppuIap">ARPPU (IAP)</option>
             <option value="conversionRate">Conversion Rate</option>
@@ -1234,11 +1293,13 @@ const MonetizationTab: React.FC<{ gameInfo: any }> = ({ gameInfo }) => {
                     <td className="install-date">{cohort.cohortDate}</td>
                     <td className="install-count">{cohort.cohortSize}</td>
                     {selectedDays.map(day => {
-                      const value = getMetricValue(cohort.metrics, day);
+                      const rawValue = getMetricValue(cohort.metrics, day);
+                      const value = typeof rawValue === 'number' ? rawValue : Number(rawValue);
+                      const hasNumericValue = Number.isFinite(value);
                       const userCount = getUserCount(cohort.metrics, day);
                       const payingUsers = getPayingUserCount(cohort.metrics, day);
                       // Match Engagement tab: isNotAvailable checks for negative values (backend marker for unreached days)
-                      const isNotAvailable = value === undefined || value === null || value < 0;
+                      const isNotAvailable = !hasNumericValue || value < 0;
                       const formattedValue = isNotAvailable 
                         ? 'N/A' 
                         : selectedMetric === 'conversionRate'

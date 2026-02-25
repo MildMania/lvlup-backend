@@ -139,6 +139,13 @@ export class AnalyticsService {
                 throw new Error('Session not found');
             }
 
+            // Idempotency guard: ignore late/duplicate end requests once session is already closed.
+            // This prevents stale client end times from inflating duration after auto-closure.
+            if (session.endTime) {
+                logger.warn(`Ignoring endSession for already closed session ${sessionId} (existing endTime: ${session.endTime.toISOString()})`);
+                return session;
+            }
+
             const requestedEndTime = new Date(endTime);
             
             // Use the later of requested endTime or lastHeartbeat

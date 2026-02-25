@@ -487,6 +487,22 @@
   font-weight: 600;
 }
 
+.metric-value-light-red {
+  color: #f87171;
+  background: rgba(248, 113, 113, 0.12);
+  padding: 4px 8px;
+  border-radius: 6px;
+  font-weight: 600;
+}
+
+.metric-value-dark-red {
+  color: #7f1d1d;
+  background: rgba(127, 29, 29, 0.18);
+  padding: 4px 8px;
+  border-radius: 6px;
+  font-weight: 600;
+}
+
 /* Empty State */
 .empty-state {
   background: var(--bg-secondary);
@@ -744,4 +760,3 @@
 .churn-header-expandable:hover {
   background-color: var(--bg-hover);
 }
-

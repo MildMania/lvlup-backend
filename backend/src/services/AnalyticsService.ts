@@ -190,7 +190,6 @@ export class AnalyticsService {
                 sessionHeartbeatBatchWriter.enqueue({
                     sessionId,
                     lastHeartbeat: session.startTime,
-                    endTime: session.startTime,
                     duration: 0,
                     countryCode: countryCode || session.countryCode || null
                 });
@@ -209,7 +208,6 @@ export class AnalyticsService {
             sessionHeartbeatBatchWriter.enqueue({
                 sessionId,
                 lastHeartbeat: now,
-                endTime: now,
                 duration: Math.max(duration, 0),
                 countryCode: countryCode || session.countryCode || null
             });

@@ -29,7 +29,7 @@ const SHUTDOWN_GRACE_PERIOD_MS = 3000; // Max time to wait during shutdown
 interface PendingHeartbeat {
     sessionId: string;
     lastHeartbeat: Date;
-    endTime: Date;
+    endTime?: Date;
     duration: number;
     countryCode: string | null;
 }
@@ -146,9 +146,12 @@ export class SessionHeartbeatBatchWriter {
                 try {
                     const updateData: any = {
                         lastHeartbeat: heartbeat.lastHeartbeat,
-                        endTime: heartbeat.endTime,
                         duration: heartbeat.duration
                     };
+
+                    if (heartbeat.endTime) {
+                        updateData.endTime = heartbeat.endTime;
+                    }
 
                     // Update countryCode if provided
                     if (heartbeat.countryCode) {
@@ -199,9 +202,12 @@ export class SessionHeartbeatBatchWriter {
                     try {
                         const updateData: any = {
                             lastHeartbeat: heartbeat.lastHeartbeat,
-                            endTime: heartbeat.endTime,
                             duration: heartbeat.duration
                         };
+
+                        if (heartbeat.endTime) {
+                            updateData.endTime = heartbeat.endTime;
+                        }
 
                         if (heartbeat.countryCode) {
                             updateData.countryCode = heartbeat.countryCode;
@@ -304,4 +310,3 @@ export class SessionHeartbeatBatchWriter {
 
 // Singleton instance
 export const sessionHeartbeatBatchWriter = new SessionHeartbeatBatchWriter();
-

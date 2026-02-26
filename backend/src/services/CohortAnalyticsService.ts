@@ -59,6 +59,24 @@ export class CohortAnalyticsService {
     }
 
     /**
+     * Shared cohort install-count aggregation rule used by all engagement cohort reads.
+     * Excludes the N/N/N slice (platform='', country='', version='') from cohortSize.
+     */
+    private cohortSizeAggregateSql(): Prisma.Sql {
+        return Prisma.sql`
+            COALESCE(SUM(
+                CASE
+                    WHEN COALESCE("platform", '') = ''
+                     AND COALESCE("countryCode", '') = ''
+                     AND COALESCE("appVersion", '') = ''
+                    THEN 0
+                    ELSE "cohortSize"
+                END
+            ), 0)::bigint
+        `;
+    }
+
+    /**
      * Calculate cohort playtime metrics (average daily playtime per cohort)
      */
     async calculateCohortPlaytime(
@@ -122,6 +140,7 @@ export class CohortAnalyticsService {
         const platformFilter = this.normalizeFilter(filters?.platform);
         const countryFilter = this.normalizeFilter(filters?.country);
         const versionFilter = this.normalizeFilter(filters?.version);
+        const cohortSizeAgg = this.cohortSizeAggregateSql();
 
         const rows = await this.prisma.$queryRaw<
             Array<{ installDate: Date; dayIndex: number; cohortSize: bigint; retainedUsers: bigint; retainedLevelCompletes: bigint }>
@@ -129,15 +148,7 @@ export class CohortAnalyticsService {
             SELECT
                 "installDate" AS "installDate",
                 "dayIndex" AS "dayIndex",
-                COALESCE(SUM(
-                    CASE
-                        WHEN COALESCE("platform", '') = ''
-                         AND COALESCE("countryCode", '') = ''
-                         AND COALESCE("appVersion", '') = ''
-                        THEN 0
-                        ELSE "cohortSize"
-                    END
-                ), 0)::bigint AS "cohortSize",
+                ${cohortSizeAgg} AS "cohortSize",
                 COALESCE(SUM("retainedUsers"), 0)::bigint AS "retainedUsers",
                 COALESCE(SUM("retainedLevelCompletes"), 0)::bigint AS "retainedLevelCompletes"
             FROM "cohort_retention_daily"
@@ -176,6 +187,7 @@ export class CohortAnalyticsService {
         const platformFilter = this.normalizeFilter(filters?.platform);
         const countryFilter = this.normalizeFilter(filters?.country);
         const versionFilter = this.normalizeFilter(filters?.version);
+        const cohortSizeAgg = this.cohortSizeAggregateSql();
 
         const rows = await this.prisma.$queryRaw<
             Array<{ installDate: Date; dayIndex: number; cohortSize: bigint; sessionUsers: bigint; totalSessions: bigint; totalDurationSec: bigint }>
@@ -183,7 +195,7 @@ export class CohortAnalyticsService {
             SELECT
                 "installDate" AS "installDate",
                 "dayIndex" AS "dayIndex",
-                COALESCE(SUM("cohortSize"), 0)::bigint AS "cohortSize",
+                ${cohortSizeAgg} AS "cohortSize",
                 COALESCE(SUM("sessionUsers"), 0)::bigint AS "sessionUsers",
                 COALESCE(SUM("totalSessions"), 0)::bigint AS "totalSessions",
                 COALESCE(SUM("totalDurationSec"), 0)::bigint AS "totalDurationSec"
@@ -297,6 +309,7 @@ export class CohortAnalyticsService {
         const countryFilter = this.normalizeFilter(filters?.country);
         const versionFilter = this.normalizeFilter(filters?.version);
         const maxDay = Math.max(...days);
+        const cohortSizeAgg = this.cohortSizeAggregateSql();
 
         // IMPORTANT:
         // Avg Reached Level is cumulative by horizon day (dN), so we must read
@@ -308,7 +321,7 @@ export class CohortAnalyticsService {
             SELECT
                 "installDate" AS "installDate",
                 "dayIndex" AS "dayIndex",
-                COALESCE(SUM("cohortSize"), 0)::bigint AS "cohortSize",
+                ${cohortSizeAgg} AS "cohortSize",
                 COALESCE(SUM("retainedUsers"), 0)::bigint AS "retainedUsers",
                 COALESCE(SUM("retainedLevelCompletes"), 0)::bigint AS "retainedLevelCompletes"
             FROM "cohort_retention_daily"
@@ -402,6 +415,7 @@ export class CohortAnalyticsService {
         const platformFilter = this.normalizeFilter(filters?.platform);
         const countryFilter = this.normalizeFilter(filters?.country);
         const versionFilter = this.normalizeFilter(filters?.version);
+        const cohortSizeAgg = this.cohortSizeAggregateSql();
 
         const rows = await this.prisma.$queryRaw<
             Array<{ installDate: Date; dayIndex: number; cohortSize: bigint; retainedUsers: bigint; retainedLevelCompletes: bigint }>
@@ -409,7 +423,7 @@ export class CohortAnalyticsService {
             SELECT
                 "installDate" AS "installDate",
                 "dayIndex" AS "dayIndex",
-                COALESCE(SUM("cohortSize"), 0)::bigint AS "cohortSize",
+                ${cohortSizeAgg} AS "cohortSize",
                 COALESCE(SUM("retainedUsers"), 0)::bigint AS "retainedUsers",
                 COALESCE(SUM("retainedLevelCompletes"), 0)::bigint AS "retainedLevelCompletes"
             FROM "cohort_retention_daily"

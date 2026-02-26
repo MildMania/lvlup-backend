@@ -129,7 +129,15 @@ export class CohortAnalyticsService {
             SELECT
                 "installDate" AS "installDate",
                 "dayIndex" AS "dayIndex",
-                COALESCE(SUM("cohortSize"), 0)::bigint AS "cohortSize",
+                COALESCE(SUM(
+                    CASE
+                        WHEN COALESCE("platform", '') = ''
+                         AND COALESCE("countryCode", '') = ''
+                         AND COALESCE("appVersion", '') = ''
+                        THEN 0
+                        ELSE "cohortSize"
+                    END
+                ), 0)::bigint AS "cohortSize",
                 COALESCE(SUM("retainedUsers"), 0)::bigint AS "retainedUsers",
                 COALESCE(SUM("retainedLevelCompletes"), 0)::bigint AS "retainedLevelCompletes"
             FROM "cohort_retention_daily"

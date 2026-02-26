@@ -122,6 +122,15 @@ export class CohortAnalyticsService {
         const platformFilter = this.normalizeFilter(filters?.platform);
         const countryFilter = this.normalizeFilter(filters?.country);
         const versionFilter = this.normalizeFilter(filters?.version);
+        const platformWhere = platformFilter.length
+            ? Prisma.sql`AND "platform" IN (${Prisma.join(platformFilter)})`
+            : Prisma.sql`AND COALESCE("platform", '') = ''`;
+        const countryWhere = countryFilter.length
+            ? Prisma.sql`AND "countryCode" IN (${Prisma.join(countryFilter)})`
+            : Prisma.sql`AND COALESCE("countryCode", '') = ''`;
+        const versionWhere = versionFilter.length
+            ? Prisma.sql`AND "appVersion" IN (${Prisma.join(versionFilter)})`
+            : Prisma.sql`AND COALESCE("appVersion", '') = ''`;
 
         const rows = await this.prisma.$queryRaw<
             Array<{ installDate: Date; dayIndex: number; cohortSize: bigint; retainedUsers: bigint; retainedLevelCompletes: bigint }>
@@ -137,9 +146,9 @@ export class CohortAnalyticsService {
               AND "installDate" >= ${startDate}
               AND "installDate" <= ${endDate}
               AND "dayIndex" IN (${Prisma.join(days)})
-              ${platformFilter.length ? Prisma.sql`AND "platform" IN (${Prisma.join(platformFilter)})` : Prisma.sql``}
-              ${countryFilter.length ? Prisma.sql`AND "countryCode" IN (${Prisma.join(countryFilter)})` : Prisma.sql``}
-              ${versionFilter.length ? Prisma.sql`AND "appVersion" IN (${Prisma.join(versionFilter)})` : Prisma.sql``}
+              ${platformWhere}
+              ${countryWhere}
+              ${versionWhere}
             GROUP BY "installDate","dayIndex"
         `);
 

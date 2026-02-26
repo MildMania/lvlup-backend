@@ -916,6 +916,38 @@ model LevelMetricsDailyUser {
   @@map("level_metrics_daily_users")
 }
 
+model LevelChurnCohortDaily {
+  id        String   @id @default(cuid())
+  gameId    String
+  cohortDate DateTime // Day user started the level (level-start cohort date, UTC day)
+  installDate DateTime // User install cohort date (UTC day)
+  levelId   Int
+
+  // Filter dimensions aligned with level funnel rollups
+  levelFunnel        String @default("")
+  levelFunnelVersion Int    @default(0)
+  platform           String @default("")
+  countryCode        String @default("") // intentionally normalized to '' for level funnel rollups
+  appVersion         String @default("") // intentionally normalized to '' for level funnel rollups
+
+  starters       Int @default(0) // day-0 starters for this level cohort row
+  completedByD0  Int @default(0)
+  completedByD3  Int @default(0)
+  completedByD7  Int @default(0)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  game Game @relation(fields: [gameId], references: [id], onDelete: Cascade)
+
+  @@index([gameId, cohortDate])
+  @@index([gameId, installDate])
+  @@index([gameId, levelId, cohortDate])
+  @@index([gameId, levelFunnel, levelFunnelVersion, cohortDate])
+  @@unique([gameId, cohortDate, installDate, levelId, levelFunnel, levelFunnelVersion, platform, countryCode, appVersion], name: "unique_level_churn_cohort_daily")
+  @@map("level_churn_cohort_daily")
+}
+
 model ActiveUsersDaily {
   id          String   @id @default(cuid())
   gameId      String

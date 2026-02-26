@@ -35,6 +35,8 @@ interface LevelMetrics {
     churnTotal: number; // Total churn rate
     churnStartComplete: number;
     churnCompleteNext: number;
+    churnD3?: number | null; // % of D7-eligible starters not completed by D3 (same denominator as D7)
+    churnD7?: number | null; // % of D7-eligible starters not completed by D7
     aps: number; // Attempts per success: starts / completes
     apsRaw?: number; // Backward compatibility: same as aps (deprecated, use aps instead)
     apsClean?: number; // Backward compatibility: always 0 (deprecated)
@@ -145,6 +147,16 @@ export class LevelFunnelService {
                 }
 
                 const levelMetrics = this.calculateDerivedMetrics(merged, levelLimit);
+                await this.mergeHorizonChurnMetrics(levelMetrics, {
+                    gameId,
+                    startDate: start,
+                    endDate: end,
+                    installStartDate,
+                    installEndDate,
+                    platform,
+                    levelFunnel,
+                    levelFunnelVersion
+                });
                 const totalDuration = Date.now() - queryStart;
                 logger.info(
                     `FAST level funnel (install cohort) completed in ${totalDuration}ms (${levelMetrics.length} levels, includes today: ${queryIncludesToday}, today raw: false)`
@@ -242,6 +254,16 @@ export class LevelFunnelService {
 
             // Calculate derived metrics
             const levelMetrics = this.calculateDerivedMetrics(mergedData, levelLimit);
+            await this.mergeHorizonChurnMetrics(levelMetrics, {
+                gameId,
+                startDate: start,
+                endDate: end,
+                installStartDate,
+                installEndDate,
+                platform,
+                levelFunnel,
+                levelFunnelVersion
+            });
 
             const totalDuration = Date.now() - queryStart;
             logger.info(`FAST level funnel query completed in ${totalDuration}ms (${levelMetrics.length} levels, ${daysDifference} days, includes today: ${queryIncludesToday})`);
@@ -251,6 +273,126 @@ export class LevelFunnelService {
             logger.error('Error in getLevelFunnelDataFast:', error);
             throw error;
         }
+    }
+
+    private async mergeHorizonChurnMetrics(
+        levelMetrics: LevelMetrics[],
+        params: {
+            gameId: string;
+            startDate: Date;
+            endDate: Date;
+            installStartDate?: Date;
+            installEndDate?: Date;
+            platform?: string;
+            levelFunnel?: string;
+            levelFunnelVersion?: string | number;
+        }
+    ): Promise<void> {
+        if (levelMetrics.length === 0) return;
+
+        try {
+            const churnByLevel = await this.queryHorizonChurnFromRollup(params, levelMetrics.map((m) => m.levelId));
+            for (const metric of levelMetrics) {
+                const row = churnByLevel.get(metric.levelId);
+                metric.churnD3 = row?.churnD3 ?? null;
+                metric.churnD7 = row?.churnD7 ?? null;
+            }
+        } catch (error) {
+            // Soft-fail until the new rollup table/migration is deployed.
+            logger.warn('Level horizon churn rollup unavailable; returning base level funnel metrics', {
+                gameId: params.gameId,
+                error: error instanceof Error ? error.message : String(error)
+            });
+            for (const metric of levelMetrics) {
+                metric.churnD3 = null;
+                metric.churnD7 = null;
+            }
+        }
+    }
+
+    private async queryHorizonChurnFromRollup(
+        params: {
+            gameId: string;
+            startDate: Date;
+            endDate: Date;
+            installStartDate?: Date;
+            installEndDate?: Date;
+            platform?: string;
+            levelFunnel?: string;
+            levelFunnelVersion?: string | number;
+        },
+        levelIds: number[]
+    ): Promise<Map<number, { churnD3: number | null; churnD7: number | null }>> {
+        const { gameId, startDate, endDate, installStartDate, installEndDate, platform, levelFunnel, levelFunnelVersion } = params;
+        const platforms = platform ? platform.split(',').map((p) => p.trim()).filter(Boolean) : [];
+
+        let funnelClauses: Prisma.Sql = Prisma.sql``;
+        if (levelFunnel) {
+            const funnels = levelFunnel.split(',').map(f => f.trim()).filter(f => f);
+            if (levelFunnelVersion) {
+                const funnelVersions = levelFunnelVersion.toString().split(',').map(v => parseInt(v.trim(), 10)).filter(v => !isNaN(v));
+                if (funnels.length > 0 && funnelVersions.length > 0 && funnels.length === funnelVersions.length) {
+                    const pairs = funnels.map((f, idx) => Prisma.sql`(c."levelFunnel" = ${f} AND c."levelFunnelVersion" = ${funnelVersions[idx]})`);
+                    funnelClauses = Prisma.sql`AND (${Prisma.join(pairs, ' OR ')})`;
+                } else if (funnels.length > 0) {
+                    funnelClauses = Prisma.sql`AND c."levelFunnel" IN (${Prisma.join(funnels)})`;
+                }
+            } else if (funnels.length > 0) {
+                funnelClauses = Prisma.sql`AND c."levelFunnel" IN (${Prisma.join(funnels)})`;
+            }
+        } else if (levelFunnelVersion) {
+            const funnelVersions = levelFunnelVersion.toString().split(',').map(v => parseInt(v.trim(), 10)).filter(v => !isNaN(v));
+            if (funnelVersions.length > 0) {
+                funnelClauses = Prisma.sql`AND c."levelFunnelVersion" IN (${Prisma.join(funnelVersions)})`;
+            }
+        }
+
+        const installWhere = Prisma.sql`
+            ${installStartDate ? Prisma.sql`AND c."installDate" >= ${installStartDate}` : Prisma.sql``}
+            ${installEndDate ? Prisma.sql`AND c."installDate" <= ${installEndDate}` : Prisma.sql``}
+        `;
+
+        const rows = await prisma.$queryRaw<Array<{ levelId: number; eligibleStarters: bigint; completedByD3: bigint; completedByD7: bigint }>>(Prisma.sql`
+            WITH max_available AS (
+              SELECT MAX("date")::date AS max_date
+              FROM "level_metrics_daily_users"
+              WHERE "gameId" = ${gameId}
+            )
+            SELECT
+              c."levelId" AS "levelId",
+              COALESCE(SUM(c."starters"), 0)::bigint AS "eligibleStarters",
+              COALESCE(SUM(c."completedByD3"), 0)::bigint AS "completedByD3",
+              COALESCE(SUM(c."completedByD7"), 0)::bigint AS "completedByD7"
+            FROM "level_churn_cohort_daily" c
+            CROSS JOIN max_available m
+            WHERE c."gameId" = ${gameId}
+              AND c."cohortDate" >= ${startDate}
+              AND c."cohortDate" <= ${endDate}
+              AND c."cohortDate"::date <= (m.max_date - 7)
+              AND c."levelId" IN (${Prisma.join(levelIds)})
+              ${platforms.length ? Prisma.sql`AND c."platform" IN (${Prisma.join(platforms)})` : Prisma.sql``}
+              ${funnelClauses}
+              ${installWhere}
+            GROUP BY c."levelId"
+        `);
+
+        const result = new Map<number, { churnD3: number | null; churnD7: number | null }>();
+        for (const row of rows) {
+            const eligible = Number(row.eligibleStarters || 0);
+            if (eligible <= 0) {
+                result.set(row.levelId, { churnD3: null, churnD7: null });
+                continue;
+            }
+            const completedByD3 = Number(row.completedByD3 || 0);
+            const completedByD7 = Number(row.completedByD7 || 0);
+            const churnD3 = ((eligible - completedByD3) / eligible) * 100;
+            const churnD7 = ((eligible - completedByD7) / eligible) * 100;
+            result.set(row.levelId, {
+                churnD3: Math.round(churnD3 * 100) / 100,
+                churnD7: Math.round(churnD7 * 100) / 100
+            });
+        }
+        return result;
     }
 
     private async queryAggregatedMetricsFromDailyUsers(

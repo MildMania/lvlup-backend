@@ -13,6 +13,8 @@ const METRIC_TOOLTIPS: Record<string, string> = {
     'Churn (Total)': 'Total % of users lost: users who didn\'t complete + users who completed but didn\'t start next level',
     'Churn (Self)': '% of users who started but never completed (out of started users)',
     'Churn (Next)': '% of users who completed this level but never started the next level (out of completed users)',
+    'Churn (D3)': '% of D7-eligible day-0 starters who have not completed this level by day 3',
+    'Churn (D7)': '% of D7-eligible day-0 starters who have not completed this level by day 7',
     'Completion Rate': '(Unique players completed / Unique players started) × 100',
     'Win Rate': '(Completed attempts / (Completed + Failed attempts)) × 100. Only counts users who finished (excludes incomplete attempts)',
     'Fail Rate': '(Failed attempts / (Completed + Failed attempts)) × 100',
@@ -76,6 +78,8 @@ interface LevelMetrics {
     churnTotal: number;
     churnStartComplete: number;
     churnCompleteNext: number;
+    churnD3?: number | null;
+    churnD7?: number | null;
     apsRaw: number; // All starts from completing users (includes orphaned starts)
     meanCompletionDuration: number;
     meanFailDuration: number;
@@ -594,6 +598,8 @@ export default function LevelFunnel({ isCollapsed = false }: LevelFunnelProps) {
                                             </MetricTooltip>
                                         </th>
                                         <th><MetricTooltip text={METRIC_TOOLTIPS['Churn (Next)']}>Churn (Next)</MetricTooltip></th>
+                                        <th><MetricTooltip text={METRIC_TOOLTIPS['Churn (D3)']}>Churn (D3)</MetricTooltip></th>
+                                        <th><MetricTooltip text={METRIC_TOOLTIPS['Churn (D7)']}>Churn (D7)</MetricTooltip></th>
                                     </>
                                 )}
                                 <th><MetricTooltip text={METRIC_TOOLTIPS['Completion Rate']}>Completion Rate</MetricTooltip></th>
@@ -672,6 +678,24 @@ export default function LevelFunnel({ isCollapsed = false }: LevelFunnelProps) {
                                                 <span className={getChurnColorClass(level.churnCompleteNext)}>
                                                     {level.churnCompleteNext.toFixed(1)}%
                                                 </span>
+                                            </td>
+                                            <td>
+                                                {level.churnD3 === null || level.churnD3 === undefined ? (
+                                                    <span className="not-available">N/A</span>
+                                                ) : (
+                                                    <span className={getChurnColorClass(level.churnD3)}>
+                                                        {level.churnD3.toFixed(1)}%
+                                                    </span>
+                                                )}
+                                            </td>
+                                            <td>
+                                                {level.churnD7 === null || level.churnD7 === undefined ? (
+                                                    <span className="not-available">N/A</span>
+                                                ) : (
+                                                    <span className={getChurnColorClass(level.churnD7)}>
+                                                        {level.churnD7.toFixed(1)}%
+                                                    </span>
+                                                )}
                                             </td>
                                         </>
                                     )}

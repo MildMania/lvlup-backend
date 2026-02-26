@@ -177,6 +177,7 @@ export class LevelMetricsAggregationService {
       }
 
       logger.info(`Successfully aggregated ${upsertCount} metric groups for ${dateStr}`);
+      await this.refreshLevelChurnCohortRollups(gameId, normalizedDate);
     } catch (error) {
       logger.error(`Error aggregating daily metrics for game ${gameId}:`, error);
       throw error;
@@ -578,6 +579,179 @@ export class LevelMetricsAggregationService {
           failCount: Number(row.failCount || 0),
           updatedAt: new Date()
         }
+      });
+    }
+
+    await this.refreshLevelChurnCohortRollups(gameId, dayStart);
+  }
+
+  /**
+   * Recompute level churn cohort rollups for cohort dates impacted by completions on `anchorDate`.
+   * A completion on day D can affect completedByD7 for starter cohorts from D-7 through D.
+   *
+   * Additive-only rollup: reads level_metrics_daily_users + users and writes level_churn_cohort_daily.
+   */
+  private async refreshLevelChurnCohortRollups(gameId: string, anchorDate: Date): Promise<void> {
+    const normalizedAnchor = new Date(anchorDate);
+    normalizedAnchor.setUTCHours(0, 0, 0, 0);
+
+    const cohortStart = new Date(normalizedAnchor);
+    cohortStart.setUTCDate(cohortStart.getUTCDate() - 7);
+    const cohortEnd = new Date(normalizedAnchor);
+
+    try {
+      await this.prisma.$transaction(async (tx) => {
+        await tx.$executeRaw`
+          DELETE FROM "level_churn_cohort_daily"
+          WHERE "gameId" = ${gameId}
+            AND "cohortDate" >= ${cohortStart}
+            AND "cohortDate" <= ${cohortEnd}
+        `;
+
+        await tx.$executeRaw`
+          WITH starter_rows AS (
+            SELECT DISTINCT
+              l."gameId",
+              l."date"::date AS "cohortDate",
+              date_trunc('day', u."createdAt")::date AS "installDate",
+              l."levelId",
+              l."levelFunnel",
+              l."levelFunnelVersion",
+              l."platform",
+              ''::text AS "countryCode",
+              ''::text AS "appVersion",
+              l."userId"
+            FROM "level_metrics_daily_users" l
+            INNER JOIN "users" u
+              ON u."id" = l."userId"
+             AND u."gameId" = l."gameId"
+            WHERE l."gameId" = ${gameId}
+              AND l."started" = true
+              AND l."date" >= ${cohortStart}
+              AND l."date" <= ${cohortEnd}
+          ),
+          first_completion AS (
+            SELECT
+              l."gameId",
+              l."levelId",
+              l."levelFunnel",
+              l."levelFunnelVersion",
+              l."platform",
+              l."userId",
+              MIN(l."date"::date) AS "firstCompletionDate"
+            FROM "level_metrics_daily_users" l
+            WHERE l."gameId" = ${gameId}
+              AND l."completed" = true
+              AND l."date" >= ${cohortStart}
+              AND l."date" <= (${cohortEnd}::date + INTERVAL '7 day')
+            GROUP BY
+              l."gameId",
+              l."levelId",
+              l."levelFunnel",
+              l."levelFunnelVersion",
+              l."platform",
+              l."userId"
+          ),
+          joined AS (
+            SELECT
+              s."gameId",
+              s."cohortDate",
+              s."installDate",
+              s."levelId",
+              s."levelFunnel",
+              s."levelFunnelVersion",
+              s."platform",
+              s."countryCode",
+              s."appVersion",
+              s."userId",
+              fc."firstCompletionDate"
+            FROM starter_rows s
+            LEFT JOIN first_completion fc
+              ON fc."gameId" = s."gameId"
+             AND fc."levelId" = s."levelId"
+             AND fc."levelFunnel" = s."levelFunnel"
+             AND fc."levelFunnelVersion" = s."levelFunnelVersion"
+             AND fc."platform" = s."platform"
+             AND fc."userId" = s."userId"
+          )
+          INSERT INTO "level_churn_cohort_daily" (
+            "id",
+            "gameId",
+            "cohortDate",
+            "installDate",
+            "levelId",
+            "levelFunnel",
+            "levelFunnelVersion",
+            "platform",
+            "countryCode",
+            "appVersion",
+            "starters",
+            "completedByD0",
+            "completedByD3",
+            "completedByD7",
+            "createdAt",
+            "updatedAt"
+          )
+          SELECT
+            concat(
+              'lccd_',
+              md5(
+                j."gameId"::text || '|' ||
+                j."cohortDate"::text || '|' ||
+                j."installDate"::text || '|' ||
+                j."levelId"::text || '|' ||
+                j."levelFunnel" || '|' ||
+                j."levelFunnelVersion"::text || '|' ||
+                j."platform" || '|' ||
+                j."countryCode" || '|' ||
+                j."appVersion"
+              )
+            ) AS id,
+            j."gameId",
+            j."cohortDate"::timestamp,
+            j."installDate"::timestamp,
+            j."levelId",
+            j."levelFunnel",
+            j."levelFunnelVersion",
+            j."platform",
+            j."countryCode",
+            j."appVersion",
+            COUNT(*)::int AS "starters",
+            COUNT(*) FILTER (
+              WHERE j."firstCompletionDate" IS NOT NULL
+                AND j."firstCompletionDate" >= j."cohortDate"
+                AND j."firstCompletionDate" <= j."cohortDate"
+            )::int AS "completedByD0",
+            COUNT(*) FILTER (
+              WHERE j."firstCompletionDate" IS NOT NULL
+                AND j."firstCompletionDate" >= j."cohortDate"
+                AND j."firstCompletionDate" <= (j."cohortDate" + 3)
+            )::int AS "completedByD3",
+            COUNT(*) FILTER (
+              WHERE j."firstCompletionDate" IS NOT NULL
+                AND j."firstCompletionDate" >= j."cohortDate"
+                AND j."firstCompletionDate" <= (j."cohortDate" + 7)
+            )::int AS "completedByD7",
+            now(),
+            now()
+          FROM joined j
+          GROUP BY
+            j."gameId",
+            j."cohortDate",
+            j."installDate",
+            j."levelId",
+            j."levelFunnel",
+            j."levelFunnelVersion",
+            j."platform",
+            j."countryCode",
+            j."appVersion"
+        `;
+      });
+    } catch (error) {
+      logger.error('Failed to refresh level churn cohort rollups', {
+        gameId,
+        anchorDate: normalizedAnchor.toISOString(),
+        error
       });
     }
   }

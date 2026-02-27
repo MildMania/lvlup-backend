@@ -20,6 +20,7 @@ import { sessionHeartbeatBatchWriter } from './services/SessionHeartbeatBatchWri
 
 const runApi = process.env.RUN_API !== 'false';
 const runJobs = process.env.RUN_JOBS !== 'false';
+const enableLevelMetricsHourlyJob = process.env.ENABLE_LEVEL_METRICS_HOURLY === '1' || process.env.ENABLE_LEVEL_METRICS_HOURLY === 'true';
 
 // In worker-only mode, keep externally provided env (e.g. PM2/.worker.env) ahead of .env.
 // In other modes, keep prior behavior where .env overrides inherited shell vars.
@@ -320,8 +321,13 @@ function startJobs(): void {
     logger.info('Level metrics aggregation cron job started');
 
     // Start hourly aggregation for today (partial day)
-    startLevelMetricsHourlyTodayJob();
-    logger.info('Level metrics hourly aggregation job started');
+    // Disabled by default to reduce DB load/cost; enable explicitly with ENABLE_LEVEL_METRICS_HOURLY=1
+    if (enableLevelMetricsHourlyJob) {
+        startLevelMetricsHourlyTodayJob();
+        logger.info('Level metrics hourly aggregation job started');
+    } else {
+        logger.info('Level metrics hourly aggregation job skipped (ENABLE_LEVEL_METRICS_HOURLY not enabled)');
+    }
 
     // Start active users aggregation jobs
     startActiveUsersAggregationJob();

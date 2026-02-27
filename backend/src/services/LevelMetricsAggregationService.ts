@@ -18,9 +18,11 @@ const CAN_SKIP_DUPLICATES = (process.env.DATABASE_URL || '').includes('postgres'
  */
 export class LevelMetricsAggregationService {
   private prisma: PrismaClient;
+  private readonly enableHourlyChurnRefresh: boolean;
 
   constructor(prismaClient?: PrismaClient) {
     this.prisma = prismaClient || prisma;
+    this.enableHourlyChurnRefresh = process.env.LEVEL_CHURN_HOURLY_REFRESH === '1';
   }
 
   /**
@@ -582,7 +584,9 @@ export class LevelMetricsAggregationService {
       });
     }
 
-    await this.refreshLevelChurnCohortRollups(gameId, dayStart);
+    if (this.enableHourlyChurnRefresh) {
+      await this.refreshLevelChurnCohortRollups(gameId, dayStart);
+    }
   }
 
   /**

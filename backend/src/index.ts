@@ -21,6 +21,9 @@ import { sessionHeartbeatBatchWriter } from './services/SessionHeartbeatBatchWri
 const runApi = process.env.RUN_API !== 'false';
 const runJobs = process.env.RUN_JOBS !== 'false';
 const enableLevelMetricsHourlyJob = process.env.ENABLE_LEVEL_METRICS_HOURLY === '1' || process.env.ENABLE_LEVEL_METRICS_HOURLY === 'true';
+const enableActiveUsersHourlyJob = process.env.ENABLE_ACTIVE_USERS_HOURLY === '1' || process.env.ENABLE_ACTIVE_USERS_HOURLY === 'true';
+const enableCohortHourlyJob = process.env.ENABLE_COHORT_HOURLY === '1' || process.env.ENABLE_COHORT_HOURLY === 'true';
+const enableMonetizationHourlyJob = process.env.ENABLE_MONETIZATION_HOURLY === '1' || process.env.ENABLE_MONETIZATION_HOURLY === 'true';
 
 // In worker-only mode, keep externally provided env (e.g. PM2/.worker.env) ahead of .env.
 // In other modes, keep prior behavior where .env overrides inherited shell vars.
@@ -333,22 +336,34 @@ function startJobs(): void {
     startActiveUsersAggregationJob();
     logger.info('Active users aggregation cron job started');
 
-    startActiveUsersHourlyTodayJob();
-    logger.info('Active users hourly aggregation job started');
+    if (enableActiveUsersHourlyJob) {
+        startActiveUsersHourlyTodayJob();
+        logger.info('Active users hourly aggregation job started');
+    } else {
+        logger.info('Active users hourly aggregation job skipped (ENABLE_ACTIVE_USERS_HOURLY not enabled)');
+    }
 
     // Start cohort aggregation jobs
     startCohortAggregationJob();
     logger.info('Cohort aggregation cron job started');
 
-    startCohortHourlyTodayJob();
-    logger.info('Cohort hourly aggregation job started');
+    if (enableCohortHourlyJob) {
+        startCohortHourlyTodayJob();
+        logger.info('Cohort hourly aggregation job started');
+    } else {
+        logger.info('Cohort hourly aggregation job skipped (ENABLE_COHORT_HOURLY not enabled)');
+    }
 
     // Start monetization aggregation jobs
     startMonetizationAggregationJob();
     logger.info('Monetization aggregation cron job started');
 
-    startMonetizationHourlyTodayJob();
-    logger.info('Monetization hourly aggregation job started');
+    if (enableMonetizationHourlyJob) {
+        startMonetizationHourlyTodayJob();
+        logger.info('Monetization hourly aggregation job started');
+    } else {
+        logger.info('Monetization hourly aggregation job skipped (ENABLE_MONETIZATION_HOURLY not enabled)');
+    }
 
     startFxRatesSyncJob();
     logger.info('FX rates sync cron job started');

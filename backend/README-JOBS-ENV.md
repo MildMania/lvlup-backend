@@ -31,6 +31,21 @@ Typical modes:
   - Set `LEVEL_CHURN_HOURLY_REFRESH=1` only if you need near-real-time D3/D7 churn updates.
   - Daily aggregation always refreshes churn rollups.
 
+- `ENABLE_ACTIVE_USERS_HOURLY`
+  - Default: `false`
+  - Set `ENABLE_ACTIVE_USERS_HOURLY=1` to enable hourly active users aggregation.
+  - Daily active users aggregation still runs.
+
+- `ENABLE_COHORT_HOURLY`
+  - Default: `false`
+  - Set `ENABLE_COHORT_HOURLY=1` to enable hourly cohort aggregation.
+  - Daily cohort aggregation still runs.
+
+- `ENABLE_MONETIZATION_HOURLY`
+  - Default: `false`
+  - Set `ENABLE_MONETIZATION_HOURLY=1` to enable hourly monetization aggregation.
+  - Daily monetization aggregation still runs.
+
 ## Recommended low-cost production setup
 
 If DB memory/cost is tight, use:
@@ -39,8 +54,17 @@ If DB memory/cost is tight, use:
 - `RUN_JOBS=true`
 - `ENABLE_LEVEL_METRICS_HOURLY=0`
 - `LEVEL_CHURN_HOURLY_REFRESH=0`
+- `ENABLE_ACTIVE_USERS_HOURLY=0`
+- `ENABLE_COHORT_HOURLY=0`
+- `ENABLE_MONETIZATION_HOURLY=0`
 
-This keeps daily aggregations and disables the heaviest hourly funnel path.
+This keeps daily aggregations and disables all hourly aggregation jobs.
+
+## Monitoring workflow (recommended)
+
+1. Start with all hourly flags set to `0` (baseline).
+2. Enable one hourly flag at a time (`=1`) for a few hours.
+3. Compare DB CPU/memory slope and egress before enabling the next one.
 
 ## Notes
 

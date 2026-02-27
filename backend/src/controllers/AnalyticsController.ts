@@ -397,9 +397,12 @@ export class AnalyticsController {
     async getEvents(req: AuthenticatedRequest, res: Response<ApiResponse>) {
         try {
             const gameId = requireGameId(req);
-            const limit = parseInt(req.query.limit as string) || 100;
-            const offset = parseInt(req.query.offset as string) || 0;
-            const sort = (req.query.sort as string) || 'desc';
+            const requestedLimit = parseInt(req.query.limit as string) || 100;
+            const requestedOffset = parseInt(req.query.offset as string) || 0;
+            const limit = Math.min(Math.max(requestedLimit, 1), 200);
+            const offset = Math.min(Math.max(requestedOffset, 0), 2000);
+            const requestedSort = (req.query.sort as string) || 'desc';
+            const sort = requestedSort === 'asc' ? 'asc' : 'desc';
             const userId = req.query.userId as string | undefined;
             const eventName = req.query.eventName as string | undefined;
             const search = req.query.search as string | undefined;

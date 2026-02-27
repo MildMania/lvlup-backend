@@ -675,10 +675,13 @@ export class AnalyticsService {
         }
     ) {
         try {
-            // To properly merge events from both tables and get the correct top N events,
-            // we need to fetch more records initially, then merge, sort, and limit
-            // Fetch 3x the limit from each table to ensure we have enough events to merge
-            const fetchLimit = Math.max(limit * 3, 300);
+            // Fetch only what can affect the requested page after merge.
+            // This sharply reduces I/O and memory compared with fixed 3x over-fetching.
+            const fetchLimit = Math.min(Math.max(offset + limit, limit), 2000);
+            const isRevenueOnlyEventFilter =
+                filters?.eventName === 'ad_impression' || filters?.eventName === 'in_app_purchase';
+            const isNonRevenueSpecificEventFilter =
+                !!filters?.eventName && filters.eventName !== 'all' && !isRevenueOnlyEventFilter;
             
             // Build where clause for filters
             const whereClause: any = {
@@ -719,8 +722,7 @@ export class AnalyticsService {
                 ];
             }
             
-            // Fetch regular events (only those with serverReceivedAt set)
-            const events = await this.prisma.event.findMany({
+            const eventsPromise = this.prisma.event.findMany({
                 where: whereClause,
                 select: {
                     id: true,
@@ -790,40 +792,45 @@ export class AnalyticsService {
                 ];
             }
 
-            const revenueEvents = await this.prisma.revenue.findMany({
-                where: revenueWhereClause,
-                select: {
-                    id: true,
-                    userId: true,
-                    sessionId: true,
-                    revenueType: true,
-                    revenue: true,
-                    revenueUSD: true,
-                    currency: true,
-                    timestamp: true,
-                    serverReceivedAt: true,
-                    platform: true,
-                    device: true,
-                    deviceId: true,
-                    appVersion: true,
-                    appBuild: true,
-                    countryCode: true,
-                    // Ad fields
-                    adNetworkName: true,
-                    adFormat: true,
-                    adPlacement: true,
-                    adImpressionId: true,
-                    // IAP fields
-                    productId: true,
-                    transactionId: true,
-                    store: true,
-                    isVerified: true,
-                },
-                orderBy: {
-                    serverReceivedAt: sort === 'desc' ? 'desc' : 'asc'
-                },
-                take: fetchLimit
-            });
+            const revenuePromise: Promise<any[]> = isNonRevenueSpecificEventFilter
+                ? Promise.resolve([])
+                : this.prisma.revenue.findMany({
+                    where: revenueWhereClause,
+                    select: {
+                        id: true,
+                        userId: true,
+                        sessionId: true,
+                        revenueType: true,
+                        revenue: true,
+                        revenueUSD: true,
+                        currency: true,
+                        timestamp: true,
+                        serverReceivedAt: true,
+                        platform: true,
+                        device: true,
+                        deviceId: true,
+                        appVersion: true,
+                        appBuild: true,
+                        countryCode: true,
+                        // Ad fields
+                        adNetworkName: true,
+                        adFormat: true,
+                        adPlacement: true,
+                        adImpressionId: true,
+                        // IAP fields
+                        productId: true,
+                        transactionId: true,
+                        store: true,
+                        isVerified: true,
+                    },
+                    orderBy: {
+                        serverReceivedAt: sort === 'desc' ? 'desc' : 'asc'
+                    },
+                    take: fetchLimit
+                });
+
+            // Execute in parallel to reduce request latency.
+            const [events, revenueEvents] = await Promise.all([eventsPromise, revenuePromise]);
 
             // Transform revenue events to match event format
             const transformedRevenueEvents = revenueEvents.map(rev => ({

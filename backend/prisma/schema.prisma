@@ -142,6 +142,8 @@ model Event {
   @@index([gameId, timestamp])
   @@index([gameId, userId, timestamp])
   @@index([gameId, appVersion, timestamp])
+  @@index([gameId, serverReceivedAt])
+  @@index([gameId, eventName, serverReceivedAt])
   @@map("events")
 }
 
@@ -213,6 +215,8 @@ model Revenue {
   // Essential indexes only (minimized for storage efficiency)
   @@index([gameId, revenueType, timestamp]) // Covers most revenue queries + time-series
   @@index([userId, timestamp]) // User revenue history & LTV
+  @@index([gameId, serverReceivedAt])
+  @@index([gameId, revenueType, serverReceivedAt])
   
   @@map("revenue")
 }

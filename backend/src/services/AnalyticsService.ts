@@ -105,28 +105,23 @@ export class AnalyticsService {
                 return user;
             }
 
-            // Create once; handle race with concurrent creates.
-            try {
-                const createdUser = await this.prisma.user.create({
-                    data: {
-                        gameId,
-                        externalId: userProfile.externalId,
-                        deviceId: userProfile.deviceId ?? null,
-                        platform: userProfile.platform ?? null,
-                        version: userProfile.version ?? null,
-                        country: userProfile.country ?? null,
-                        language: userProfile.language ?? null
-                    }
-                });
-                return createdUser;
-            } catch (createError: any) {
-                // If another request created concurrently, return the winner row.
-                if (createError?.code === 'P2002') {
-                    const winner = await this.prisma.user.findUnique({ where });
-                    if (winner) return winner;
-                }
-                throw createError;
-            }
+            // Create once without throwing on unique conflicts, then read winner row.
+            await this.prisma.user.createMany({
+                data: [{
+                    gameId,
+                    externalId: userProfile.externalId,
+                    deviceId: userProfile.deviceId ?? null,
+                    platform: userProfile.platform ?? null,
+                    version: userProfile.version ?? null,
+                    country: userProfile.country ?? null,
+                    language: userProfile.language ?? null
+                }],
+                skipDuplicates: true
+            });
+
+            const winner = await this.prisma.user.findUnique({ where });
+            if (winner) return winner;
+            throw new Error(`Failed to create or fetch user ${userProfile.externalId} for game ${gameId}`);
         } catch (error) {
             logger.error('Error in getOrCreateUser:', error);
             throw error;

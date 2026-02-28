@@ -15,36 +15,44 @@ const monetizationCohortService = new MonetizationCohortService();
 const revenueService = new RevenueService();
 
 export class AnalyticsController {
-    private resolveExternalUserId(payload: any): { userId: string | null; source: string | null } {
+    private async resolveExternalUserId(gameId: string, payload: any): Promise<{ userId: string | null; source: string | null }> {
         const explicitUserId = typeof payload?.userId === 'string' ? payload.userId.trim() : '';
         if (explicitUserId) {
             return { userId: explicitUserId, source: 'userId' };
         }
 
-        const deviceInfoDeviceId = typeof payload?.deviceInfo?.deviceId === 'string'
-            ? payload.deviceInfo.deviceId.trim()
-            : '';
-        if (deviceInfoDeviceId) {
-            return { userId: `anon_device:${deviceInfoDeviceId}`, source: 'deviceInfo.deviceId' };
-        }
-
-        const firstEventDeviceId = typeof payload?.events?.[0]?.deviceId === 'string'
-            ? payload.events[0].deviceId.trim()
-            : '';
-        if (firstEventDeviceId) {
-            return { userId: `anon_device:${firstEventDeviceId}`, source: 'events[0].deviceId' };
-        }
-
-        const revenueDeviceId = typeof payload?.revenueData?.[0]?.deviceId === 'string'
-            ? payload.revenueData[0].deviceId.trim()
-            : '';
-        if (revenueDeviceId) {
-            return { userId: `anon_device:${revenueDeviceId}`, source: 'revenueData[0].deviceId' };
-        }
-
         const sessionId = typeof payload?.sessionId === 'string' ? payload.sessionId.trim() : '';
         if (sessionId) {
-            return { userId: `anon_session:${sessionId}`, source: 'sessionId' };
+            const session = await prisma.session.findUnique({
+                where: { id: sessionId },
+                select: {
+                    gameId: true,
+                    user: { select: { externalId: true } }
+                }
+            });
+            if (session?.gameId === gameId && session.user?.externalId) {
+                return { userId: session.user.externalId, source: 'session.user.externalId' };
+            }
+        }
+
+        const deviceCandidates = [
+            typeof payload?.deviceInfo?.deviceId === 'string' ? payload.deviceInfo.deviceId.trim() : '',
+            typeof payload?.events?.[0]?.deviceId === 'string' ? payload.events[0].deviceId.trim() : '',
+            typeof payload?.revenueData?.[0]?.deviceId === 'string' ? payload.revenueData[0].deviceId.trim() : '',
+        ].filter(Boolean);
+
+        for (const deviceId of deviceCandidates) {
+            const existingUser = await prisma.user.findFirst({
+                where: {
+                    gameId,
+                    deviceId
+                },
+                orderBy: { updatedAt: 'desc' },
+                select: { externalId: true }
+            });
+            if (existingUser?.externalId) {
+                return { userId: existingUser.externalId, source: 'deviceId->existingUser.externalId' };
+            }
         }
 
         return { userId: null, source: null };
@@ -139,7 +147,7 @@ export class AnalyticsController {
         try {
             const gameId = requireGameId(req);
             const batchData: BatchEventData = req.body;
-            const { userId: resolvedUserId, source: resolvedUserIdSource } = this.resolveExternalUserId(batchData);
+            const { userId: resolvedUserId, source: resolvedUserIdSource } = await this.resolveExternalUserId(gameId, batchData);
             const effectiveUserId = resolvedUserId || '';
 
             // Validate required fields
@@ -150,7 +158,7 @@ export class AnalyticsController {
                 });
                 return res.status(400).json({
                     success: false,
-                    error: 'User ID is required (or provide deviceId/sessionId fallback)',
+                    error: 'User ID is required',
                     code: 'USER_ID_REQUIRED'
                 });
             }
@@ -680,14 +688,14 @@ export class AnalyticsController {
         try {
             const gameId = requireGameId(req);
             const { userId, sessionId, revenueData } = req.body;
-            const { userId: resolvedUserId, source: resolvedUserIdSource } = this.resolveExternalUserId(req.body);
+            const { userId: resolvedUserId, source: resolvedUserIdSource } = await this.resolveExternalUserId(gameId, req.body);
             const effectiveUserId = resolvedUserId || '';
 
             // Validate required fields
             if (!effectiveUserId) {
                 return res.status(400).json({
                     success: false,
-                    error: 'User ID is required (or provide deviceId/sessionId fallback)',
+                    error: 'User ID is required',
                     code: 'USER_ID_REQUIRED'
                 });
             }

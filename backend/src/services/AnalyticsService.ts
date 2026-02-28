@@ -75,35 +75,58 @@ export class AnalyticsService {
     // Create or get user
     async getOrCreateUser(gameId: string, userProfile: UserProfile) {
         try {
-            const user = await this.prisma.user.upsert({
-                where: {
-                    gameId_externalId: {
-                        gameId: gameId,
-                        externalId: userProfile.externalId
-                    }
-                },
-                update: {
-                    deviceId: userProfile.deviceId ?? undefined,
-                    // Only update platform if we have a value and user's platform is currently null
-                    platform: userProfile.platform ?? undefined,
-                    version: userProfile.version ?? undefined,
-                    country: userProfile.country ?? undefined,
-                    language: userProfile.language ?? undefined,
-                    updatedAt: new Date()
-                },
-                create: {
-                    gameId: gameId,
-                    externalId: userProfile.externalId,
-                    deviceId: userProfile.deviceId ?? null,
-                    platform: userProfile.platform ?? null,
-                    version: userProfile.version ?? null,
-                    country: userProfile.country ?? null,
-                    language: userProfile.language ?? null
+            const where = {
+                gameId_externalId: {
+                    gameId,
+                    externalId: userProfile.externalId
                 }
-            });
+            };
 
-            logger.info(`User ${user.externalId} processed for game ${gameId}`);
-            return user;
+            const existingUser = await this.prisma.user.findUnique({ where });
+
+            // Existing user hot path: avoid write when there is no new profile data.
+            if (existingUser) {
+                const updateData: Prisma.UserUpdateInput = {
+                    ...(userProfile.deviceId ? { deviceId: userProfile.deviceId } : {}),
+                    ...(userProfile.platform ? { platform: userProfile.platform } : {}),
+                    ...(userProfile.version ? { version: userProfile.version } : {}),
+                    ...(userProfile.country ? { country: userProfile.country } : {}),
+                    ...(userProfile.language ? { language: userProfile.language } : {})
+                };
+
+                if (Object.keys(updateData).length === 0) {
+                    return existingUser;
+                }
+
+                const user = await this.prisma.user.update({
+                    where,
+                    data: updateData
+                });
+                return user;
+            }
+
+            // Create once; handle race with concurrent creates.
+            try {
+                const createdUser = await this.prisma.user.create({
+                    data: {
+                        gameId,
+                        externalId: userProfile.externalId,
+                        deviceId: userProfile.deviceId ?? null,
+                        platform: userProfile.platform ?? null,
+                        version: userProfile.version ?? null,
+                        country: userProfile.country ?? null,
+                        language: userProfile.language ?? null
+                    }
+                });
+                return createdUser;
+            } catch (createError: any) {
+                // If another request created concurrently, return the winner row.
+                if (createError?.code === 'P2002') {
+                    const winner = await this.prisma.user.findUnique({ where });
+                    if (winner) return winner;
+                }
+                throw createError;
+            }
         } catch (error) {
             logger.error('Error in getOrCreateUser:', error);
             throw error;

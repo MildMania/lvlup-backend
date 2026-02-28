@@ -303,6 +303,22 @@ app.use((err: any, req: Request, res: Response, next: any) => {
         });
     }
 
+    if (err?.status === 400) {
+        logger.warn('Bad request', {
+            method: req.method,
+            path: req.originalUrl || req.path,
+            message: err?.message || 'Bad request',
+            contentType: req.headers['content-type'] || null,
+            contentLength: req.headers['content-length'] || null,
+            userAgent: req.headers['user-agent'] || null,
+        });
+        return res.status(400).json({
+            success: false,
+            error: 'Bad request',
+            code: 'BAD_REQUEST'
+        });
+    }
+
     logger.error(`Error: ${err.message}`, { stack: err.stack });
     res.status(err.status || 500).json({
         success: false,

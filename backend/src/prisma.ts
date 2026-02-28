@@ -76,14 +76,22 @@ export const prisma =
 
 if (enableAnalyticsTrace) {
   const slowMs = Number(process.env.ANALYTICS_TRACE_SLOW_MS || 300);
+  const traceAsWarn =
+    process.env.ANALYTICS_TRACE_WARN === '1' ||
+    process.env.ANALYTICS_TRACE_WARN === 'true';
   (prisma as any).$on('query', (e: any) => {
     if (typeof e?.duration === 'number' && e.duration < slowMs) {
       return;
     }
-    logger.warn('[AnalyticsTrace] Slow query', {
+    const payload = {
       durationMs: e.duration,
       query: e.query,
-    });
+    };
+    if (traceAsWarn) {
+      logger.warn('[AnalyticsTrace] Slow query', payload);
+      return;
+    }
+    logger.debug('[AnalyticsTrace] Slow query', payload);
   });
 }
 

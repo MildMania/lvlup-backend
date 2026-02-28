@@ -107,7 +107,7 @@ export class AnalyticsController {
 
             // Validate required fields
             if (!batchData.userId) {
-                logger.debug('Rejecting /events/batch: missing userId', {
+                logger.warn('Rejecting /events/batch: missing userId', {
                     hasEventsArray: Array.isArray((batchData as any)?.events),
                     receivedEvents: Array.isArray((batchData as any)?.events) ? (batchData as any).events.length : 0
                 });
@@ -119,7 +119,7 @@ export class AnalyticsController {
             }
 
             if (!batchData.events || !Array.isArray(batchData.events) || batchData.events.length === 0) {
-                logger.debug('Rejecting /events/batch: events array missing/empty', {
+                logger.warn('Rejecting /events/batch: events array missing/empty', {
                     userId: batchData.userId,
                     hasEventsArray: Array.isArray((batchData as any)?.events),
                     receivedEvents: Array.isArray((batchData as any)?.events) ? (batchData as any).events.length : 0
@@ -141,7 +141,7 @@ export class AnalyticsController {
             const droppedEvents = batchData.events.length - validEvents.length;
 
             if (validEvents.length === 0) {
-                logger.debug('Accepting batch with 0 valid events after validation', {
+                logger.warn('Accepting batch with 0 valid events after validation', {
                     userId: batchData.userId,
                     receivedEvents: batchData.events.length
                 });

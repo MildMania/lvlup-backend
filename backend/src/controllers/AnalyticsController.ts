@@ -200,7 +200,7 @@ export class AnalyticsController {
                 
                 if (timeDiffMs > FUTURE_TOLERANCE_MS) {
                     const diffSeconds = (timeDiffMs / 1000).toFixed(2);
-                    logger.warn(
+                    logger.debug(
                         `startTime is ${diffSeconds}s in the future (beyond tolerance), resetting to current time. Client Timestamp: ${sessionData.startTime}, Server Timestamp: ${serverTime.toISOString()}`);
                     sessionData.startTime = serverTime.toISOString();
                 }

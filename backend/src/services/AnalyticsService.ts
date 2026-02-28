@@ -58,14 +58,14 @@ export class AnalyticsService {
         // Reject future timestamps (client clock is ahead)
         if (timeDiff < 0) {
             const futureHours = Math.floor(Math.abs(timeDiff) / 1000 / 60 / 60);
-            logger.warn(`Client timestamp rejected (${futureHours}h in future): ${clientTs}, using server time`);
+            logger.debug(`Client timestamp rejected (${futureHours}h in future): ${clientTs}, using server time`);
             return serverTime;
         }
 
         // Reject timestamps too far in the past (>7 days old)
         if (timeDiff > MAX_PAST_DRIFT) {
             const pastHours = Math.floor(timeDiff / 1000 / 60 / 60);
-            logger.warn(`Client timestamp rejected (${pastHours}h in past): ${clientTs}, using server time`);
+            logger.debug(`Client timestamp rejected (${pastHours}h in past): ${clientTs}, using server time`);
             return serverTime;
         }
 
@@ -146,14 +146,32 @@ export class AnalyticsService {
                 throw new Error('Session not found');
             }
 
-            // Idempotency guard: ignore late/duplicate end requests once session is already closed.
-            // This prevents stale client end times from inflating duration after auto-closure.
-            if (session.endTime) {
-                logger.warn(`Ignoring endSession for already closed session ${sessionId} (existing endTime: ${session.endTime.toISOString()})`);
-                return session;
-            }
-
             const requestedEndTime = new Date(endTime);
+
+            // For already-closed sessions, keep idempotency for stale/duplicate end requests,
+            // but allow extending endTime if client sends a later valid end timestamp.
+            if (session.endTime) {
+                const candidateEndTime = session.lastHeartbeat && session.lastHeartbeat > requestedEndTime
+                    ? session.lastHeartbeat
+                    : requestedEndTime;
+
+                if (candidateEndTime <= session.endTime) {
+                    logger.debug(`Ignoring stale endSession for already closed session ${sessionId} (existing endTime: ${session.endTime.toISOString()}, requested: ${requestedEndTime.toISOString()})`);
+                    return session;
+                }
+
+                const duration = Math.floor((candidateEndTime.getTime() - session.startTime.getTime()) / 1000);
+                const updatedClosedSession = await this.prisma.session.update({
+                    where: { id: sessionId },
+                    data: {
+                        endTime: candidateEndTime,
+                        duration: Math.max(duration, 0)
+                    }
+                });
+
+                logger.info(`Extended closed session ${sessionId} endTime to ${candidateEndTime.toISOString()} (previous: ${session.endTime.toISOString()}, requested: ${requestedEndTime.toISOString()}, lastHeartbeat: ${session.lastHeartbeat?.toISOString() || 'none'})`);
+                return updatedClosedSession;
+            }
             
             // Use the later of requested endTime or lastHeartbeat
             // This handles cases where heartbeats arrived after endSession was called
@@ -198,7 +216,7 @@ export class AnalyticsService {
             
             // Sanity check: heartbeat should not be before startTime
             if (now < session.startTime) {
-                logger.warn(`Heartbeat timestamp (${now.toISOString()}) is before session startTime (${session.startTime.toISOString()}). Using startTime as heartbeat.`);
+                logger.debug(`Heartbeat timestamp (${now.toISOString()}) is before session startTime (${session.startTime.toISOString()}). Using startTime as heartbeat.`);
                 // Use startTime as fallback to prevent negative duration
                 sessionHeartbeatBatchWriter.enqueue({
                     sessionId,
@@ -211,7 +229,7 @@ export class AnalyticsService {
 
             // Sanity check: heartbeat should not go backwards in time
             if (session.lastHeartbeat && now < session.lastHeartbeat) {
-                logger.warn(`Heartbeat timestamp (${now.toISOString()}) is before previous heartbeat (${session.lastHeartbeat.toISOString()}). Ignoring out-of-order heartbeat.`);
+                logger.debug(`Heartbeat timestamp (${now.toISOString()}) is before previous heartbeat (${session.lastHeartbeat.toISOString()}). Ignoring out-of-order heartbeat.`);
                 return; // Don't update with backwards timestamp
             }
 

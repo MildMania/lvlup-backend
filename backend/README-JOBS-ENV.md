@@ -52,6 +52,40 @@ Typical modes:
   - Set `ENABLE_MONETIZATION_HOURLY=1` to enable hourly monetization aggregation.
   - Daily monetization aggregation still runs.
 
+- `ENABLE_CLICKHOUSE_PIPELINE`
+  - Default: `false`
+  - Enables ClickHouse incremental sync worker (pilot).
+  - Leaves existing Postgres pipeline untouched unless you disable those jobs separately.
+
+- `CLICKHOUSE_URL`
+  - ClickHouse HTTP endpoint, e.g. `https://<host>:8443`.
+
+- `CLICKHOUSE_DATABASE`
+  - Default: `default`
+
+- `CLICKHOUSE_USER`, `CLICKHOUSE_PASSWORD`
+  - Optional credentials used for HTTP basic auth.
+
+- `CLICKHOUSE_SYNC_TABLES`
+  - Default: `events,revenue,sessions,users`
+  - Controls which raw tables are incrementally synced.
+
+- `CLICKHOUSE_SYNC_BATCH_SIZE`
+  - Default: `10000`
+  - Max rows per extraction batch.
+
+- `CLICKHOUSE_SYNC_MAX_BATCHES`
+  - Default: `5`
+  - Max batches per table per cycle to bound runtime/load.
+
+- `CLICKHOUSE_SYNC_CRON`
+  - Default: `*/5 * * * *`
+  - Cron schedule for sync cycles.
+
+- `CLICKHOUSE_HTTP_TIMEOUT_MS`
+  - Default: `15000`
+  - HTTP timeout for ClickHouse requests.
+
 - `ACTIVE_USERS_DAILY_CHUNKED`
   - Default: `true`
   - `1`: computes exact DAU via hourly chunked de-dup (lower peak memory).
@@ -88,6 +122,7 @@ If DB memory/cost is tight, use:
 - `ENABLE_ACTIVE_USERS_HOURLY=0`
 - `ENABLE_COHORT_HOURLY=0`
 - `ENABLE_MONETIZATION_HOURLY=0`
+- `ENABLE_CLICKHOUSE_PIPELINE=0`
 - `ACTIVE_USERS_DAILY_CHUNKED=1`
 - `COHORT_DAYINDEX_CHUNK_SIZE=8`
 - `MONETIZATION_DAILY_CHUNKED=1`

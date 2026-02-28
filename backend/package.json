@@ -31,6 +31,7 @@
     "backfill:cohorts": "ts-node src/scripts/backfillCohorts.ts",
     "backfill:cohort-payers": "ts-node src/scripts/backfillCohortPayers.ts",
     "backfill:monetization": "ts-node src/scripts/backfillMonetization.ts",
+    "clickhouse:sync-once": "ts-node src/scripts/clickhouseSyncOnce.ts",
     "worker:start": "bash scripts/worker-start.sh",
     "worker:redeploy": "bash scripts/worker-redeploy.sh",
     "worker:auto-update": "bash scripts/worker-auto-update.sh",

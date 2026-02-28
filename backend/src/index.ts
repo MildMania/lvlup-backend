@@ -14,6 +14,7 @@ import { startActiveUsersAggregationJob, startActiveUsersHourlyTodayJob } from '
 import { startCohortAggregationJob, startCohortHourlyTodayJob } from './jobs/cohortAggregation';
 import { startMonetizationAggregationJob, startMonetizationHourlyTodayJob } from './jobs/monetizationAggregation';
 import { startFxRatesSyncJob } from './jobs/fxRatesSync';
+import { startClickHouseSyncJob, runClickHouseSyncOnce } from './jobs/clickhouseSync';
 import { eventBatchWriter } from './services/EventBatchWriter';
 import { revenueBatchWriter } from './services/RevenueBatchWriter';
 import { sessionHeartbeatBatchWriter } from './services/SessionHeartbeatBatchWriter';
@@ -24,6 +25,7 @@ const enableLevelMetricsHourlyJob = process.env.ENABLE_LEVEL_METRICS_HOURLY === 
 const enableActiveUsersHourlyJob = process.env.ENABLE_ACTIVE_USERS_HOURLY === '1' || process.env.ENABLE_ACTIVE_USERS_HOURLY === 'true';
 const enableCohortHourlyJob = process.env.ENABLE_COHORT_HOURLY === '1' || process.env.ENABLE_COHORT_HOURLY === 'true';
 const enableMonetizationHourlyJob = process.env.ENABLE_MONETIZATION_HOURLY === '1' || process.env.ENABLE_MONETIZATION_HOURLY === 'true';
+const enableClickHousePipeline = process.env.ENABLE_CLICKHOUSE_PIPELINE === '1' || process.env.ENABLE_CLICKHOUSE_PIPELINE === 'true';
 
 // In worker-only mode, keep externally provided env (e.g. PM2/.worker.env) ahead of .env.
 // In other modes, keep prior behavior where .env overrides inherited shell vars.
@@ -367,6 +369,15 @@ function startJobs(): void {
 
     startFxRatesSyncJob();
     logger.info('FX rates sync cron job started');
+
+    if (enableClickHousePipeline) {
+        startClickHouseSyncJob();
+        logger.info('ClickHouse sync cron job started');
+        // Kick off one sync immediately to reduce initial lag.
+        void runClickHouseSyncOnce();
+    } else {
+        logger.info('ClickHouse sync cron job skipped (ENABLE_CLICKHOUSE_PIPELINE not enabled)');
+    }
     jobsStarted = true;
 }
 

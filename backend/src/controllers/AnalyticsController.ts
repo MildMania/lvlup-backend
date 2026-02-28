@@ -134,20 +134,23 @@ export class AnalyticsController {
             // Keep ingestion resilient:
             // - Drop malformed events instead of failing entire batch
             // - Process large payloads in chunks to avoid 400s on oversized offline flushes
+            const EVENT_NAME_REGEX = /^[a-zA-Z0-9_.:-]+$/;
             const validEvents = batchData.events.filter(
-                (event) => !!event && !!event.eventName && /^[a-zA-Z0-9_]+$/.test(event.eventName)
+                (event) => !!event && !!event.eventName && EVENT_NAME_REGEX.test(event.eventName)
             );
             const droppedEvents = batchData.events.length - validEvents.length;
 
             if (validEvents.length === 0) {
-                logger.debug('Dropping batch: no valid events after validation', {
+                logger.debug('Accepting batch with 0 valid events after validation', {
                     userId: batchData.userId,
                     receivedEvents: batchData.events.length
                 });
-                return res.status(400).json({
-                    success: false,
-                    error: 'No valid events in batch',
-                    code: 'NO_VALID_EVENTS'
+                return res.status(200).json({
+                    success: true,
+                    data: {
+                        processed: 0,
+                        droppedInvalidEvents: droppedEvents
+                    }
                 });
             }
 

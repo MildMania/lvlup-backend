@@ -1,6 +1,7 @@
 import { Prisma, PrismaClient } from '@prisma/client';
 import prisma from '../prisma';
 import logger from '../utils/logger';
+import { maybeThrottleAggregation } from '../utils/aggregationThrottle';
 
 export const COHORT_DAY_INDICES = [
   ...Array.from({ length: 31 }, (_, i) => i), // 0..30 (contiguous for cumulative progression metrics)
@@ -14,9 +15,12 @@ export const COHORT_DAY_INDICES = [
 
 export class CohortAggregationService {
   private prisma: PrismaClient;
+  private readonly dayIndexChunkSize: number;
 
   constructor(prismaClient?: PrismaClient) {
     this.prisma = prismaClient || prisma;
+    const configured = Number(process.env.COHORT_DAYINDEX_CHUNK_SIZE || 8);
+    this.dayIndexChunkSize = Number.isFinite(configured) && configured > 0 ? Math.floor(configured) : 8;
   }
 
   async aggregateForDate(gameId: string, targetDate: Date, dayIndices = COHORT_DAY_INDICES): Promise<void> {
@@ -27,7 +31,9 @@ export class CohortAggregationService {
 
     logger.info(`Aggregating cohort rollups for ${gameId} on ${target.toISOString().split('T')[0]}`);
 
-    for (const dayIndex of dayIndices) {
+    for (let chunkStart = 0; chunkStart < dayIndices.length; chunkStart += this.dayIndexChunkSize) {
+      const dayIndexChunk = dayIndices.slice(chunkStart, chunkStart + this.dayIndexChunkSize);
+      for (const dayIndex of dayIndexChunk) {
       const installDate = new Date(target);
       installDate.setUTCDate(installDate.getUTCDate() - dayIndex);
       installDate.setUTCHours(0, 0, 0, 0);
@@ -126,6 +132,8 @@ export class CohortAggregationService {
           newPayers
         );
       }
+    }
+      await maybeThrottleAggregation(`cohort-dayindex-chunk:${gameId}`);
     }
   }
 
@@ -314,6 +322,7 @@ export class CohortAggregationService {
     let processed = 0;
     while (cursor <= end) {
       await this.aggregateForDate(gameId, new Date(cursor), dayIndices);
+      await maybeThrottleAggregation(`cohort-backfill-day:${gameId}`);
       cursor.setUTCDate(cursor.getUTCDate() + 1);
       processed++;
       if (processed % 10 === 0) {
@@ -331,6 +340,7 @@ export class CohortAggregationService {
     let processed = 0;
     while (cursor <= end) {
       await this.aggregatePayersForTargetDay(gameId, new Date(cursor), dayIndices);
+      await maybeThrottleAggregation(`cohort-payers-backfill-day:${gameId}`);
       cursor.setUTCDate(cursor.getUTCDate() + 1);
       processed++;
       if (processed % 10 === 0) {

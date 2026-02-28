@@ -2,6 +2,7 @@ import cron from 'node-cron';
 import monetizationAggregationService from '../services/MonetizationAggregationService';
 import logger from '../utils/logger';
 import { withJobAdvisoryLock } from './advisoryLock';
+import { maybeThrottleAggregation } from '../utils/aggregationThrottle';
 
 export function startMonetizationAggregationJob(): void {
   logger.info('Initializing monetization aggregation cron job...');
@@ -23,7 +24,11 @@ export function startMonetizationAggregationJob(): void {
         yesterday.setUTCHours(0, 0, 0, 0);
 
         for (const gameId of games) {
-          await monetizationAggregationService.aggregateDaily(gameId, yesterday);
+          try {
+            await monetizationAggregationService.aggregateDaily(gameId, yesterday);
+          } finally {
+            await maybeThrottleAggregation(`monetization-daily-job:${gameId}`);
+          }
         }
 
         logger.info(`Daily monetization aggregation complete for ${games.length} games`);
@@ -57,7 +62,11 @@ export function startMonetizationHourlyTodayJob(): void {
         hourStart.setUTCHours(hourStart.getUTCHours() - 1);
 
         for (const gameId of games) {
-          await monetizationAggregationService.aggregateHourlyIncrementForToday(gameId, hourStart, hourEnd);
+          try {
+            await monetizationAggregationService.aggregateHourlyIncrementForToday(gameId, hourStart, hourEnd);
+          } finally {
+            await maybeThrottleAggregation(`monetization-hourly-job:${gameId}`);
+          }
         }
 
         logger.info(`Hourly monetization aggregation complete for ${games.length} games`);

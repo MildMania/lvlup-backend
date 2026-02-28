@@ -31,6 +31,12 @@ Typical modes:
   - Set `LEVEL_CHURN_HOURLY_REFRESH=1` only if you need near-real-time D3/D7 churn updates.
   - Daily aggregation always refreshes churn rollups.
 
+- `LEVEL_METRICS_DAILY_CHUNKED`
+  - Default: `true`
+  - Controls daily level-metrics execution strategy.
+  - `1` (default): process daily aggregation in 24 hourly windows (lower peak memory, slower runtime).
+  - `0`: revert to legacy single full-day in-memory scan (higher peak memory, usually faster).
+
 - `ENABLE_ACTIVE_USERS_HOURLY`
   - Default: `false`
   - Set `ENABLE_ACTIVE_USERS_HOURLY=1` to enable hourly active users aggregation.
@@ -46,6 +52,31 @@ Typical modes:
   - Set `ENABLE_MONETIZATION_HOURLY=1` to enable hourly monetization aggregation.
   - Daily monetization aggregation still runs.
 
+- `ACTIVE_USERS_DAILY_CHUNKED`
+  - Default: `true`
+  - `1`: computes exact DAU via hourly chunked de-dup (lower peak memory).
+  - `0`: legacy one-shot exact `COUNT(DISTINCT)` query (usually faster, can spike memory more).
+
+- `COHORT_DAYINDEX_CHUNK_SIZE`
+  - Default: `8`
+  - Number of cohort day indices processed per chunk before throttle hook.
+  - Lower values smooth resource usage but increase wall-clock duration.
+
+- `MONETIZATION_DAILY_CHUNKED`
+  - Default: `true`
+  - `1`: recomputes daily rollup by 24 hourly increments (lower peak memory).
+  - `0`: legacy one-shot full-day aggregation query.
+
+- `AGGREGATION_PAUSE_MS`
+  - Default: `0`
+  - Optional pause between per-game/per-day aggregation iterations.
+  - Helps flatten CPU/memory spikes at the cost of longer total runtime.
+
+- `AGGREGATION_FORCE_GC`
+  - Default: `false`
+  - If enabled, tries to call `global.gc()` between aggregation iterations.
+  - Requires Node to run with `--expose-gc`; otherwise it logs a warning and skips.
+
 ## Recommended low-cost production setup
 
 If DB memory/cost is tight, use:
@@ -57,6 +88,11 @@ If DB memory/cost is tight, use:
 - `ENABLE_ACTIVE_USERS_HOURLY=0`
 - `ENABLE_COHORT_HOURLY=0`
 - `ENABLE_MONETIZATION_HOURLY=0`
+- `ACTIVE_USERS_DAILY_CHUNKED=1`
+- `COHORT_DAYINDEX_CHUNK_SIZE=8`
+- `MONETIZATION_DAILY_CHUNKED=1`
+- `AGGREGATION_PAUSE_MS=0`
+- `AGGREGATION_FORCE_GC=0`
 
 This keeps daily aggregations and disables all hourly aggregation jobs.
 

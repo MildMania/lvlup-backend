@@ -1,6 +1,7 @@
 import { PrismaClient } from '@prisma/client';
 import prisma from '../prisma';
 import logger from '../utils/logger';
+import { maybeThrottleAggregation } from '../utils/aggregationThrottle';
 
 const CAN_SKIP_DUPLICATES = (process.env.DATABASE_URL || '').includes('postgres');
 
@@ -19,10 +20,16 @@ const CAN_SKIP_DUPLICATES = (process.env.DATABASE_URL || '').includes('postgres'
 export class LevelMetricsAggregationService {
   private prisma: PrismaClient;
   private readonly enableHourlyChurnRefresh: boolean;
+  private readonly useChunkedDailyAggregation: boolean;
 
   constructor(prismaClient?: PrismaClient) {
     this.prisma = prismaClient || prisma;
     this.enableHourlyChurnRefresh = process.env.LEVEL_CHURN_HOURLY_REFRESH === '1';
+    // Default to chunked daily processing to bound peak memory usage.
+    // Set LEVEL_METRICS_DAILY_CHUNKED=0 to revert to legacy full-day in-memory scan.
+    this.useChunkedDailyAggregation =
+      process.env.LEVEL_METRICS_DAILY_CHUNKED !== '0' &&
+      process.env.LEVEL_METRICS_DAILY_CHUNKED !== 'false';
   }
 
   /**
@@ -54,6 +61,48 @@ export class LevelMetricsAggregationService {
       const dayStart = new Date(normalizedDate);
       const dayEnd = new Date(normalizedDate);
       dayEnd.setUTCHours(23, 59, 59, 999);
+
+      if (this.useChunkedDailyAggregation) {
+        logger.info(
+          `Using chunked daily aggregation for game ${gameId} on ${dateStr} (24 hourly windows)`
+        );
+
+        // Recompute this day from scratch (idempotent)
+        await this.prisma.levelMetricsDailyUser.deleteMany({
+          where: {
+            gameId,
+            date: normalizedDate
+          }
+        });
+        await this.prisma.levelMetricsDaily.deleteMany({
+          where: {
+            gameId,
+            date: normalizedDate
+          }
+        });
+
+        // Process day in bounded hourly chunks to reduce memory pressure.
+        const windowStart = new Date(dayStart);
+        const dayExclusiveEnd = new Date(normalizedDate);
+        dayExclusiveEnd.setUTCDate(dayExclusiveEnd.getUTCDate() + 1);
+
+        while (windowStart < dayExclusiveEnd) {
+          const windowEnd = new Date(windowStart);
+          windowEnd.setUTCHours(windowEnd.getUTCHours() + 1);
+          await this.aggregateHourlyMetricsIncremental(
+            gameId,
+            windowStart,
+            windowEnd,
+            { skipChurnRefresh: true }
+          );
+          await maybeThrottleAggregation(`level-metrics-daily-chunk:${gameId}:${dateStr}`);
+          windowStart.setUTCHours(windowStart.getUTCHours() + 1);
+        }
+
+        await this.refreshLevelChurnCohortRollups(gameId, normalizedDate);
+        logger.info(`Chunked daily aggregation completed for ${dateStr}`);
+        return;
+      }
 
       // Get all level events for this day
       const events = await this.prisma.event.findMany({
@@ -193,7 +242,10 @@ export class LevelMetricsAggregationService {
   async aggregateHourlyMetricsIncremental(
     gameId: string,
     hourStart: Date,
-    hourEnd: Date
+    hourEnd: Date,
+    options?: {
+      skipChurnRefresh?: boolean;
+    }
   ): Promise<void> {
     const dayStart = new Date(hourEnd);
     dayStart.setUTCHours(0, 0, 0, 0);
@@ -584,7 +636,7 @@ export class LevelMetricsAggregationService {
       });
     }
 
-    if (this.enableHourlyChurnRefresh) {
+    if (!options?.skipChurnRefresh && this.enableHourlyChurnRefresh) {
       await this.refreshLevelChurnCohortRollups(gameId, dayStart);
     }
   }
@@ -1189,6 +1241,7 @@ export class LevelMetricsAggregationService {
 
       while (currentDate <= end) {
         await this.aggregateDailyMetrics(gameId, new Date(currentDate));
+        await maybeThrottleAggregation(`level-metrics-backfill-day:${gameId}`);
         currentDate.setDate(currentDate.getDate() + 1);
         processedDays++;
 

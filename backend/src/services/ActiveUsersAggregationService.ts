@@ -2,13 +2,18 @@ import { PrismaClient } from '@prisma/client';
 import { HLL, newHllId } from '../utils/hll';
 import prisma from '../prisma';
 import logger from '../utils/logger';
+import { maybeThrottleAggregation } from '../utils/aggregationThrottle';
 
 export class ActiveUsersAggregationService {
   private prisma: PrismaClient;
   private readonly batchSize = 50000;
+  private readonly useChunkedDailyExactDau: boolean;
 
   constructor(prismaClient?: PrismaClient) {
     this.prisma = prismaClient || prisma;
+    this.useChunkedDailyExactDau =
+      process.env.ACTIVE_USERS_DAILY_CHUNKED !== '0' &&
+      process.env.ACTIVE_USERS_DAILY_CHUNKED !== 'false';
   }
 
   async aggregateDailyActiveUsers(gameId: string, targetDate: Date): Promise<void> {
@@ -20,44 +25,48 @@ export class ActiveUsersAggregationService {
 
     logger.info(`Aggregating active users for ${gameId} on ${date.toISOString().split('T')[0]}`);
 
-    // Exact DAU rollups
-    await this.prisma.$executeRawUnsafe(
-      `
-      INSERT INTO "active_users_daily"
-        ("id","gameId","date","platform","countryCode","appVersion","dau","createdAt","updatedAt")
-      SELECT
-        concat('aud_', md5(
-          e."gameId"::text || '|' ||
-          date_trunc('day', e."timestamp")::text || '|' ||
-          COALESCE(e."platform",'') || '|' ||
-          COALESCE(e."countryCode",'') || '|' ||
+    if (this.useChunkedDailyExactDau) {
+      await this.aggregateExactDailyDauChunked(gameId, dayStart, dayEnd);
+    } else {
+      // Legacy exact DAU rollups in one query (faster, potentially higher peak memory on DB side)
+      await this.prisma.$executeRawUnsafe(
+        `
+        INSERT INTO "active_users_daily"
+          ("id","gameId","date","platform","countryCode","appVersion","dau","createdAt","updatedAt")
+        SELECT
+          concat('aud_', md5(
+            e."gameId"::text || '|' ||
+            date_trunc('day', e."timestamp")::text || '|' ||
+            COALESCE(e."platform",'') || '|' ||
+            COALESCE(e."countryCode",'') || '|' ||
+            COALESCE(e."appVersion",'')
+          )) as "id",
+          e."gameId",
+          date_trunc('day', e."timestamp")::timestamptz as "date",
+          COALESCE(e."platform",'') as "platform",
+          COALESCE(e."countryCode",'') as "countryCode",
+          COALESCE(e."appVersion",'') as "appVersion",
+          COUNT(DISTINCT e."userId") as "dau",
+          now() as "createdAt",
+          now() as "updatedAt"
+        FROM "events" e
+        WHERE e."gameId" = $1
+          AND e."timestamp" >= $2
+          AND e."timestamp" < $3
+        GROUP BY
+          e."gameId",
+          date_trunc('day', e."timestamp"),
+          COALESCE(e."platform",''),
+          COALESCE(e."countryCode",''),
           COALESCE(e."appVersion",'')
-        )) as "id",
-        e."gameId",
-        date_trunc('day', e."timestamp")::timestamptz as "date",
-        COALESCE(e."platform",'') as "platform",
-        COALESCE(e."countryCode",'') as "countryCode",
-        COALESCE(e."appVersion",'') as "appVersion",
-        COUNT(DISTINCT e."userId") as "dau",
-        now() as "createdAt",
-        now() as "updatedAt"
-      FROM "events" e
-      WHERE e."gameId" = $1
-        AND e."timestamp" >= $2
-        AND e."timestamp" < $3
-      GROUP BY
-        e."gameId",
-        date_trunc('day', e."timestamp"),
-        COALESCE(e."platform",''),
-        COALESCE(e."countryCode",''),
-        COALESCE(e."appVersion",'')
-      ON CONFLICT ("gameId","date","platform","countryCode","appVersion")
-      DO UPDATE SET "dau" = EXCLUDED."dau", "updatedAt" = now()
-      `,
-      gameId,
-      dayStart,
-      dayEnd
-    );
+        ON CONFLICT ("gameId","date","platform","countryCode","appVersion")
+        DO UPDATE SET "dau" = EXCLUDED."dau", "updatedAt" = now()
+        `,
+        gameId,
+        dayStart,
+        dayEnd
+      );
+    }
 
     // HLL rollups for approximate WAU/MAU (computed in app, stored as BYTEA)
     const hllMap = new Map<string, {
@@ -148,6 +157,7 @@ export class ActiveUsersAggregationService {
     let processed = 0;
     while (current <= end) {
       await this.aggregateDailyActiveUsers(gameId, new Date(current));
+      await maybeThrottleAggregation(`active-users-backfill-day:${gameId}`);
       current.setUTCDate(current.getUTCDate() + 1);
       processed++;
 
@@ -167,6 +177,76 @@ export class ActiveUsersAggregationService {
     });
 
     return results.map((r) => r.gameId);
+  }
+
+  private async aggregateExactDailyDauChunked(gameId: string, dayStart: Date, dayEnd: Date): Promise<void> {
+    await this.prisma.$transaction(async (tx) => {
+      await tx.$executeRaw`
+        DELETE FROM "active_users_daily"
+        WHERE "gameId" = ${gameId}
+          AND "date" = ${dayStart}
+      `;
+
+      await tx.$executeRaw`
+        CREATE TEMP TABLE IF NOT EXISTS "tmp_active_users_daily_dim_user" (
+          "userId" text NOT NULL,
+          "platform" text NOT NULL,
+          "countryCode" text NOT NULL,
+          "appVersion" text NOT NULL,
+          PRIMARY KEY ("userId","platform","countryCode","appVersion")
+        ) ON COMMIT DROP
+      `;
+
+      await tx.$executeRaw`TRUNCATE TABLE "tmp_active_users_daily_dim_user"`;
+
+      const cursor = new Date(dayStart);
+      while (cursor < dayEnd) {
+        const next = new Date(cursor);
+        next.setUTCHours(next.getUTCHours() + 1);
+
+        await tx.$executeRaw`
+          INSERT INTO "tmp_active_users_daily_dim_user" ("userId","platform","countryCode","appVersion")
+          SELECT DISTINCT
+            e."userId",
+            COALESCE(e."platform",'') AS "platform",
+            COALESCE(e."countryCode",'') AS "countryCode",
+            COALESCE(e."appVersion",'') AS "appVersion"
+          FROM "events" e
+          WHERE e."gameId" = ${gameId}
+            AND e."timestamp" >= ${cursor}
+            AND e."timestamp" < ${next}
+          ON CONFLICT ("userId","platform","countryCode","appVersion") DO NOTHING
+        `;
+
+        await maybeThrottleAggregation(`active-users-daily-chunk:${gameId}`);
+        cursor.setUTCHours(cursor.getUTCHours() + 1);
+      }
+
+      await tx.$executeRaw`
+        INSERT INTO "active_users_daily"
+          ("id","gameId","date","platform","countryCode","appVersion","dau","createdAt","updatedAt")
+        SELECT
+          concat('aud_', md5(
+            ${gameId}::text || '|' ||
+            ${dayStart}::text || '|' ||
+            t."platform" || '|' ||
+            t."countryCode" || '|' ||
+            t."appVersion"
+          )) AS "id",
+          ${gameId},
+          ${dayStart},
+          t."platform",
+          t."countryCode",
+          t."appVersion",
+          COUNT(*)::int AS "dau",
+          now(),
+          now()
+        FROM "tmp_active_users_daily_dim_user" t
+        GROUP BY t."platform", t."countryCode", t."appVersion"
+        ON CONFLICT ("gameId","date","platform","countryCode","appVersion")
+        DO UPDATE SET "dau" = EXCLUDED."dau", "updatedAt" = now()
+      `;
+    });
   }
 }
 

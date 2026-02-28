@@ -2,6 +2,7 @@ import cron from 'node-cron';
 import activeUsersAggregationService from '../services/ActiveUsersAggregationService';
 import logger from '../utils/logger';
 import { withJobAdvisoryLock } from './advisoryLock';
+import { maybeThrottleAggregation } from '../utils/aggregationThrottle';
 
 export function startActiveUsersAggregationJob(): void {
   logger.info('Initializing active users aggregation cron job...');
@@ -32,6 +33,8 @@ export function startActiveUsersAggregationJob(): void {
           } catch (error) {
             logger.error(`Active users aggregation failed for game ${gameId}:`, error);
             errors++;
+          } finally {
+            await maybeThrottleAggregation(`active-users-daily-job:${gameId}`);
           }
         }
 
@@ -73,6 +76,8 @@ export function startActiveUsersHourlyTodayJob(): void {
           } catch (error) {
             logger.error(`Active users hourly aggregation failed for game ${gameId}:`, error);
             errors++;
+          } finally {
+            await maybeThrottleAggregation(`active-users-hourly-job:${gameId}`);
           }
         }
 

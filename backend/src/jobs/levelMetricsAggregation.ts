@@ -2,6 +2,7 @@ import cron from 'node-cron';
 import { LevelMetricsAggregationService } from '../services/LevelMetricsAggregationService';
 import logger from '../utils/logger';
 import { withJobAdvisoryLock } from './advisoryLock';
+import { maybeThrottleAggregation } from '../utils/aggregationThrottle';
 
 const aggregationService = new LevelMetricsAggregationService();
 
@@ -42,6 +43,8 @@ export function startLevelMetricsAggregationJob(): void {
           } catch (error) {
             logger.error(`Error aggregating metrics for game ${gameId}:`, error);
             errorCount++;
+          } finally {
+            await maybeThrottleAggregation(`level-metrics-daily-job:${gameId}`);
           }
         }
 
@@ -93,6 +96,8 @@ export function startLevelMetricsHourlyTodayJob(): void {
           } catch (error) {
             logger.error(`Error aggregating today's metrics for game ${gameId}:`, error);
             errorCount++;
+          } finally {
+            await maybeThrottleAggregation(`level-metrics-hourly-job:${gameId}`);
           }
         }
 

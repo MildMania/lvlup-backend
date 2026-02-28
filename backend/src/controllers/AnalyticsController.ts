@@ -15,6 +15,41 @@ const monetizationCohortService = new MonetizationCohortService();
 const revenueService = new RevenueService();
 
 export class AnalyticsController {
+    private resolveExternalUserId(payload: any): { userId: string | null; source: string | null } {
+        const explicitUserId = typeof payload?.userId === 'string' ? payload.userId.trim() : '';
+        if (explicitUserId) {
+            return { userId: explicitUserId, source: 'userId' };
+        }
+
+        const deviceInfoDeviceId = typeof payload?.deviceInfo?.deviceId === 'string'
+            ? payload.deviceInfo.deviceId.trim()
+            : '';
+        if (deviceInfoDeviceId) {
+            return { userId: `anon_device:${deviceInfoDeviceId}`, source: 'deviceInfo.deviceId' };
+        }
+
+        const firstEventDeviceId = typeof payload?.events?.[0]?.deviceId === 'string'
+            ? payload.events[0].deviceId.trim()
+            : '';
+        if (firstEventDeviceId) {
+            return { userId: `anon_device:${firstEventDeviceId}`, source: 'events[0].deviceId' };
+        }
+
+        const revenueDeviceId = typeof payload?.revenueData?.[0]?.deviceId === 'string'
+            ? payload.revenueData[0].deviceId.trim()
+            : '';
+        if (revenueDeviceId) {
+            return { userId: `anon_device:${revenueDeviceId}`, source: 'revenueData[0].deviceId' };
+        }
+
+        const sessionId = typeof payload?.sessionId === 'string' ? payload.sessionId.trim() : '';
+        if (sessionId) {
+            return { userId: `anon_session:${sessionId}`, source: 'sessionId' };
+        }
+
+        return { userId: null, source: null };
+    }
+
     private logMemory(label: string) {
         const mem = process.memoryUsage();
         logAnalyticsMetrics(`[AnalyticsMetrics] ${label}`, {
@@ -104,17 +139,26 @@ export class AnalyticsController {
         try {
             const gameId = requireGameId(req);
             const batchData: BatchEventData = req.body;
+            const { userId: resolvedUserId, source: resolvedUserIdSource } = this.resolveExternalUserId(batchData);
+            const effectiveUserId = resolvedUserId || '';
 
             // Validate required fields
-            if (!batchData.userId) {
-                logger.warn('Rejecting /events/batch: missing userId', {
+            if (!effectiveUserId) {
+                logger.warn('Rejecting /events/batch: unable to resolve userId', {
                     hasEventsArray: Array.isArray((batchData as any)?.events),
                     receivedEvents: Array.isArray((batchData as any)?.events) ? (batchData as any).events.length : 0
                 });
                 return res.status(400).json({
                     success: false,
-                    error: 'User ID is required',
+                    error: 'User ID is required (or provide deviceId/sessionId fallback)',
                     code: 'USER_ID_REQUIRED'
+                });
+            }
+
+            if (!batchData.userId) {
+                logger.warn('Resolved missing /events/batch userId from fallback', {
+                    source: resolvedUserIdSource,
+                    effectiveUserId
                 });
             }
 
@@ -161,6 +205,7 @@ export class AnalyticsController {
                 const chunk = validEvents.slice(i, i + CHUNK_SIZE);
                 const result = await analyticsService.trackBatchEvents(gameId, {
                     ...batchData,
+                    userId: effectiveUserId,
                     events: chunk
                 });
                 processed += result.count;
@@ -635,12 +680,23 @@ export class AnalyticsController {
         try {
             const gameId = requireGameId(req);
             const { userId, sessionId, revenueData } = req.body;
+            const { userId: resolvedUserId, source: resolvedUserIdSource } = this.resolveExternalUserId(req.body);
+            const effectiveUserId = resolvedUserId || '';
 
             // Validate required fields
-            if (!userId) {
+            if (!effectiveUserId) {
                 return res.status(400).json({
                     success: false,
-                    error: 'User ID is required'
+                    error: 'User ID is required (or provide deviceId/sessionId fallback)',
+                    code: 'USER_ID_REQUIRED'
+                });
+            }
+
+            if (!userId) {
+                logger.warn('Resolved missing /revenue userId from fallback', {
+                    source: resolvedUserIdSource,
+                    effectiveUserId,
+                    revenueItems: Array.isArray(revenueData) ? revenueData.length : 0
                 });
             }
 
@@ -653,7 +709,7 @@ export class AnalyticsController {
 
             // Get or create user first
             const userProfile: UserProfile = {
-                externalId: userId,
+                externalId: effectiveUserId,
                 deviceId: revenueData[0]?.deviceId,
                 platform: revenueData[0]?.platform,
                 version: revenueData[0]?.appVersion,

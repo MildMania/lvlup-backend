@@ -107,53 +107,67 @@ export class AnalyticsController {
 
             // Validate required fields
             if (!batchData.userId) {
+                logger.debug('Rejecting /events/batch: missing userId', {
+                    hasEventsArray: Array.isArray((batchData as any)?.events),
+                    receivedEvents: Array.isArray((batchData as any)?.events) ? (batchData as any).events.length : 0
+                });
                 return res.status(400).json({
                     success: false,
-                    error: 'User ID is required'
+                    error: 'User ID is required',
+                    code: 'USER_ID_REQUIRED'
                 });
             }
 
             if (!batchData.events || !Array.isArray(batchData.events) || batchData.events.length === 0) {
+                logger.debug('Rejecting /events/batch: events array missing/empty', {
+                    userId: batchData.userId,
+                    hasEventsArray: Array.isArray((batchData as any)?.events),
+                    receivedEvents: Array.isArray((batchData as any)?.events) ? (batchData as any).events.length : 0
+                });
                 return res.status(400).json({
                     success: false,
-                    error: 'Events array is required and cannot be empty'
+                    error: 'Events array is required and cannot be empty',
+                    code: 'EVENTS_ARRAY_REQUIRED'
                 });
             }
 
-            // Validate max batch size
-            if (batchData.events.length > 100) {
+            // Keep ingestion resilient:
+            // - Drop malformed events instead of failing entire batch
+            // - Process large payloads in chunks to avoid 400s on oversized offline flushes
+            const validEvents = batchData.events.filter(
+                (event) => !!event && !!event.eventName && /^[a-zA-Z0-9_]+$/.test(event.eventName)
+            );
+            const droppedEvents = batchData.events.length - validEvents.length;
+
+            if (validEvents.length === 0) {
+                logger.debug('Dropping batch: no valid events after validation', {
+                    userId: batchData.userId,
+                    receivedEvents: batchData.events.length
+                });
                 return res.status(400).json({
                     success: false,
-                    error: 'Batch size exceeds maximum limit of 100 events'
+                    error: 'No valid events in batch',
+                    code: 'NO_VALID_EVENTS'
                 });
             }
 
-            // Validate each event in the batch
-            for (let i = 0; i < batchData.events.length; i++) {
-                const event = batchData.events[i];
+            const CHUNK_SIZE = 100;
+            let processed = 0;
 
-                if (!event || !event.eventName) {
-                    return res.status(400).json({
-                        success: false,
-                        error: `Event at index ${i} is missing eventName`
-                    });
-                }
-
-                // Validate event name format
-                if (!/^[a-zA-Z0-9_]+$/.test(event.eventName)) {
-                    return res.status(400).json({
-                        success: false,
-                        error: `Event name at index ${i} can only contain letters, numbers and underscores`
-                    });
-                }
+            for (let i = 0; i < validEvents.length; i += CHUNK_SIZE) {
+                const chunk = validEvents.slice(i, i + CHUNK_SIZE);
+                const result = await analyticsService.trackBatchEvents(gameId, {
+                    ...batchData,
+                    events: chunk
+                });
+                processed += result.count;
             }
-
-            const result = await analyticsService.trackBatchEvents(gameId, batchData);
 
             res.status(200).json({
                 success: true,
                 data: {
-                    processed: result.count
+                    processed,
+                    droppedInvalidEvents: droppedEvents
                 }
             });
         } catch (error) {

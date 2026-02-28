@@ -208,7 +208,7 @@ export class SessionHeartbeatBatchWriter {
             const chunk = heartbeats.slice(i, i + this.flushChunkSize);
             const valuesSql = Prisma.join(
                 chunk.map((hb) =>
-                    Prisma.sql`(${hb.sessionId}, ${hb.lastHeartbeat}, ${hb.duration ?? null}, ${hb.countryCode})`
+                    Prisma.sql`(${hb.sessionId}::text, ${hb.lastHeartbeat}::timestamptz, ${hb.duration ?? null}::integer, ${hb.countryCode}::text)`
                 )
             );
 

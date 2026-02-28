@@ -13,10 +13,17 @@ import { HLL } from '../utils/hll';
 export class AnalyticsService {
     private prisma: PrismaClient;
     private revenueService: RevenueService;
+    private readonly heartbeatMinPersistIntervalMs: number;
+    private readonly persistHeartbeatDuration: boolean;
 
     constructor(prismaClient?: PrismaClient) {
         this.prisma = prismaClient || prisma;
         this.revenueService = new RevenueService(prismaClient);
+        const persistIntervalSeconds = Number(process.env.HEARTBEAT_MIN_PERSIST_INTERVAL_SECONDS || 60);
+        this.heartbeatMinPersistIntervalMs = Math.max(0, persistIntervalSeconds * 1000);
+        this.persistHeartbeatDuration =
+            process.env.HEARTBEAT_PERSIST_DURATION === '1' ||
+            process.env.HEARTBEAT_PERSIST_DURATION === 'true';
     }
 
     private static readonly IGNORED_EVENT_NAMES = new Set(['app_paused', 'app_resumed']);
@@ -173,8 +180,7 @@ export class AnalyticsService {
     }
 
     // Update session heartbeat
-    // Updates lastHeartbeat, endTime, and duration on every heartbeat
-    // This ensures sessions have accurate data even if endSession is never called
+    // Updates lastHeartbeat (and optionally duration) with write throttling
     // Uses server timestamp only - no client timestamp needed for heartbeats
     // Optionally updates countryCode if provided and session doesn't have it yet
     async updateSessionHeartbeat(sessionId: string, countryCode?: string | null) {
@@ -209,13 +215,25 @@ export class AnalyticsService {
                 return; // Don't update with backwards timestamp
             }
 
+            // Write-throttle heartbeat updates to reduce DB churn under frequent client heartbeats.
+            // If countryCode is newly provided while session has none, force persistence once.
+            const hasNewCountryCode = !!countryCode && !session.countryCode;
+            if (
+                session.lastHeartbeat &&
+                !hasNewCountryCode &&
+                this.heartbeatMinPersistIntervalMs > 0 &&
+                now.getTime() - session.lastHeartbeat.getTime() < this.heartbeatMinPersistIntervalMs
+            ) {
+                return;
+            }
+
             const duration = Math.floor((now.getTime() - session.startTime.getTime()) / 1000);
 
             // Enqueue heartbeat for batched processing (non-blocking)
             sessionHeartbeatBatchWriter.enqueue({
                 sessionId,
                 lastHeartbeat: now,
-                duration: Math.max(duration, 0),
+                duration: this.persistHeartbeatDuration ? Math.max(duration, 0) : undefined,
                 countryCode: countryCode || session.countryCode || null
             });
 

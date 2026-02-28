@@ -77,6 +77,22 @@ Typical modes:
   - If enabled, tries to call `global.gc()` between aggregation iterations.
   - Requires Node to run with `--expose-gc`; otherwise it logs a warning and skips.
 
+## Heartbeat write-load controls
+
+- `HEARTBEAT_MIN_PERSIST_INTERVAL_SECONDS`
+  - Default: `60`
+  - Minimum interval between persisted heartbeats per session.
+  - Client can still send every 30s; server coalesces writes to reduce update churn.
+
+- `HEARTBEAT_PERSIST_DURATION`
+  - Default: `false`
+  - If enabled, heartbeat writes also persist session `duration`.
+  - If disabled, heartbeat writes update `lastHeartbeat` (+ optional first country code) only.
+
+- `HEARTBEAT_BATCH_UPDATE_CHUNK_SIZE`
+  - Default: `250`
+  - Batch size for SQL heartbeat update chunks in the batch writer.
+
 ## Recommended low-cost production setup
 
 If DB memory/cost is tight, use:

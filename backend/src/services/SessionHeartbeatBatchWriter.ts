@@ -1,4 +1,4 @@
-import { PrismaClient } from '@prisma/client';
+import { Prisma, PrismaClient } from '@prisma/client';
 import logger from '../utils/logger';
 import prisma from '../prisma';
 
@@ -29,8 +29,7 @@ const SHUTDOWN_GRACE_PERIOD_MS = 3000; // Max time to wait during shutdown
 interface PendingHeartbeat {
     sessionId: string;
     lastHeartbeat: Date;
-    endTime?: Date;
-    duration: number;
+    duration?: number;
     countryCode: string | null;
 }
 
@@ -47,6 +46,7 @@ export class SessionHeartbeatBatchWriter {
     private flushTimer: NodeJS.Timeout | null = null;
     private isShuttingDown: boolean = false;
     private isFlushing: boolean = false;
+    private readonly flushChunkSize: number;
     
     // Metrics
     private totalFlushed: number = 0;
@@ -55,6 +55,7 @@ export class SessionHeartbeatBatchWriter {
 
     constructor(prismaClient?: PrismaClient) {
         this.prisma = prismaClient || prisma;
+        this.flushChunkSize = Math.max(1, Number(process.env.HEARTBEAT_BATCH_UPDATE_CHUNK_SIZE || 250));
     }
 
     /**
@@ -134,53 +135,20 @@ export class SessionHeartbeatBatchWriter {
         // Take snapshot of current buffer and clear it
         const heartbeatsToFlush = this.buffer.slice();
         this.buffer = [];
+        const dedupedHeartbeats = this.dedupeBySession(heartbeatsToFlush);
         
         const startTime = Date.now();
         
         try {
-            // Batch UPDATE heartbeats using transaction
-            // Update sessions with new lastHeartbeat, endTime, duration
-            let updatedCount = 0;
-            
-            for (const heartbeat of heartbeatsToFlush) {
-                try {
-                    const updateData: any = {
-                        lastHeartbeat: heartbeat.lastHeartbeat,
-                        duration: heartbeat.duration
-                    };
-
-                    if (heartbeat.endTime) {
-                        updateData.endTime = heartbeat.endTime;
-                    }
-
-                    // Update countryCode if provided
-                    if (heartbeat.countryCode) {
-                        updateData.countryCode = heartbeat.countryCode;
-                    }
-
-                    await this.prisma.session.update({
-                        where: { id: heartbeat.sessionId },
-                        data: updateData
-                    });
-
-                    updatedCount++;
-                } catch (error: any) {
-                    // Skip individual heartbeat errors and continue with others
-                    if (error.code === 'P2025') {
-                        // Session not found - this is expected for old/deleted sessions
-                        logger.debug(`Session ${heartbeat.sessionId} not found, skipping heartbeat update`);
-                        updatedCount++;
-                    } else {
-                        logger.warn(`Failed to update heartbeat for session ${heartbeat.sessionId}:`, error.message);
-                    }
-                }
-            }
+            // Batch update in SQL chunks to minimize roundtrips and WAL churn.
+            const updatedCount = await this.batchUpdateHeartbeats(dedupedHeartbeats);
             
             const flushDuration = Date.now() - startTime;
             this.totalFlushed += updatedCount;
             
-            logger.info(`[SessionHeartbeatBatchWriter] Flushed ${updatedCount}/${heartbeatsToFlush.length} heartbeats in ${flushDuration}ms`, {
+            logger.info(`[SessionHeartbeatBatchWriter] Flushed ${updatedCount}/${heartbeatsToFlush.length} heartbeats (${dedupedHeartbeats.length} deduped) in ${flushDuration}ms`, {
                 batchSize: heartbeatsToFlush.length,
+                dedupedBatchSize: dedupedHeartbeats.length,
                 successCount: updatedCount,
                 flushDuration,
                 totalFlushed: this.totalFlushed,
@@ -196,37 +164,7 @@ export class SessionHeartbeatBatchWriter {
             
             // Retry once
             try {
-                let updatedCount = 0;
-                
-                for (const heartbeat of heartbeatsToFlush) {
-                    try {
-                        const updateData: any = {
-                            lastHeartbeat: heartbeat.lastHeartbeat,
-                            duration: heartbeat.duration
-                        };
-
-                        if (heartbeat.endTime) {
-                            updateData.endTime = heartbeat.endTime;
-                        }
-
-                        if (heartbeat.countryCode) {
-                            updateData.countryCode = heartbeat.countryCode;
-                        }
-
-                        await this.prisma.session.update({
-                            where: { id: heartbeat.sessionId },
-                            data: updateData
-                        });
-
-                        updatedCount++;
-                    } catch (innerError: any) {
-                        if (innerError.code === 'P2025') {
-                            updatedCount++;
-                        } else {
-                            logger.warn(`Retry failed for session ${heartbeat.sessionId}:`, innerError.message);
-                        }
-                    }
-                }
+                const updatedCount = await this.batchUpdateHeartbeats(dedupedHeartbeats);
                 
                 const retryDuration = Date.now() - startTime;
                 this.totalFlushed += updatedCount;
@@ -249,6 +187,59 @@ export class SessionHeartbeatBatchWriter {
         } finally {
             this.isFlushing = false;
         }
+    }
+
+    private dedupeBySession(heartbeats: PendingHeartbeat[]): PendingHeartbeat[] {
+        const latestBySession = new Map<string, PendingHeartbeat>();
+        for (const hb of heartbeats) {
+            const existing = latestBySession.get(hb.sessionId);
+            if (!existing || hb.lastHeartbeat >= existing.lastHeartbeat) {
+                latestBySession.set(hb.sessionId, hb);
+            }
+        }
+        return Array.from(latestBySession.values());
+    }
+
+    private async batchUpdateHeartbeats(heartbeats: PendingHeartbeat[]): Promise<number> {
+        if (heartbeats.length === 0) return 0;
+
+        let updatedTotal = 0;
+        for (let i = 0; i < heartbeats.length; i += this.flushChunkSize) {
+            const chunk = heartbeats.slice(i, i + this.flushChunkSize);
+            const valuesSql = Prisma.join(
+                chunk.map((hb) =>
+                    Prisma.sql`(${hb.sessionId}, ${hb.lastHeartbeat}, ${hb.duration ?? null}, ${hb.countryCode})`
+                )
+            );
+
+            const updated = await this.prisma.$executeRaw(Prisma.sql`
+                UPDATE "sessions" AS s
+                SET
+                  "lastHeartbeat" = CASE
+                    WHEN s."lastHeartbeat" IS NULL THEN v.last_heartbeat
+                    WHEN v.last_heartbeat > s."lastHeartbeat" THEN v.last_heartbeat
+                    ELSE s."lastHeartbeat"
+                  END,
+                  "duration" = CASE
+                    WHEN v.duration_sec IS NULL THEN s."duration"
+                    WHEN s."duration" IS NULL THEN v.duration_sec
+                    WHEN v.duration_sec > s."duration" THEN v.duration_sec
+                    ELSE s."duration"
+                  END,
+                  "countryCode" = CASE
+                    WHEN s."countryCode" IS NULL AND v.country_code IS NOT NULL THEN v.country_code
+                    ELSE s."countryCode"
+                  END
+                FROM (
+                  VALUES ${valuesSql}
+                ) AS v(session_id, last_heartbeat, duration_sec, country_code)
+                WHERE s."id" = v.session_id
+                  AND s."endTime" IS NULL
+            `);
+            updatedTotal += Number(updated || 0);
+        }
+
+        return updatedTotal;
     }
 
     /**

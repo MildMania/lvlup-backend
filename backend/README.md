@@ -87,8 +87,9 @@ The local worker must remain online for cron/rollup processing.
 
 For all background job environment flags and low-cost recommended settings, see:
 
-- `README-JOBS-ENV.md`
-- `README-EGRESS-RUNBOOK.md`
+- `../docs/BACKEND/README-JOBS-ENV.md`
+- `../docs/BACKEND/README-EGRESS-RUNBOOK.md`
+- `../docs/BACKEND/CLICKHOUSE-MIGRATION-RUNBOOK.md`
 
 ### Query Stats Snapshot
 

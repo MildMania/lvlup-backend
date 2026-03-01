@@ -147,7 +147,7 @@ This keeps daily aggregations and disables all hourly aggregation jobs.
 
 - New D3/D7 churn columns may show `N/A` until rollups are backfilled.
 - Egress runbook:
-  - See `backend/README-EGRESS-RUNBOOK.md`
+  - See `README-EGRESS-RUNBOOK.md`
 - Backfill command (from `backend/`):
   - `npm run backfill:level-metrics -- <gameId> <startDate> <endDate>`
   - Example:

@@ -88,6 +88,19 @@ The local worker must remain online for cron/rollup processing.
 For all background job environment flags and low-cost recommended settings, see:
 
 - `README-JOBS-ENV.md`
+- `README-EGRESS-RUNBOOK.md`
+
+### Query Stats Snapshot
+
+Capture top query-cost snapshots for before/after comparisons:
+
+```bash
+npm run ops:query-stats-snapshot -- 25
+```
+
+Output:
+
+- `logs/query-stats/query-stats-<timestamp>.json`
 
 ### PM2 Worker Operations
 

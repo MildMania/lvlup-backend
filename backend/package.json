@@ -31,6 +31,7 @@
     "backfill:cohorts": "ts-node src/scripts/backfillCohorts.ts",
     "backfill:cohort-payers": "ts-node src/scripts/backfillCohortPayers.ts",
     "backfill:monetization": "ts-node src/scripts/backfillMonetization.ts",
+    "ops:query-stats-snapshot": "ts-node src/scripts/queryStatsSnapshot.ts",
     "worker:start": "bash scripts/worker-start.sh",
     "worker:redeploy": "bash scripts/worker-redeploy.sh",
     "worker:auto-update": "bash scripts/worker-auto-update.sh",

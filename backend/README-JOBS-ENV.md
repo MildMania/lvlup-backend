@@ -93,6 +93,22 @@ Typical modes:
   - Default: `250`
   - Batch size for SQL heartbeat update chunks in the batch writer.
 
+## API read-load controls
+
+- `AUTH_GAME_CACHE_TTL_SECONDS`
+  - Default: `60`
+  - TTL for API-key -> game auth cache entries.
+  - Reduces repeated `SELECT ... FROM games WHERE apiKey = ?` lookups on high request rates.
+
+- `AUTH_GAME_NEG_CACHE_TTL_SECONDS`
+  - Default: `10`
+  - TTL for invalid API key cache entries.
+  - Reduces repeated DB hits from repeated invalid keys.
+
+- `AUTH_GAME_CACHE_MAX_ENTRIES`
+  - Default: `10000`
+  - Maximum API-key cache entry count before FIFO eviction.
+
 ## Recommended low-cost production setup
 
 If DB memory/cost is tight, use:
@@ -118,9 +134,20 @@ This keeps daily aggregations and disables all hourly aggregation jobs.
 2. Enable one hourly flag at a time (`=1`) for a few hours.
 3. Compare DB CPU/memory slope and egress before enabling the next one.
 
+### Query stats snapshots
+
+- Capture top queries before/after a change:
+  - `npm run ops:query-stats-snapshot`
+- Optional limit:
+  - `npm run ops:query-stats-snapshot -- 50`
+- Output file:
+  - `backend/logs/query-stats/query-stats-<timestamp>.json`
+
 ## Notes
 
 - New D3/D7 churn columns may show `N/A` until rollups are backfilled.
+- Egress runbook:
+  - See `backend/README-EGRESS-RUNBOOK.md`
 - Backfill command (from `backend/`):
   - `npm run backfill:level-metrics -- <gameId> <startDate> <endDate>`
   - Example:

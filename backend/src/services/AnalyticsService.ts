@@ -9,6 +9,7 @@ import { RevenueService } from './RevenueService';
 import { eventBatchWriter } from './EventBatchWriter';
 import { sessionHeartbeatBatchWriter } from './SessionHeartbeatBatchWriter';
 import { HLL } from '../utils/hll';
+import clickHouseService from './ClickHouseService';
 
 export class AnalyticsService {
     private prisma: PrismaClient;
@@ -729,76 +730,172 @@ export class AnalyticsService {
         }
     ) {
         try {
-            // Fetch only what can affect the requested page after merge.
-            // This sharply reduces I/O and memory compared with fixed 3x over-fetching.
-            const fetchLimit = Math.min(Math.max(offset + limit, limit), 2000);
-            const isRevenueOnlyEventFilter =
-                filters?.eventName === 'ad_impression' || filters?.eventName === 'in_app_purchase';
-            const isNonRevenueSpecificEventFilter =
-                !!filters?.eventName && filters.eventName !== 'all' && !isRevenueOnlyEventFilter;
-            
-            // Build where clause for filters
-            const whereClause: any = {
-                gameId,
-                NOT: {
-                    serverReceivedAt: null
+            const readFromClickHouse =
+                process.env.ANALYTICS_READ_EVENTS_FROM_CLICKHOUSE === '1' ||
+                process.env.ANALYTICS_READ_EVENTS_FROM_CLICKHOUSE === 'true';
+
+            if (readFromClickHouse && clickHouseService.isEnabled()) {
+                try {
+                    return await this.getEventsFromClickHouse(gameId, limit, offset, sort, filters);
+                } catch (clickHouseError) {
+                    logger.warn('[Analytics] ClickHouse events read failed; falling back to Postgres', {
+                        gameId,
+                        error: clickHouseError instanceof Error ? clickHouseError.message : String(clickHouseError),
+                    });
                 }
+            }
+
+            return await this.getEventsFromPostgres(gameId, limit, offset, sort, filters);
+        } catch (error) {
+            logger.error('Error getting events:', error);
+            throw error;
+        }
+    }
+
+    private async getEventsFromPostgres(
+        gameId: string,
+        limit: number,
+        offset: number,
+        sort: string,
+        filters?: { userId?: string; eventName?: string; search?: string; }
+    ) {
+        // Fetch only what can affect the requested page after merge.
+        // This sharply reduces I/O and memory compared with fixed 3x over-fetching.
+        const fetchLimit = Math.min(Math.max(offset + limit, limit), 2000);
+        const isRevenueOnlyEventFilter =
+            filters?.eventName === 'ad_impression' || filters?.eventName === 'in_app_purchase';
+        const isNonRevenueSpecificEventFilter =
+            !!filters?.eventName && filters.eventName !== 'all' && !isRevenueOnlyEventFilter;
+
+        const whereClause: any = {
+            gameId,
+            NOT: {
+                serverReceivedAt: null
+            }
+        };
+
+        if (filters?.userId) {
+            whereClause.userId = {
+                contains: filters.userId,
+                mode: 'insensitive'
             };
+        }
 
-            // Add userId filter if provided
-            if (filters?.userId) {
-                whereClause.userId = {
-                    contains: filters.userId,
-                    mode: 'insensitive'
-                };
-            }
+        if (filters?.eventName && filters.eventName !== 'all') {
+            whereClause.eventName = filters.eventName;
+        }
 
-            // Add eventName filter if provided
-            if (filters?.eventName && filters.eventName !== 'all') {
-                whereClause.eventName = filters.eventName;
-            }
-
-            // Add search filter (searches both userId and eventName)
-            if (filters?.search) {
-                whereClause.OR = [
-                    {
-                        userId: {
-                            contains: filters.search,
-                            mode: 'insensitive'
-                        }
-                    },
-                    {
-                        eventName: {
-                            contains: filters.search,
-                            mode: 'insensitive'
-                        }
+        if (filters?.search) {
+            whereClause.OR = [
+                {
+                    userId: {
+                        contains: filters.search,
+                        mode: 'insensitive'
                     }
-                ];
+                },
+                {
+                    eventName: {
+                        contains: filters.search,
+                        mode: 'insensitive'
+                    }
+                }
+            ];
+        }
+
+        const eventsPromise = this.prisma.event.findMany({
+            where: whereClause,
+            select: {
+                id: true,
+                eventName: true,
+                userId: true,
+                sessionId: true,
+                properties: true,
+                timestamp: true,
+                eventUuid: true,
+                clientTs: true,
+                serverReceivedAt: true,
+                platform: true,
+                osVersion: true,
+                manufacturer: true,
+                device: true,
+                deviceId: true,
+                appVersion: true,
+                appBuild: true,
+                sdkVersion: true,
+                connectionType: true,
+                sessionNum: true,
+                countryCode: true,
+            },
+            orderBy: {
+                serverReceivedAt: sort === 'desc' ? 'desc' : 'asc'
+            },
+            take: fetchLimit
+        });
+
+        const revenueWhereClause: any = {
+            gameId
+        };
+
+        if (filters?.userId) {
+            revenueWhereClause.userId = {
+                contains: filters.userId,
+                mode: 'insensitive'
+            };
+        }
+
+        if (filters?.eventName && filters.eventName !== 'all') {
+            if (filters.eventName === 'ad_impression') {
+                revenueWhereClause.revenueType = 'AD_IMPRESSION';
+            } else if (filters.eventName === 'in_app_purchase') {
+                revenueWhereClause.revenueType = 'IN_APP_PURCHASE';
             }
-            
-            const eventsPromise = this.prisma.event.findMany({
-                where: whereClause,
+        }
+
+        if (filters?.search) {
+            revenueWhereClause.OR = [
+                {
+                    userId: {
+                        contains: filters.search,
+                        mode: 'insensitive'
+                    }
+                },
+                {
+                    revenueType: {
+                        contains: filters.search,
+                        mode: 'insensitive'
+                    }
+                }
+            ];
+        }
+
+        const revenuePromise: Promise<any[]> = isNonRevenueSpecificEventFilter
+            ? Promise.resolve([])
+            : this.prisma.revenue.findMany({
+                where: revenueWhereClause,
                 select: {
                     id: true,
-                    eventName: true,
                     userId: true,
                     sessionId: true,
-                    properties: true,
+                    revenueType: true,
+                    revenue: true,
+                    revenueUSD: true,
+                    currency: true,
                     timestamp: true,
-                    eventUuid: true,
-                    clientTs: true,
                     serverReceivedAt: true,
                     platform: true,
-                    osVersion: true,
-                    manufacturer: true,
                     device: true,
                     deviceId: true,
                     appVersion: true,
                     appBuild: true,
-                    sdkVersion: true,
-                    connectionType: true,
-                    sessionNum: true,
                     countryCode: true,
+                    adNetworkName: true,
+                    adFormat: true,
+                    adPlacement: true,
+                    adImpressionId: true,
+                    productId: true,
+                    transactionId: true,
+                    store: true,
+                    isVerified: true,
                 },
                 orderBy: {
                     serverReceivedAt: sort === 'desc' ? 'desc' : 'asc'
@@ -806,148 +903,251 @@ export class AnalyticsService {
                 take: fetchLimit
             });
 
-            // Fetch revenue events with same filters
-            const revenueWhereClause: any = {
-                gameId
-            };
+        const [events, revenueEvents] = await Promise.all([eventsPromise, revenuePromise]);
+        return this.mergeAndPaginateEventFeed(events, revenueEvents, limit, offset, sort);
+    }
 
-            // Add userId filter if provided
+    private async getEventsFromClickHouse(
+        gameId: string,
+        limit: number,
+        offset: number,
+        sort: string,
+        filters?: { userId?: string; eventName?: string; search?: string; }
+    ) {
+        const fetchLimit = Math.min(Math.max(offset + limit, limit), 2000);
+        const isRevenueOnlyEventFilter =
+            filters?.eventName === 'ad_impression' || filters?.eventName === 'in_app_purchase';
+        const isNonRevenueSpecificEventFilter =
+            !!filters?.eventName && filters.eventName !== 'all' && !isRevenueOnlyEventFilter;
+        const sortOrder = sort === 'desc' ? 'DESC' : 'ASC';
+        const q = (value: string) => this.quoteClickHouseString(value);
+
+        const eventsWhere: string[] = [`gameId = ${q(gameId)}`];
+        if (filters?.userId) {
+            eventsWhere.push(`positionCaseInsensitiveUTF8(userId, ${q(filters.userId)}) > 0`);
+        }
+        if (filters?.eventName && filters.eventName !== 'all') {
+            eventsWhere.push(`eventName = ${q(filters.eventName)}`);
+        }
+        if (filters?.search) {
+            eventsWhere.push(
+                `(positionCaseInsensitiveUTF8(userId, ${q(filters.search)}) > 0 OR positionCaseInsensitiveUTF8(eventName, ${q(filters.search)}) > 0)`
+            );
+        }
+
+        const eventsSql = `
+            SELECT
+                id,
+                eventName,
+                userId,
+                sessionId,
+                propertiesJson,
+                timestamp,
+                serverReceivedAt,
+                platform,
+                countryCode,
+                appVersion
+            FROM events_raw
+            WHERE ${eventsWhere.join(' AND ')}
+            ORDER BY serverReceivedAt ${sortOrder}
+            LIMIT ${fetchLimit}
+        `;
+
+        const eventsRows = await clickHouseService.query<Array<{
+            id: string;
+            eventName: string;
+            userId: string;
+            sessionId: string | null;
+            propertiesJson: string;
+            timestamp: string;
+            serverReceivedAt: string;
+            platform: string;
+            countryCode: string;
+            appVersion: string;
+        }>[number]>(eventsSql);
+
+        const events = eventsRows.map((row) => ({
+            id: row.id,
+            eventName: row.eventName,
+            userId: row.userId,
+            sessionId: row.sessionId || null,
+            properties: this.parseClickHouseJson(row.propertiesJson),
+            timestamp: new Date(row.timestamp),
+            eventUuid: null,
+            clientTs: null,
+            serverReceivedAt: new Date(row.serverReceivedAt),
+            platform: row.platform || null,
+            osVersion: null,
+            manufacturer: null,
+            device: null,
+            deviceId: null,
+            appVersion: row.appVersion || null,
+            appBuild: null,
+            sdkVersion: null,
+            connectionType: null,
+            sessionNum: null,
+            countryCode: row.countryCode || null,
+        }));
+
+        let revenueEvents: Array<Record<string, any>> = [];
+        if (!isNonRevenueSpecificEventFilter) {
+            const revenueWhere: string[] = [`gameId = ${q(gameId)}`];
             if (filters?.userId) {
-                revenueWhereClause.userId = {
-                    contains: filters.userId,
-                    mode: 'insensitive'
-                };
+                revenueWhere.push(`positionCaseInsensitiveUTF8(userId, ${q(filters.userId)}) > 0`);
             }
-
-            // Add eventName filter if provided (convert to revenueType)
             if (filters?.eventName && filters.eventName !== 'all') {
                 if (filters.eventName === 'ad_impression') {
-                    revenueWhereClause.revenueType = 'AD_IMPRESSION';
+                    revenueWhere.push(`revenueType = 'AD_IMPRESSION'`);
                 } else if (filters.eventName === 'in_app_purchase') {
-                    revenueWhereClause.revenueType = 'IN_APP_PURCHASE';
+                    revenueWhere.push(`revenueType = 'IN_APP_PURCHASE'`);
                 }
             }
-
-            // Add search filter for revenue events
             if (filters?.search) {
-                revenueWhereClause.OR = [
-                    {
-                        userId: {
-                            contains: filters.search,
-                            mode: 'insensitive'
-                        }
-                    },
-                    {
-                        revenueType: {
-                            contains: filters.search,
-                            mode: 'insensitive'
-                        }
-                    }
-                ];
+                revenueWhere.push(
+                    `(positionCaseInsensitiveUTF8(userId, ${q(filters.search)}) > 0 OR positionCaseInsensitiveUTF8(revenueType, ${q(filters.search)}) > 0)`
+                );
             }
 
-            const revenuePromise: Promise<any[]> = isNonRevenueSpecificEventFilter
-                ? Promise.resolve([])
-                : this.prisma.revenue.findMany({
-                    where: revenueWhereClause,
-                    select: {
-                        id: true,
-                        userId: true,
-                        sessionId: true,
-                        revenueType: true,
-                        revenue: true,
-                        revenueUSD: true,
-                        currency: true,
-                        timestamp: true,
-                        serverReceivedAt: true,
-                        platform: true,
-                        device: true,
-                        deviceId: true,
-                        appVersion: true,
-                        appBuild: true,
-                        countryCode: true,
-                        // Ad fields
-                        adNetworkName: true,
-                        adFormat: true,
-                        adPlacement: true,
-                        adImpressionId: true,
-                        // IAP fields
-                        productId: true,
-                        transactionId: true,
-                        store: true,
-                        isVerified: true,
-                    },
-                    orderBy: {
-                        serverReceivedAt: sort === 'desc' ? 'desc' : 'asc'
-                    },
-                    take: fetchLimit
-                });
+            const revenueSql = `
+                SELECT
+                    id,
+                    userId,
+                    sessionId,
+                    revenueType,
+                    revenueUSD,
+                    currency,
+                    timestamp,
+                    serverReceivedAt,
+                    platform,
+                    countryCode,
+                    appVersion
+                FROM revenue_raw
+                WHERE ${revenueWhere.join(' AND ')}
+                ORDER BY serverReceivedAt ${sortOrder}
+                LIMIT ${fetchLimit}
+            `;
 
-            // Execute in parallel to reduce request latency.
-            const [events, revenueEvents] = await Promise.all([eventsPromise, revenuePromise]);
+            const revenueRows = await clickHouseService.query<Array<{
+                id: string;
+                userId: string;
+                sessionId: string | null;
+                revenueType: string;
+                revenueUSD: number;
+                currency: string;
+                timestamp: string;
+                serverReceivedAt: string;
+                platform: string;
+                countryCode: string;
+                appVersion: string;
+            }>[number]>(revenueSql);
 
-            // Transform revenue events to match event format
-            const transformedRevenueEvents = revenueEvents.map(rev => ({
-                id: rev.id,
-                eventName: rev.revenueType === 'AD_IMPRESSION' ? 'ad_impression' : 'in_app_purchase',
-                userId: rev.userId,
-                sessionId: rev.sessionId,
-                properties: {
-                    revenue: rev.revenue,
-                    revenueUSD: rev.revenueUSD,
-                    currency: rev.currency,
-                    ...(rev.revenueType === 'AD_IMPRESSION' ? {
-                        adNetworkName: rev.adNetworkName,
-                        adFormat: rev.adFormat,
-                        adPlacement: rev.adPlacement,
-                        adImpressionId: rev.adImpressionId
-                    } : {
-                        productId: rev.productId,
-                        transactionId: rev.transactionId,
-                        store: rev.store,
-                        isVerified: rev.isVerified
-                    })
-                },
-                timestamp: rev.timestamp,
-                eventUuid: null,
-                clientTs: null,
-                serverReceivedAt: rev.serverReceivedAt,
-                platform: rev.platform,
-                osVersion: null,
-                manufacturer: null,
-                device: rev.device,
-                deviceId: rev.deviceId,
-                appVersion: rev.appVersion,
-                appBuild: rev.appBuild,
-                sdkVersion: null,
-                connectionType: null,
-                sessionNum: null,
-                countryCode: rev.countryCode,
-                isRevenueEvent: true // Flag to identify revenue events in frontend
+            revenueEvents = revenueRows.map((row) => ({
+                id: row.id,
+                userId: row.userId,
+                sessionId: row.sessionId || null,
+                revenueType: row.revenueType,
+                revenue: null,
+                revenueUSD: row.revenueUSD,
+                currency: row.currency,
+                timestamp: new Date(row.timestamp),
+                serverReceivedAt: new Date(row.serverReceivedAt),
+                platform: row.platform || null,
+                device: null,
+                deviceId: null,
+                appVersion: row.appVersion || null,
+                appBuild: null,
+                countryCode: row.countryCode || null,
+                adNetworkName: null,
+                adFormat: null,
+                adPlacement: null,
+                adImpressionId: null,
+                productId: null,
+                transactionId: null,
+                store: null,
+                isVerified: null,
             }));
+        }
 
-            // Merge and sort by serverReceivedAt (when server actually received the event)
-            // Fall back to timestamp if serverReceivedAt is null (for older data)
-            const allEvents = [...events.map(e => ({ ...e, isRevenueEvent: false })), ...transformedRevenueEvents];
-            allEvents.sort((a, b) => {
-                const aTime = new Date(a.serverReceivedAt || a.timestamp).getTime();
-                const bTime = new Date(b.serverReceivedAt || b.timestamp).getTime();
-                return sort === 'desc' ? bTime - aTime : aTime - bTime;
-            });
+        return this.mergeAndPaginateEventFeed(events, revenueEvents, limit, offset, sort);
+    }
 
-            // Apply limit and offset after merging
-            const paginatedEvents = allEvents.slice(offset, offset + limit);
+    private mergeAndPaginateEventFeed(
+        events: Array<Record<string, any>>,
+        revenueEvents: Array<Record<string, any>>,
+        limit: number,
+        offset: number,
+        sort: string
+    ) {
+        const transformedRevenueEvents = revenueEvents.map((rev) => ({
+            id: rev.id,
+            eventName: rev.revenueType === 'AD_IMPRESSION' ? 'ad_impression' : 'in_app_purchase',
+            userId: rev.userId,
+            sessionId: rev.sessionId,
+            properties: {
+                revenue: rev.revenue,
+                revenueUSD: rev.revenueUSD,
+                currency: rev.currency,
+                ...(rev.revenueType === 'AD_IMPRESSION' ? {
+                    adNetworkName: rev.adNetworkName,
+                    adFormat: rev.adFormat,
+                    adPlacement: rev.adPlacement,
+                    adImpressionId: rev.adImpressionId
+                } : {
+                    productId: rev.productId,
+                    transactionId: rev.transactionId,
+                    store: rev.store,
+                    isVerified: rev.isVerified
+                })
+            },
+            timestamp: rev.timestamp,
+            eventUuid: null,
+            clientTs: null,
+            serverReceivedAt: rev.serverReceivedAt,
+            platform: rev.platform,
+            osVersion: null,
+            manufacturer: null,
+            device: rev.device,
+            deviceId: rev.deviceId,
+            appVersion: rev.appVersion,
+            appBuild: rev.appBuild,
+            sdkVersion: null,
+            connectionType: null,
+            sessionNum: null,
+            countryCode: rev.countryCode,
+            isRevenueEvent: true
+        }));
 
-            // Convert BigInt to string for JSON serialization
-            const serializedEvents = paginatedEvents.map(event => ({
-                ...event,
-                clientTs: event.clientTs ? event.clientTs.toString() : null
-            }));
+        const allEvents: Array<Record<string, any>> = [
+            ...events.map(e => ({ ...e, isRevenueEvent: false })),
+            ...transformedRevenueEvents
+        ];
+        allEvents.sort((a, b) => {
+            const aTime = new Date(a.serverReceivedAt || a.timestamp).getTime();
+            const bTime = new Date(b.serverReceivedAt || b.timestamp).getTime();
+            return sort === 'desc' ? bTime - aTime : aTime - bTime;
+        });
 
-            return serializedEvents;
-        } catch (error) {
-            logger.error('Error getting events:', error);
-            throw error;
+        const paginatedEvents = allEvents.slice(offset, offset + limit);
+        return paginatedEvents.map((event) => ({
+            ...event,
+            clientTs: event.clientTs ? event.clientTs.toString() : null
+        }));
+    }
+
+    private quoteClickHouseString(value: string): string {
+        const escaped = value
+            .replace(/\\/g, '\\\\')
+            .replace(/'/g, "\\'");
+        return `'${escaped}'`;
+    }
+
+    private parseClickHouseJson(raw: string): Record<string, unknown> {
+        if (!raw) return {};
+        try {
+            const parsed = JSON.parse(raw);
+            return typeof parsed === 'object' && parsed !== null ? parsed : { value: parsed };
+        } catch {
+            return { raw };
         }
     }
 }

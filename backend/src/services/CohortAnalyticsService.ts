@@ -185,8 +185,8 @@ export class CohortAnalyticsService {
                       sum(retainedLevelCompletes) AS retainedLevelCompletes
                     FROM cohort_retention_daily_raw
                     WHERE gameId = ${q(gameId)}
-                      AND installDate >= toDateTime64(${q(startDate.toISOString())}, 3, 'UTC')
-                      AND installDate <= toDateTime64(${q(endDate.toISOString())}, 3, 'UTC')
+                      AND installDate >= parseDateTime64BestEffort(${q(startDate.toISOString())})
+                      AND installDate <= parseDateTime64BestEffort(${q(endDate.toISOString())})
                       AND dayIndex IN (${days.join(',')})
                       ${platformFilter.length ? `AND platform IN (${platformIn})` : ''}
                       ${countryFilter.length ? `AND countryCode IN (${countryIn})` : ''}
@@ -286,8 +286,8 @@ export class CohortAnalyticsService {
                       sum(totalDurationSec) AS totalDurationSec
                     FROM cohort_session_metrics_daily_raw
                     WHERE gameId = ${q(gameId)}
-                      AND installDate >= toDateTime64(${q(startDate.toISOString())}, 3, 'UTC')
-                      AND installDate <= toDateTime64(${q(endDate.toISOString())}, 3, 'UTC')
+                      AND installDate >= parseDateTime64BestEffort(${q(startDate.toISOString())})
+                      AND installDate <= parseDateTime64BestEffort(${q(endDate.toISOString())})
                       AND dayIndex IN (${days.join(',')})
                       ${platformFilter.length ? `AND platform IN (${platformIn})` : ''}
                       ${countryFilter.length ? `AND countryCode IN (${countryIn})` : ''}
@@ -483,8 +483,8 @@ export class CohortAnalyticsService {
                       sum(retainedLevelCompletes) AS retainedLevelCompletes
                     FROM cohort_retention_daily_raw
                     WHERE gameId = ${q(gameId)}
-                      AND installDate >= toDateTime64(${q(startDate.toISOString())}, 3, 'UTC')
-                      AND installDate <= toDateTime64(${q(endDate.toISOString())}, 3, 'UTC')
+                      AND installDate >= parseDateTime64BestEffort(${q(startDate.toISOString())})
+                      AND installDate <= parseDateTime64BestEffort(${q(endDate.toISOString())})
                       AND dayIndex >= 0
                       AND dayIndex <= ${maxDay}
                       ${platformFilter.length ? `AND platform IN (${platformIn})` : ''}
@@ -604,8 +604,8 @@ export class CohortAnalyticsService {
                       sum(retainedLevelCompletes) AS retainedLevelCompletes
                     FROM cohort_retention_daily_raw
                     WHERE gameId = ${q(gameId)}
-                      AND installDate >= toDateTime64(${q(startDate.toISOString())}, 3, 'UTC')
-                      AND installDate <= toDateTime64(${q(endDate.toISOString())}, 3, 'UTC')
+                      AND installDate >= parseDateTime64BestEffort(${q(startDate.toISOString())})
+                      AND installDate <= parseDateTime64BestEffort(${q(endDate.toISOString())})
                       AND dayIndex IN (${days.join(',')})
                       ${platformFilter.length ? `AND platform IN (${platformIn})` : ''}
                       ${countryFilter.length ? `AND countryCode IN (${countryIn})` : ''}

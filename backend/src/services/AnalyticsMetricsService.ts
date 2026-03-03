@@ -192,8 +192,8 @@ export class AnalyticsMetricsService {
                   sumIf(retainedUsers, dayIndex = ${day}) AS retained_users
                 FROM cohort_retention_daily_raw
                 WHERE gameId = ${q(gameId)}
-                  AND installDate >= toDateTime64(${q(startDate.toISOString())}, 3, 'UTC')
-                  AND installDate <= toDateTime64(${q(eligibleEnd.toISOString())}, 3, 'UTC')
+                  AND installDate >= parseDateTime64BestEffort(${q(startDate.toISOString())})
+                  AND installDate <= parseDateTime64BestEffort(${q(eligibleEnd.toISOString())})
                   AND dayIndex IN (0, ${day})
                   ${platforms.length ? `AND platform IN (${platformIn})` : ''}
                   ${countries.length ? `AND countryCode IN (${countryIn})` : ''}
@@ -425,7 +425,7 @@ export class AnalyticsMetricsService {
               toDate(${q(end.toISOString().slice(0, 10))}) AS end_day,
               toDate(${q(historyStart.toISOString().slice(0, 10))}) AS history_start
             SELECT
-              toString(day) AS date,
+              toString(days.day) AS date,
               ifNull(dau_rows.dau, 0) AS dau,
               ifNull(wau_rows.wau, 0) AS wau,
               ifNull(mau_rows.mau, 0) AS mau
@@ -672,8 +672,8 @@ export class AnalyticsMetricsService {
             total_duration: number;
         }>[number]>(`
             WITH
-              toDate(${q(startDate.toISOString())}) AS start_day,
-              toDate(${q(endDate.toISOString())}) AS end_day,
+              toDate(${q(startDate.toISOString().slice(0, 10))}) AS start_day,
+              toDate(${q(endDate.toISOString().slice(0, 10))}) AS end_day,
               dateDiff('day', start_day, end_day) + 1 AS day_count
             SELECT
               formatDateTime(d.day, '%Y-%m-%d') AS date,

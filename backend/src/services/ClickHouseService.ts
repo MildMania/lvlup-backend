@@ -18,19 +18,34 @@ export class ClickHouseService {
   private readonly pingTimeoutMs: number;
 
   constructor() {
-    this.enabled =
-      process.env.ENABLE_CLICKHOUSE_PIPELINE === '1' ||
-      process.env.ENABLE_CLICKHOUSE_PIPELINE === 'true';
     this.baseUrl = (process.env.CLICKHOUSE_URL || '').replace(/\/+$/, '');
     this.database = process.env.CLICKHOUSE_DATABASE || 'default';
     this.username = process.env.CLICKHOUSE_USER || undefined;
     this.password = process.env.CLICKHOUSE_PASSWORD || undefined;
     this.defaultTimeoutMs = Number(process.env.CLICKHOUSE_HTTP_TIMEOUT_MS || 15000);
     this.pingTimeoutMs = Number(process.env.CLICKHOUSE_PING_TIMEOUT_MS || 30000);
+
+    const pipelineEnabled = this.envTrue('ENABLE_CLICKHOUSE_PIPELINE');
+    const anyReadFlagEnabled = [
+      'ANALYTICS_READ_EVENTS_FROM_CLICKHOUSE',
+      'ANALYTICS_READ_REVENUE_SUMMARY_FROM_CLICKHOUSE',
+      'ANALYTICS_READ_ACTIVE_USERS_FROM_CLICKHOUSE',
+      'ANALYTICS_READ_RETENTION_FROM_CLICKHOUSE',
+      'ANALYTICS_READ_PLAYTIME_FROM_CLICKHOUSE',
+      'ANALYTICS_READ_COHORT_FROM_CLICKHOUSE',
+      'ANALYTICS_READ_LEVEL_FUNNEL_FROM_CLICKHOUSE'
+    ].some((key) => this.envTrue(key));
+
+    this.enabled = pipelineEnabled || anyReadFlagEnabled;
   }
 
   isEnabled(): boolean {
     return this.enabled && !!this.baseUrl;
+  }
+
+  private envTrue(key: string): boolean {
+    const value = process.env[key];
+    return value === '1' || value === 'true';
   }
 
   async ping(): Promise<boolean> {

@@ -594,8 +594,12 @@ export class ClickHouseSyncService {
 
   private async insertBatch(table: SyncTable, rows: any[]): Promise<void> {
     if (rows.length === 0) return;
+    const targetTable = this.getTargetTableName(table);
+    const dedupedRows = await this.filterAlreadySyncedRows(targetTable, rows);
+    if (dedupedRows.length === 0) return;
+
     if (table === 'events') {
-      await clickHouseService.insertJsonEachRow('events_raw', rows.map((r) => ({
+      await clickHouseService.insertJsonEachRow('events_raw', dedupedRows.map((r) => ({
         ...r,
         timestamp: this.toIso(r.timestamp),
         serverReceivedAt: this.toIso(r.serverReceivedAt)
@@ -603,7 +607,7 @@ export class ClickHouseSyncService {
       return;
     }
     if (table === 'revenue') {
-      await clickHouseService.insertJsonEachRow('revenue_raw', rows.map((r) => ({
+      await clickHouseService.insertJsonEachRow('revenue_raw', dedupedRows.map((r) => ({
         ...r,
         timestamp: this.toIso(r.timestamp),
         serverReceivedAt: this.toIso(r.serverReceivedAt)
@@ -611,7 +615,7 @@ export class ClickHouseSyncService {
       return;
     }
     if (table === 'sessions') {
-      await clickHouseService.insertJsonEachRow('sessions_raw', rows.map((r) => ({
+      await clickHouseService.insertJsonEachRow('sessions_raw', dedupedRows.map((r) => ({
         ...r,
         startTime: this.toIso(r.startTime),
         endTime: r.endTime ? this.toIso(r.endTime) : null,
@@ -620,7 +624,7 @@ export class ClickHouseSyncService {
       return;
     }
     if (table === 'cohort_retention_daily') {
-      await clickHouseService.insertJsonEachRow('cohort_retention_daily_raw', rows.map((r) => ({
+      await clickHouseService.insertJsonEachRow('cohort_retention_daily_raw', dedupedRows.map((r) => ({
         ...r,
         dayIndex: this.toNumber(r.dayIndex),
         cohortSize: this.toNumber(r.cohortSize),
@@ -632,7 +636,7 @@ export class ClickHouseSyncService {
       return;
     }
     if (table === 'cohort_session_metrics_daily') {
-      await clickHouseService.insertJsonEachRow('cohort_session_metrics_daily_raw', rows.map((r) => ({
+      await clickHouseService.insertJsonEachRow('cohort_session_metrics_daily_raw', dedupedRows.map((r) => ({
         ...r,
         dayIndex: this.toNumber(r.dayIndex),
         cohortSize: this.toNumber(r.cohortSize),
@@ -645,7 +649,7 @@ export class ClickHouseSyncService {
       return;
     }
     if (table === 'level_metrics_daily') {
-      await clickHouseService.insertJsonEachRow('level_metrics_daily_raw', rows.map((r) => ({
+      await clickHouseService.insertJsonEachRow('level_metrics_daily_raw', dedupedRows.map((r) => ({
         ...r,
         levelId: this.toNumber(r.levelId),
         levelFunnelVersion: this.toNumber(r.levelFunnelVersion),
@@ -669,7 +673,7 @@ export class ClickHouseSyncService {
       return;
     }
     if (table === 'level_metrics_daily_users') {
-      await clickHouseService.insertJsonEachRow('level_metrics_daily_users_raw', rows.map((r) => ({
+      await clickHouseService.insertJsonEachRow('level_metrics_daily_users_raw', dedupedRows.map((r) => ({
         ...r,
         levelId: this.toNumber(r.levelId),
         levelFunnelVersion: this.toNumber(r.levelFunnelVersion),
@@ -690,7 +694,7 @@ export class ClickHouseSyncService {
       return;
     }
     if (table === 'level_churn_cohort_daily') {
-      await clickHouseService.insertJsonEachRow('level_churn_cohort_daily_raw', rows.map((r) => ({
+      await clickHouseService.insertJsonEachRow('level_churn_cohort_daily_raw', dedupedRows.map((r) => ({
         ...r,
         levelId: this.toNumber(r.levelId),
         levelFunnelVersion: this.toNumber(r.levelFunnelVersion),
@@ -705,14 +709,61 @@ export class ClickHouseSyncService {
       })));
       return;
     }
-    await clickHouseService.insertJsonEachRow('users_raw', rows.map((r) => ({
+    await clickHouseService.insertJsonEachRow('users_raw', dedupedRows.map((r) => ({
       ...r,
       createdAt: this.toIso(r.createdAt)
     })));
   }
 
+  private getTargetTableName(table: SyncTable): string {
+    if (table === 'events') return 'events_raw';
+    if (table === 'revenue') return 'revenue_raw';
+    if (table === 'sessions') return 'sessions_raw';
+    if (table === 'users') return 'users_raw';
+    if (table === 'cohort_retention_daily') return 'cohort_retention_daily_raw';
+    if (table === 'cohort_session_metrics_daily') return 'cohort_session_metrics_daily_raw';
+    if (table === 'level_metrics_daily') return 'level_metrics_daily_raw';
+    if (table === 'level_metrics_daily_users') return 'level_metrics_daily_users_raw';
+    return 'level_churn_cohort_daily_raw';
+  }
+
+  private async filterAlreadySyncedRows(targetTable: string, rows: any[]): Promise<any[]> {
+    const ids = Array.from(new Set(rows.map((r) => String(r.id))));
+    if (ids.length === 0) return rows;
+    const existingIds = await this.findExistingIds(targetTable, ids);
+    if (existingIds.size === 0) return rows;
+    const filtered = rows.filter((r) => !existingIds.has(String(r.id)));
+    const skipped = rows.length - filtered.length;
+    if (skipped > 0) {
+      logger.warn(`[ClickHouseSync] ${targetTable}: skipped ${skipped} rows already present by id`);
+    }
+    return filtered;
+  }
+
+  private async findExistingIds(targetTable: string, ids: string[]): Promise<Set<string>> {
+    const chunkSize = 1000;
+    const existing = new Set<string>();
+    for (let i = 0; i < ids.length; i += chunkSize) {
+      const chunk = ids.slice(i, i + chunkSize);
+      const inList = chunk.map((id) => this.quoteClickHouseString(id)).join(',');
+      const rows = await clickHouseService.query<Array<{ id: string }>[number]>(`
+        SELECT id
+        FROM ${targetTable}
+        WHERE id IN (${inList})
+      `);
+      for (const row of rows) {
+        existing.add(String(row.id));
+      }
+    }
+    return existing;
+  }
+
   private toIso(value: Date | string): string {
     return value instanceof Date ? value.toISOString() : new Date(value).toISOString();
+  }
+
+  private quoteClickHouseString(value: string): string {
+    return `'${value.replace(/\\/g, '\\\\').replace(/'/g, "\\'")}'`;
   }
 
   private toNumber(value: unknown): number {

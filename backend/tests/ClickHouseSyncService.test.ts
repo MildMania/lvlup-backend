@@ -6,6 +6,7 @@ jest.mock('../src/services/ClickHouseService', () => ({
   default: {
     isEnabled: jest.fn(),
     command: jest.fn(),
+    query: jest.fn(),
     insertJsonEachRow: jest.fn(),
   },
 }));
@@ -28,6 +29,7 @@ describe('ClickHouseSyncService', () => {
   const mockedClickHouse = clickHouseService as unknown as {
     isEnabled: jest.Mock;
     command: jest.Mock;
+    query: jest.Mock;
     insertJsonEachRow: jest.Mock;
   };
 
@@ -38,6 +40,7 @@ describe('ClickHouseSyncService', () => {
     process.env.CLICKHOUSE_SYNC_MAX_BATCHES = '5';
     mockedClickHouse.isEnabled.mockReturnValue(true);
     mockedClickHouse.command.mockResolvedValue(undefined);
+    mockedClickHouse.query.mockResolvedValue([]);
     mockedClickHouse.insertJsonEachRow.mockResolvedValue(undefined);
   });
 

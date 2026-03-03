@@ -119,7 +119,7 @@ Typical modes:
   - ClickHouse HTTP connection settings for sync + read-path queries.
 
 - `CLICKHOUSE_SYNC_TABLES`
-  - Default: `"events,revenue,sessions,users,cohort_retention_daily,cohort_session_metrics_daily"`
+  - Default: `"events,revenue,sessions,users,cohort_retention_daily,cohort_session_metrics_daily,level_metrics_daily,level_metrics_daily_users,level_churn_cohort_daily"`
   - Comma-separated list of tables to sync in each cron cycle.
 
 - `CLICKHOUSE_SYNC_BATCH_SIZE`
@@ -165,6 +165,10 @@ Typical modes:
 - `ANALYTICS_READ_COHORT_FROM_CLICKHOUSE`
   - Default: `0`
   - Read `/analytics/cohort/*` metrics from ClickHouse rollup tables with Postgres fallback.
+
+- `ANALYTICS_READ_LEVEL_FUNNEL_FROM_CLICKHOUSE`
+  - Default: `0`
+  - Read `/level-funnel` from ClickHouse rollup tables with Postgres fallback.
 
 ## Recommended low-cost production setup
 

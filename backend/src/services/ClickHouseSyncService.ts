@@ -9,7 +9,10 @@ type SyncTable =
   | 'sessions'
   | 'users'
   | 'cohort_retention_daily'
-  | 'cohort_session_metrics_daily';
+  | 'cohort_session_metrics_daily'
+  | 'level_metrics_daily'
+  | 'level_metrics_daily_users'
+  | 'level_churn_cohort_daily';
 
 type Watermark = {
   lastTs: Date;
@@ -27,7 +30,7 @@ export class ClickHouseSyncService {
     this.prisma = prismaClient || prisma;
     this.batchSize = Number(process.env.CLICKHOUSE_SYNC_BATCH_SIZE || 10000);
     this.maxBatchesPerTable = Number(process.env.CLICKHOUSE_SYNC_MAX_BATCHES || 5);
-    const configured = (process.env.CLICKHOUSE_SYNC_TABLES || 'events,revenue,sessions,users,cohort_retention_daily,cohort_session_metrics_daily')
+    const configured = (process.env.CLICKHOUSE_SYNC_TABLES || 'events,revenue,sessions,users,cohort_retention_daily,cohort_session_metrics_daily,level_metrics_daily,level_metrics_daily_users,level_churn_cohort_daily')
       .split(',')
       .map((v) => v.trim().toLowerCase())
       .filter(Boolean);
@@ -37,7 +40,10 @@ export class ClickHouseSyncService {
       v === 'sessions' ||
       v === 'users' ||
       v === 'cohort_retention_daily' ||
-      v === 'cohort_session_metrics_daily'
+      v === 'cohort_session_metrics_daily' ||
+      v === 'level_metrics_daily' ||
+      v === 'level_metrics_daily_users' ||
+      v === 'level_churn_cohort_daily'
     );
   }
 
@@ -187,6 +193,92 @@ export class ClickHouseSyncService {
       ORDER BY (gameId, installDate, dayIndex, platform, countryCode, appVersion, id)
     `);
 
+    await clickHouseService.command(`
+      CREATE TABLE IF NOT EXISTS level_metrics_daily_raw (
+        id String,
+        gameId String,
+        date DateTime64(3, 'UTC'),
+        levelId Int32,
+        levelFunnel String,
+        levelFunnelVersion Int32,
+        platform String,
+        countryCode String,
+        appVersion String,
+        starts Int32,
+        completes Int32,
+        fails Int32,
+        startedPlayers Int32,
+        completedPlayers Int32,
+        boosterUsers Int32,
+        totalBoosterUsage Int32,
+        egpUsers Int32,
+        totalEgpUsage Int32,
+        totalCompletionDuration Int64,
+        completionCount Int32,
+        totalFailDuration Int64,
+        failCount Int32,
+        createdAt DateTime64(3, 'UTC'),
+        updatedAt DateTime64(3, 'UTC')
+      )
+      ENGINE = MergeTree
+      PARTITION BY toYYYYMM(date)
+      ORDER BY (gameId, date, levelId, levelFunnel, levelFunnelVersion, platform, countryCode, appVersion, id)
+    `);
+
+    await clickHouseService.command(`
+      CREATE TABLE IF NOT EXISTS level_metrics_daily_users_raw (
+        id String,
+        gameId String,
+        date DateTime64(3, 'UTC'),
+        levelId Int32,
+        levelFunnel String,
+        levelFunnelVersion Int32,
+        platform String,
+        countryCode String,
+        appVersion String,
+        userId String,
+        started UInt8,
+        completed UInt8,
+        boosterUsed UInt8,
+        egpUsed UInt8,
+        starts Int32,
+        completes Int32,
+        fails Int32,
+        totalCompletionDuration Int64,
+        completionCount Int32,
+        totalFailDuration Int64,
+        failCount Int32,
+        createdAt DateTime64(3, 'UTC')
+      )
+      ENGINE = MergeTree
+      PARTITION BY toYYYYMM(date)
+      ORDER BY (gameId, date, levelId, levelFunnel, levelFunnelVersion, platform, countryCode, appVersion, userId, id)
+    `);
+
+    await clickHouseService.command(`
+      CREATE TABLE IF NOT EXISTS level_churn_cohort_daily_raw (
+        id String,
+        gameId String,
+        cohortDate DateTime64(3, 'UTC'),
+        installDate DateTime64(3, 'UTC'),
+        levelId Int32,
+        levelFunnel String,
+        levelFunnelVersion Int32,
+        platform String,
+        countryCode String,
+        appVersion String,
+        starters Int32,
+        completedByD0 Int32,
+        completedByD3 Int32,
+        completedByD7 Int32,
+        createdAt DateTime64(3, 'UTC'),
+        updatedAt DateTime64(3, 'UTC')
+      )
+      ENGINE = MergeTree
+      PARTITION BY toYYYYMM(cohortDate)
+      ORDER BY (gameId, cohortDate, installDate, levelId, levelFunnel, levelFunnelVersion, platform, countryCode, appVersion, id)
+    `);
+
     this.initialized = true;
   }
 
@@ -219,6 +311,10 @@ export class ClickHouseSyncService {
     if (table === 'cohort_retention_daily' || table === 'cohort_session_metrics_daily') {
       return new Date(row.updatedAt);
     }
+    if (table === 'level_metrics_daily' || table === 'level_churn_cohort_daily') {
+      return new Date(row.updatedAt);
+    }
+    if (table === 'level_metrics_daily_users') return new Date(row.createdAt);
     return new Date(row.createdAt);
   }
 
@@ -376,6 +472,107 @@ export class ClickHouseSyncService {
       `);
     }
 
+    if (table === 'level_metrics_daily') {
+      return this.prisma.$queryRaw<Array<any>>(Prisma.sql`
+        SELECT
+          l."id",
+          l."gameId",
+          l."date",
+          l."levelId",
+          COALESCE(l."levelFunnel",'') AS "levelFunnel",
+          COALESCE(l."levelFunnelVersion",0) AS "levelFunnelVersion",
+          COALESCE(l."platform",'') AS "platform",
+          COALESCE(l."countryCode",'') AS "countryCode",
+          COALESCE(l."appVersion",'') AS "appVersion",
+          l."starts",
+          l."completes",
+          l."fails",
+          l."startedPlayers",
+          l."completedPlayers",
+          l."boosterUsers",
+          l."totalBoosterUsage",
+          l."egpUsers",
+          l."totalEgpUsage",
+          l."totalCompletionDuration",
+          l."completionCount",
+          l."totalFailDuration",
+          l."failCount",
+          l."createdAt",
+          l."updatedAt"
+        FROM "level_metrics_daily" l
+        WHERE (
+            l."updatedAt" > ${watermark.lastTs}
+            OR (l."updatedAt" = ${watermark.lastTs} AND l."id" > ${watermark.lastId})
+          )
+        ORDER BY l."updatedAt" ASC, l."id" ASC
+        LIMIT ${limit}
+      `);
+    }
+
+    if (table === 'level_metrics_daily_users') {
+      return this.prisma.$queryRaw<Array<any>>(Prisma.sql`
+        SELECT
+          l."id",
+          l."gameId",
+          l."date",
+          l."levelId",
+          COALESCE(l."levelFunnel",'') AS "levelFunnel",
+          COALESCE(l."levelFunnelVersion",0) AS "levelFunnelVersion",
+          COALESCE(l."platform",'') AS "platform",
+          COALESCE(l."countryCode",'') AS "countryCode",
+          COALESCE(l."appVersion",'') AS "appVersion",
+          l."userId",
+          l."started",
+          l."completed",
+          l."boosterUsed",
+          l."egpUsed",
+          l."starts",
+          l."completes",
+          l."fails",
+          l."totalCompletionDuration",
+          l."completionCount",
+          l."totalFailDuration",
+          l."failCount",
+          l."createdAt"
+        FROM "level_metrics_daily_users" l
+        WHERE (
+            l."createdAt" > ${watermark.lastTs}
+            OR (l."createdAt" = ${watermark.lastTs} AND l."id" > ${watermark.lastId})
+          )
+        ORDER BY l."createdAt" ASC, l."id" ASC
+        LIMIT ${limit}
+      `);
+    }
+
+    if (table === 'level_churn_cohort_daily') {
+      return this.prisma.$queryRaw<Array<any>>(Prisma.sql`
+        SELECT
+          l."id",
+          l."gameId",
+          l."cohortDate",
+          l."installDate",
+          l."levelId",
+          COALESCE(l."levelFunnel",'') AS "levelFunnel",
+          COALESCE(l."levelFunnelVersion",0) AS "levelFunnelVersion",
+          COALESCE(l."platform",'') AS "platform",
+          COALESCE(l."countryCode",'') AS "countryCode",
+          COALESCE(l."appVersion",'') AS "appVersion",
+          l."starters",
+          l."completedByD0",
+          l."completedByD3",
+          l."completedByD7",
+          l."createdAt",
+          l."updatedAt"
+        FROM "level_churn_cohort_daily" l
+        WHERE (
+            l."updatedAt" > ${watermark.lastTs}
+            OR (l."updatedAt" = ${watermark.lastTs} AND l."id" > ${watermark.lastId})
+          )
+        ORDER BY l."updatedAt" ASC, l."id" ASC
+        LIMIT ${limit}
+      `);
+    }
+
     return this.prisma.$queryRaw<Array<any>>(Prisma.sql`
       SELECT
         u."id",
@@ -443,6 +640,67 @@ export class ClickHouseSyncService {
         totalSessions: this.toNumber(r.totalSessions),
         totalDurationSec: this.toNumber(r.totalDurationSec),
         installDate: this.toIso(r.installDate),
+        updatedAt: this.toIso(r.updatedAt)
+      })));
+      return;
+    }
+    if (table === 'level_metrics_daily') {
+      await clickHouseService.insertJsonEachRow('level_metrics_daily_raw', rows.map((r) => ({
+        ...r,
+        levelId: this.toNumber(r.levelId),
+        levelFunnelVersion: this.toNumber(r.levelFunnelVersion),
+        starts: this.toNumber(r.starts),
+        completes: this.toNumber(r.completes),
+        fails: this.toNumber(r.fails),
+        startedPlayers: this.toNumber(r.startedPlayers),
+        completedPlayers: this.toNumber(r.completedPlayers),
+        boosterUsers: this.toNumber(r.boosterUsers),
+        totalBoosterUsage: this.toNumber(r.totalBoosterUsage),
+        egpUsers: this.toNumber(r.egpUsers),
+        totalEgpUsage: this.toNumber(r.totalEgpUsage),
+        totalCompletionDuration: this.toNumber(r.totalCompletionDuration),
+        completionCount: this.toNumber(r.completionCount),
+        totalFailDuration: this.toNumber(r.totalFailDuration),
+        failCount: this.toNumber(r.failCount),
+        date: this.toIso(r.date),
+        createdAt: this.toIso(r.createdAt),
+        updatedAt: this.toIso(r.updatedAt)
+      })));
+      return;
+    }
+    if (table === 'level_metrics_daily_users') {
+      await clickHouseService.insertJsonEachRow('level_metrics_daily_users_raw', rows.map((r) => ({
+        ...r,
+        levelId: this.toNumber(r.levelId),
+        levelFunnelVersion: this.toNumber(r.levelFunnelVersion),
+        started: r.started ? 1 : 0,
+        completed: r.completed ? 1 : 0,
+        boosterUsed: r.boosterUsed ? 1 : 0,
+        egpUsed: r.egpUsed ? 1 : 0,
+        starts: this.toNumber(r.starts),
+        completes: this.toNumber(r.completes),
+        fails: this.toNumber(r.fails),
+        totalCompletionDuration: this.toNumber(r.totalCompletionDuration),
+        completionCount: this.toNumber(r.completionCount),
+        totalFailDuration: this.toNumber(r.totalFailDuration),
+        failCount: this.toNumber(r.failCount),
+        date: this.toIso(r.date),
+        createdAt: this.toIso(r.createdAt)
+      })));
+      return;
+    }
+    if (table === 'level_churn_cohort_daily') {
+      await clickHouseService.insertJsonEachRow('level_churn_cohort_daily_raw', rows.map((r) => ({
+        ...r,
+        levelId: this.toNumber(r.levelId),
+        levelFunnelVersion: this.toNumber(r.levelFunnelVersion),
+        starters: this.toNumber(r.starters),
+        completedByD0: this.toNumber(r.completedByD0),
+        completedByD3: this.toNumber(r.completedByD3),
+        completedByD7: this.toNumber(r.completedByD7),
+        cohortDate: this.toIso(r.cohortDate),
+        installDate: this.toIso(r.installDate),
+        createdAt: this.toIso(r.createdAt),
         updatedAt: this.toIso(r.updatedAt)
       })));
       return;

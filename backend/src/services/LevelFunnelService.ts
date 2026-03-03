@@ -2,6 +2,7 @@ import { Prisma, PrismaClient } from '@prisma/client';
 import logger from '../utils/logger';
 import prisma from '../prisma';
 import levelMetricsAggregationService from './LevelMetricsAggregationService';
+import clickHouseService from './ClickHouseService';
 
 interface LevelFunnelFilters {
     gameId: string;
@@ -49,6 +50,59 @@ interface LevelMetrics {
 }
 
 export class LevelFunnelService {
+    private quoteClickHouseString(value: string): string {
+        const escaped = value
+            .replace(/\\/g, '\\\\')
+            .replace(/'/g, "\\'");
+        return `'${escaped}'`;
+    }
+
+    private readFromClickHouse(): boolean {
+        return (
+            process.env.ANALYTICS_READ_LEVEL_FUNNEL_FROM_CLICKHOUSE === '1' ||
+            process.env.ANALYTICS_READ_LEVEL_FUNNEL_FROM_CLICKHOUSE === 'true'
+        ) && clickHouseService.isEnabled();
+    }
+
+    private buildFunnelFilterSql(
+        levelFunnel: string | undefined,
+        levelFunnelVersion: string | number | undefined,
+        tableAlias = ''
+    ): string {
+        const prefix = tableAlias ? `${tableAlias}.` : '';
+        if (levelFunnel) {
+            const funnels = levelFunnel.split(',').map((f) => f.trim()).filter(Boolean);
+            if (levelFunnelVersion !== undefined && levelFunnelVersion !== null && levelFunnelVersion !== '') {
+                const versions = levelFunnelVersion
+                    .toString()
+                    .split(',')
+                    .map((v) => Number.parseInt(v.trim(), 10))
+                    .filter((v) => !Number.isNaN(v));
+                if (funnels.length > 0 && versions.length > 0 && funnels.length === versions.length) {
+                    const pairs = funnels.map((f, idx) =>
+                        `(${prefix}levelFunnel = ${this.quoteClickHouseString(f)} AND ${prefix}levelFunnelVersion = ${versions[idx]})`
+                    );
+                    return ` AND (${pairs.join(' OR ')})`;
+                }
+                if (funnels.length > 0) {
+                    return ` AND ${prefix}levelFunnel IN (${funnels.map((f) => this.quoteClickHouseString(f)).join(',')})`;
+                }
+            } else if (funnels.length > 0) {
+                return ` AND ${prefix}levelFunnel IN (${funnels.map((f) => this.quoteClickHouseString(f)).join(',')})`;
+            }
+        } else if (levelFunnelVersion !== undefined && levelFunnelVersion !== null && levelFunnelVersion !== '') {
+            const versions = levelFunnelVersion
+                .toString()
+                .split(',')
+                .map((v) => Number.parseInt(v.trim(), 10))
+                .filter((v) => !Number.isNaN(v));
+            if (versions.length > 0) {
+                return ` AND ${prefix}levelFunnelVersion IN (${versions.join(',')})`;
+            }
+        }
+        return '';
+    }
+
     /**
      * Get level funnel data with all metrics (FAST VERSION using pre-aggregated data)
      * Uses hybrid approach: aggregated data for event counts + raw events for unique user counts
@@ -326,6 +380,70 @@ export class LevelFunnelService {
         const { gameId, startDate, endDate, installStartDate, installEndDate, platform, levelFunnel, levelFunnelVersion } = params;
         const platforms = platform ? platform.split(',').map((p) => p.trim()).filter(Boolean) : [];
 
+        if (this.readFromClickHouse()) {
+            try {
+                const q = (value: string) => this.quoteClickHouseString(value);
+                const platformIn = platforms.length ? platforms.map(q).join(',') : '';
+                const funnelFilter = this.buildFunnelFilterSql(levelFunnel, levelFunnelVersion, 'c');
+                const installFilter = [
+                    installStartDate ? ` AND c.installDate >= toDateTime64(${q(installStartDate.toISOString())}, 3, 'UTC')` : '',
+                    installEndDate ? ` AND c.installDate <= toDateTime64(${q(installEndDate.toISOString())}, 3, 'UTC')` : ''
+                ].join('');
+
+                const rows = await clickHouseService.query<Array<{
+                    levelId: number;
+                    eligibleStarters: number;
+                    completedByD3: number;
+                    completedByD7: number;
+                }>[number]>(`
+                    WITH max_available AS (
+                      SELECT toDate(max(date)) AS max_date
+                      FROM level_metrics_daily_users_raw
+                      WHERE gameId = ${q(gameId)}
+                    )
+                    SELECT
+                      c.levelId AS levelId,
+                      sum(c.starters) AS eligibleStarters,
+                      sum(c.completedByD3) AS completedByD3,
+                      sum(c.completedByD7) AS completedByD7
+                    FROM level_churn_cohort_daily_raw c
+                    CROSS JOIN max_available
+                    WHERE c.gameId = ${q(gameId)}
+                      AND c.cohortDate >= toDateTime64(${q(startDate.toISOString())}, 3, 'UTC')
+                      AND c.cohortDate <= toDateTime64(${q(endDate.toISOString())}, 3, 'UTC')
+                      AND toDate(c.cohortDate) <= (max_date - 7)
+                      AND c.levelId IN (${levelIds.join(',')})
+                      ${platforms.length ? `AND c.platform IN (${platformIn})` : ''}
+                      ${funnelFilter}
+                      ${installFilter}
+                    GROUP BY c.levelId
+                `);
+
+                const result = new Map<number, { churnD3: number | null; churnD7: number | null }>();
+                for (const row of rows) {
+                    const eligible = Number(row.eligibleStarters || 0);
+                    if (eligible <= 0) {
+                        result.set(row.levelId, { churnD3: null, churnD7: null });
+                        continue;
+                    }
+                    const completedByD3 = Number(row.completedByD3 || 0);
+                    const completedByD7 = Number(row.completedByD7 || 0);
+                    const churnD3 = ((eligible - completedByD3) / eligible) * 100;
+                    const churnD7 = ((eligible - completedByD7) / eligible) * 100;
+                    result.set(row.levelId, {
+                        churnD3: Math.round(churnD3 * 100) / 100,
+                        churnD7: Math.round(churnD7 * 100) / 100
+                    });
+                }
+                return result;
+            } catch (error) {
+                logger.warn('Level funnel ClickHouse churn read failed; falling back to Postgres', {
+                    gameId,
+                    error: error instanceof Error ? error.message : String(error)
+                });
+            }
+        }
+
         let funnelClauses: Prisma.Sql = Prisma.sql``;
         if (levelFunnel) {
             const funnels = levelFunnel.split(',').map(f => f.trim()).filter(f => f);
@@ -427,6 +545,82 @@ export class LevelFunnelService {
             ? filters.platform.split(',').map(p => p.trim()).filter(p => p)
             : [];
         const versions: string[] = [];
+
+        if (this.readFromClickHouse()) {
+            try {
+                const q = (value: string) => this.quoteClickHouseString(value);
+                const platformIn = platforms.length ? platforms.map(q).join(',') : '';
+                const funnelFilter = this.buildFunnelFilterSql(filters.levelFunnel, filters.levelFunnelVersion, 'l');
+                const installFilter = [
+                    filters.installStartDate ? ` AND u.createdAt >= toDateTime64(${q(filters.installStartDate.toISOString())}, 3, 'UTC')` : '',
+                    filters.installEndDate ? ` AND u.createdAt <= toDateTime64(${q(filters.installEndDate.toISOString())}, 3, 'UTC')` : ''
+                ].join('');
+
+                const rows = await clickHouseService.query<Array<{
+                    levelId: number;
+                    starts: number;
+                    completes: number;
+                    fails: number;
+                    startedPlayers: number;
+                    completedPlayers: number;
+                    boosterUsers: number;
+                    egpUsers: number;
+                    totalCompletionDuration: number;
+                    completionCount: number;
+                    totalFailDuration: number;
+                    failCount: number;
+                }>[number]>(`
+                    SELECT
+                      l.levelId AS levelId,
+                      sum(l.starts) AS starts,
+                      sum(l.completes) AS completes,
+                      sum(l.fails) AS fails,
+                      uniqExactIf(l.userId, l.started = 1) AS startedPlayers,
+                      uniqExactIf(l.userId, l.completed = 1) AS completedPlayers,
+                      uniqExactIf(l.userId, l.boosterUsed = 1) AS boosterUsers,
+                      uniqExactIf(l.userId, l.egpUsed = 1) AS egpUsers,
+                      sum(l.totalCompletionDuration) AS totalCompletionDuration,
+                      sum(l.completionCount) AS completionCount,
+                      sum(l.totalFailDuration) AS totalFailDuration,
+                      sum(l.failCount) AS failCount
+                    FROM level_metrics_daily_users_raw l
+                    INNER JOIN (
+                      SELECT gameId, id, min(createdAt) AS createdAt
+                      FROM users_raw
+                      GROUP BY gameId, id
+                    ) u ON u.id = l.userId AND u.gameId = l.gameId
+                    WHERE l.gameId = ${q(gameId)}
+                      AND l.date >= toDateTime64(${q(startDate.toISOString())}, 3, 'UTC')
+                      AND l.date <= toDateTime64(${q(endDate.toISOString())}, 3, 'UTC')
+                      ${installFilter}
+                      ${countries.length ? `AND l.countryCode IN (${countries.map(q).join(',')})` : ''}
+                      ${platforms.length ? `AND l.platform IN (${platformIn})` : ''}
+                      ${versions.length ? `AND l.appVersion IN (${versions.map(q).join(',')})` : ''}
+                      ${funnelFilter}
+                    GROUP BY l.levelId
+                `);
+
+                return rows.map((r) => ({
+                    levelId: Number(r.levelId || 0),
+                    starts: Number(r.starts || 0),
+                    completes: Number(r.completes || 0),
+                    fails: Number(r.fails || 0),
+                    startedPlayers: Number(r.startedPlayers || 0),
+                    completedPlayers: Number(r.completedPlayers || 0),
+                    boosterUsers: Number(r.boosterUsers || 0),
+                    egpUsers: Number(r.egpUsers || 0),
+                    totalCompletionDuration: Number(r.totalCompletionDuration || 0),
+                    completionCount: Number(r.completionCount || 0),
+                    totalFailDuration: Number(r.totalFailDuration || 0),
+                    failCount: Number(r.failCount || 0)
+                }));
+            } catch (error) {
+                logger.warn('Level funnel ClickHouse install-cohort read failed; falling back to Postgres', {
+                    gameId,
+                    error: error instanceof Error ? error.message : String(error)
+                });
+            }
+        }
 
         let funnelClauses: any = Prisma.sql``;
         if (filters.levelFunnel) {
@@ -546,6 +740,61 @@ export class LevelFunnelService {
             : [];
         const versions: string[] = [];
 
+        if (this.readFromClickHouse()) {
+            try {
+                const q = (value: string) => this.quoteClickHouseString(value);
+                const platformIn = platforms.length ? platforms.map(q).join(',') : '';
+                const funnelFilter = this.buildFunnelFilterSql(filters.levelFunnel, filters.levelFunnelVersion);
+
+                const rows = await clickHouseService.query<Array<{
+                    levelId: number;
+                    started: number;
+                    completed: number;
+                    booster: number;
+                    egp: number;
+                }>[number]>(`
+                    SELECT
+                      levelId AS levelId,
+                      uniqExactIf(userId, started = 1) AS started,
+                      uniqExactIf(userId, completed = 1) AS completed,
+                      uniqExactIf(userId, boosterUsed = 1) AS booster,
+                      uniqExactIf(userId, egpUsed = 1) AS egp
+                    FROM level_metrics_daily_users_raw
+                    WHERE gameId = ${q(gameId)}
+                      AND date >= toDateTime64(${q(startDate.toISOString())}, 3, 'UTC')
+                      AND date <= toDateTime64(${q(endDate.toISOString())}, 3, 'UTC')
+                      ${countries.length ? `AND countryCode IN (${countries.map(q).join(',')})` : ''}
+                      ${platforms.length ? `AND platform IN (${platformIn})` : ''}
+                      ${versions.length ? `AND appVersion IN (${versions.map(q).join(',')})` : ''}
+                      ${funnelFilter}
+                    GROUP BY levelId
+                `);
+
+                const result = new Map<number, {
+                    startedPlayers: number;
+                    completedPlayers: number;
+                    boosterUsers: number;
+                    egpUsers: number;
+                }>();
+
+                for (const row of rows) {
+                    result.set(Number(row.levelId || 0), {
+                        startedPlayers: Number(row.started || 0),
+                        completedPlayers: Number(row.completed || 0),
+                        boosterUsers: Number(row.booster || 0),
+                        egpUsers: Number(row.egp || 0)
+                    });
+                }
+
+                return result;
+            } catch (error) {
+                logger.warn('Level funnel ClickHouse user-count read failed; falling back to Postgres', {
+                    gameId,
+                    error: error instanceof Error ? error.message : String(error)
+                });
+            }
+        }
+
         let funnelClauses: any = Prisma.sql``;
         if (filters.levelFunnel) {
             const funnels = filters.levelFunnel.split(',').map(f => f.trim()).filter(f => f);
@@ -651,6 +900,78 @@ export class LevelFunnelService {
             ? filters.platform.split(',').map(p => p.trim()).filter(p => p)
             : [];
         const versions: string[] = [];
+
+        if (this.readFromClickHouse()) {
+            try {
+                const q = (value: string) => this.quoteClickHouseString(value);
+                const platformIn = platforms.length ? platforms.map(q).join(',') : '';
+                const funnelFilter = this.buildFunnelFilterSql(filters.levelFunnel, filters.levelFunnelVersion);
+
+                const rows = await clickHouseService.query<Array<{
+                    levelId: number;
+                    starts: number;
+                    completes: number;
+                    fails: number;
+                    startedPlayers: number;
+                    completedPlayers: number;
+                    boosterUsers: number;
+                    totalBoosterUsage: number;
+                    egpUsers: number;
+                    totalEgpUsage: number;
+                    totalCompletionDuration: number;
+                    completionCount: number;
+                    totalFailDuration: number;
+                    failCount: number;
+                }>[number]>(`
+                    SELECT
+                      levelId AS levelId,
+                      sum(starts) AS starts,
+                      sum(completes) AS completes,
+                      sum(fails) AS fails,
+                      sum(startedPlayers) AS startedPlayers,
+                      sum(completedPlayers) AS completedPlayers,
+                      sum(boosterUsers) AS boosterUsers,
+                      sum(totalBoosterUsage) AS totalBoosterUsage,
+                      sum(egpUsers) AS egpUsers,
+                      sum(totalEgpUsage) AS totalEgpUsage,
+                      sum(totalCompletionDuration) AS totalCompletionDuration,
+                      sum(completionCount) AS completionCount,
+                      sum(totalFailDuration) AS totalFailDuration,
+                      sum(failCount) AS failCount
+                    FROM level_metrics_daily_raw
+                    WHERE gameId = ${q(gameId)}
+                      AND date >= toDateTime64(${q(startDate.toISOString())}, 3, 'UTC')
+                      AND date <= toDateTime64(${q(endDate.toISOString())}, 3, 'UTC')
+                      ${countries.length ? `AND countryCode IN (${countries.map(q).join(',')})` : ''}
+                      ${platforms.length ? `AND platform IN (${platformIn})` : ''}
+                      ${versions.length ? `AND appVersion IN (${versions.map(q).join(',')})` : ''}
+                      ${funnelFilter}
+                    GROUP BY levelId
+                `);
+
+                return rows.map((row) => ({
+                    levelId: Number(row.levelId || 0),
+                    starts: Number(row.starts || 0),
+                    completes: Number(row.completes || 0),
+                    fails: Number(row.fails || 0),
+                    startedPlayers: Number(row.startedPlayers || 0),
+                    completedPlayers: Number(row.completedPlayers || 0),
+                    boosterUsers: Number(row.boosterUsers || 0),
+                    totalBoosterUsage: Number(row.totalBoosterUsage || 0),
+                    egpUsers: Number(row.egpUsers || 0),
+                    totalEgpUsage: Number(row.totalEgpUsage || 0),
+                    totalCompletionDuration: BigInt(Math.trunc(Number(row.totalCompletionDuration || 0))),
+                    completionCount: Number(row.completionCount || 0),
+                    totalFailDuration: BigInt(Math.trunc(Number(row.totalFailDuration || 0))),
+                    failCount: Number(row.failCount || 0)
+                }));
+            } catch (error) {
+                logger.warn('Level funnel ClickHouse aggregate read failed; falling back to Postgres', {
+                    gameId,
+                    error: error instanceof Error ? error.message : String(error)
+                });
+            }
+        }
 
         let funnelClauses: any = Prisma.sql``;
         if (filters.levelFunnel) {

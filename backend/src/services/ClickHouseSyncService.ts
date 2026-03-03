@@ -69,15 +69,7 @@ export class ClickHouseSyncService {
   private async ensureInitialized(): Promise<void> {
     if (this.initialized) return;
 
-    // Postgres watermark table
-    await this.prisma.$executeRawUnsafe(`
-      CREATE TABLE IF NOT EXISTS "analytics_sync_watermarks" (
-        "pipeline" text PRIMARY KEY,
-        "lastTs" timestamptz NOT NULL,
-        "lastId" text NOT NULL,
-        "updatedAt" timestamptz NOT NULL DEFAULT now()
-      )
-    `);
+    await this.ensureWatermarkTable();
 
     // ClickHouse raw tables (pilot)
     await clickHouseService.command(`
@@ -319,6 +311,7 @@ export class ClickHouseSyncService {
   }
 
   private async getWatermark(table: SyncTable): Promise<Watermark> {
+    await this.ensureWatermarkTable();
     const pipeline = `clickhouse_sync_${table}`;
     const rows = await this.prisma.$queryRaw<Array<{ lastTs: Date; lastId: string }>>(Prisma.sql`
       SELECT "lastTs", "lastId"
@@ -334,6 +327,7 @@ export class ClickHouseSyncService {
   }
 
   private async setWatermark(table: SyncTable, watermark: Watermark): Promise<void> {
+    await this.ensureWatermarkTable();
     const pipeline = `clickhouse_sync_${table}`;
     await this.prisma.$executeRaw(Prisma.sql`
       INSERT INTO "analytics_sync_watermarks" ("pipeline","lastTs","lastId","updatedAt")
@@ -760,6 +754,17 @@ export class ClickHouseSyncService {
 
   private toIso(value: Date | string): string {
     return value instanceof Date ? value.toISOString() : new Date(value).toISOString();
+  }
+
+  private async ensureWatermarkTable(): Promise<void> {
+    await this.prisma.$executeRawUnsafe(`
+      CREATE TABLE IF NOT EXISTS "analytics_sync_watermarks" (
+        "pipeline" text PRIMARY KEY,
+        "lastTs" timestamptz NOT NULL,
+        "lastId" text NOT NULL,
+        "updatedAt" timestamptz NOT NULL DEFAULT now()
+      )
+    `);
   }
 
   private quoteClickHouseString(value: string): string {

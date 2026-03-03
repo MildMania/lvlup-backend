@@ -1159,3 +1159,12 @@ model IapPayer {
   @@unique([gameId, userId], name: "unique_iap_payer")
   @@map("iap_payers")
 }
+
+model AnalyticsSyncWatermark {
+  pipeline  String   @id
+  lastTs    DateTime @map("lastTs")
+  lastId    String   @map("lastId")
+  updatedAt DateTime @default(now()) @updatedAt @map("updatedAt")
+
+  @@map("analytics_sync_watermarks")
+}

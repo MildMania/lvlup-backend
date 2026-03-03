@@ -57,6 +57,11 @@ export class LevelFunnelService {
         return `'${escaped}'`;
     }
 
+    private clickHouseDateTimeExpr(value: Date): string {
+        // Supports ISO 8601 with timezone suffix (e.g. "Z") reliably across CH versions.
+        return `parseDateTime64BestEffort(${this.quoteClickHouseString(value.toISOString())})`;
+    }
+
     private readFromClickHouse(): boolean {
         return (
             process.env.ANALYTICS_READ_LEVEL_FUNNEL_FROM_CLICKHOUSE === '1' ||
@@ -404,8 +409,8 @@ export class LevelFunnelService {
                 const platformIn = platforms.length ? platforms.map(q).join(',') : '';
                 const funnelFilter = this.buildFunnelFilterSql(levelFunnel, levelFunnelVersion, 'c');
                 const installFilter = [
-                    installStartDate ? ` AND c.installDate >= toDateTime64(${q(installStartDate.toISOString())}, 3, 'UTC')` : '',
-                    installEndDate ? ` AND c.installDate <= toDateTime64(${q(installEndDate.toISOString())}, 3, 'UTC')` : ''
+                    installStartDate ? ` AND c.installDate >= ${this.clickHouseDateTimeExpr(installStartDate)}` : '',
+                    installEndDate ? ` AND c.installDate <= ${this.clickHouseDateTimeExpr(installEndDate)}` : ''
                 ].join('');
 
                 const rows = await clickHouseService.query<Array<{
@@ -427,8 +432,8 @@ export class LevelFunnelService {
                     FROM level_churn_cohort_daily_raw c
                     CROSS JOIN max_available
                     WHERE c.gameId = ${q(gameId)}
-                      AND c.cohortDate >= toDateTime64(${q(startDate.toISOString())}, 3, 'UTC')
-                      AND c.cohortDate <= toDateTime64(${q(endDate.toISOString())}, 3, 'UTC')
+                      AND c.cohortDate >= ${this.clickHouseDateTimeExpr(startDate)}
+                      AND c.cohortDate <= ${this.clickHouseDateTimeExpr(endDate)}
                       AND toDate(c.cohortDate) <= (max_date - 7)
                       AND c.levelId IN (${levelIds.join(',')})
                       ${platforms.length ? `AND c.platform IN (${platformIn})` : ''}
@@ -571,8 +576,8 @@ export class LevelFunnelService {
                 const platformIn = platforms.length ? platforms.map(q).join(',') : '';
                 const funnelFilter = this.buildFunnelFilterSql(filters.levelFunnel, filters.levelFunnelVersion, 'l');
                 const installFilter = [
-                    filters.installStartDate ? ` AND u.createdAt >= toDateTime64(${q(filters.installStartDate.toISOString())}, 3, 'UTC')` : '',
-                    filters.installEndDate ? ` AND u.createdAt <= toDateTime64(${q(filters.installEndDate.toISOString())}, 3, 'UTC')` : ''
+                    filters.installStartDate ? ` AND u.createdAt >= ${this.clickHouseDateTimeExpr(filters.installStartDate)}` : '',
+                    filters.installEndDate ? ` AND u.createdAt <= ${this.clickHouseDateTimeExpr(filters.installEndDate)}` : ''
                 ].join('');
 
                 const rows = await clickHouseService.query<Array<{
@@ -609,8 +614,8 @@ export class LevelFunnelService {
                       GROUP BY gameId, id
                     ) u ON u.id = l.userId AND u.gameId = l.gameId
                     WHERE l.gameId = ${q(gameId)}
-                      AND l.date >= toDateTime64(${q(startDate.toISOString())}, 3, 'UTC')
-                      AND l.date <= toDateTime64(${q(endDate.toISOString())}, 3, 'UTC')
+                      AND l.date >= ${this.clickHouseDateTimeExpr(startDate)}
+                      AND l.date <= ${this.clickHouseDateTimeExpr(endDate)}
                       ${installFilter}
                       ${countries.length ? `AND l.countryCode IN (${countries.map(q).join(',')})` : ''}
                       ${platforms.length ? `AND l.platform IN (${platformIn})` : ''}
@@ -781,8 +786,8 @@ export class LevelFunnelService {
                       uniqExactIf(userId, egpUsed = 1) AS egp
                     FROM level_metrics_daily_users_raw
                     WHERE gameId = ${q(gameId)}
-                      AND date >= toDateTime64(${q(startDate.toISOString())}, 3, 'UTC')
-                      AND date <= toDateTime64(${q(endDate.toISOString())}, 3, 'UTC')
+                      AND date >= ${this.clickHouseDateTimeExpr(startDate)}
+                      AND date <= ${this.clickHouseDateTimeExpr(endDate)}
                       ${countries.length ? `AND countryCode IN (${countries.map(q).join(',')})` : ''}
                       ${platforms.length ? `AND platform IN (${platformIn})` : ''}
                       ${versions.length ? `AND appVersion IN (${versions.map(q).join(',')})` : ''}
@@ -961,8 +966,8 @@ export class LevelFunnelService {
                       sum(failCount) AS failCount
                     FROM level_metrics_daily_raw
                     WHERE gameId = ${q(gameId)}
-                      AND date >= toDateTime64(${q(startDate.toISOString())}, 3, 'UTC')
-                      AND date <= toDateTime64(${q(endDate.toISOString())}, 3, 'UTC')
+                      AND date >= ${this.clickHouseDateTimeExpr(startDate)}
+                      AND date <= ${this.clickHouseDateTimeExpr(endDate)}
                       ${countries.length ? `AND countryCode IN (${countries.map(q).join(',')})` : ''}
                       ${platforms.length ? `AND platform IN (${platformIn})` : ''}
                       ${versions.length ? `AND appVersion IN (${versions.map(q).join(',')})` : ''}

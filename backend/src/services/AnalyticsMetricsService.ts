@@ -426,9 +426,9 @@ export class AnalyticsMetricsService {
               toDate(${q(historyStart.toISOString().slice(0, 10))}) AS history_start
             SELECT
               toString(day) AS date,
-              uniqExactIf(e.userId, event_day = day) AS dau,
-              uniqExactIf(e.userId, event_day BETWEEN addDays(day, -6) AND day) AS wau,
-              uniqExactIf(e.userId, event_day BETWEEN addDays(day, -29) AND day) AS mau
+              ifNull(dau_rows.dau, 0) AS dau,
+              ifNull(wau_rows.wau, 0) AS wau,
+              ifNull(mau_rows.mau, 0) AS mau
             FROM
               (
                 SELECT addDays(start_day, number) AS day
@@ -437,19 +437,88 @@ export class AnalyticsMetricsService {
             LEFT JOIN
               (
                 SELECT
-                  userId,
-                  toDate(serverReceivedAt) AS event_day
-                FROM events_raw
-                WHERE gameId = ${q(gameId)}
-                  AND toDate(serverReceivedAt) >= history_start
-                  AND toDate(serverReceivedAt) <= end_day
-                  ${platforms.length ? `AND platform IN (${platformIn})` : ''}
-                  ${countries.length ? `AND countryCode IN (${countryIn})` : ''}
-                  ${versions.length ? `AND appVersion IN (${versionIn})` : ''}
-              ) e
-            ON e.event_day BETWEEN addDays(day, -29) AND day
-            GROUP BY day
-            ORDER BY day ASC
+                  event_day AS day,
+                  uniqExact(userId) AS dau
+                FROM
+                  (
+                    SELECT
+                      toDate(serverReceivedAt) AS event_day,
+                      userId
+                    FROM events_raw
+                    WHERE gameId = ${q(gameId)}
+                      AND toDate(serverReceivedAt) >= start_day
+                      AND toDate(serverReceivedAt) <= end_day
+                      ${platforms.length ? `AND platform IN (${platformIn})` : ''}
+                      ${countries.length ? `AND countryCode IN (${countryIn})` : ''}
+                      ${versions.length ? `AND appVersion IN (${versionIn})` : ''}
+                    GROUP BY event_day, userId
+                  ) base
+                GROUP BY day
+              ) dau_rows
+            ON dau_rows.day = days.day
+            LEFT JOIN
+              (
+                SELECT
+                  day,
+                  uniqExact(userId) AS wau
+                FROM
+                  (
+                    SELECT
+                      addDays(event_day, offs) AS day,
+                      userId
+                    FROM
+                      (
+                        SELECT
+                          toDate(serverReceivedAt) AS event_day,
+                          userId
+                        FROM events_raw
+                        WHERE gameId = ${q(gameId)}
+                          AND toDate(serverReceivedAt) >= addDays(start_day, -6)
+                          AND toDate(serverReceivedAt) <= end_day
+                          ${platforms.length ? `AND platform IN (${platformIn})` : ''}
+                          ${countries.length ? `AND countryCode IN (${countryIn})` : ''}
+                          ${versions.length ? `AND appVersion IN (${versionIn})` : ''}
+                        GROUP BY event_day, userId
+                      ) source_days
+                    ARRAY JOIN range(0, 7) AS offs
+                    WHERE addDays(event_day, offs) >= start_day
+                      AND addDays(event_day, offs) <= end_day
+                  ) expanded
+                GROUP BY day
+              ) wau_rows
+            ON wau_rows.day = days.day
+            LEFT JOIN
+              (
+                SELECT
+                  day,
+                  uniqExact(userId) AS mau
+                FROM
+                  (
+                    SELECT
+                      addDays(event_day, offs) AS day,
+                      userId
+                    FROM
+                      (
+                        SELECT
+                          toDate(serverReceivedAt) AS event_day,
+                          userId
+                        FROM events_raw
+                        WHERE gameId = ${q(gameId)}
+                          AND toDate(serverReceivedAt) >= history_start
+                          AND toDate(serverReceivedAt) <= end_day
+                          ${platforms.length ? `AND platform IN (${platformIn})` : ''}
+                          ${countries.length ? `AND countryCode IN (${countryIn})` : ''}
+                          ${versions.length ? `AND appVersion IN (${versionIn})` : ''}
+                        GROUP BY event_day, userId
+                      ) source_days
+                    ARRAY JOIN range(0, 30) AS offs
+                    WHERE addDays(event_day, offs) >= start_day
+                      AND addDays(event_day, offs) <= end_day
+                  ) expanded
+                GROUP BY day
+              ) mau_rows
+            ON mau_rows.day = days.day
+            ORDER BY days.day ASC
         `);
 
         return rows.map((row) => ({

@@ -64,6 +64,13 @@ export class LevelFunnelService {
         ) && clickHouseService.isEnabled();
     }
 
+    private isLevelFunnelClickHouseRequested(): boolean {
+        return (
+            process.env.ANALYTICS_READ_LEVEL_FUNNEL_FROM_CLICKHOUSE === '1' ||
+            process.env.ANALYTICS_READ_LEVEL_FUNNEL_FROM_CLICKHOUSE === 'true'
+        );
+    }
+
     private isClickHouseStrict(): boolean {
         return (
             process.env.ANALYTICS_CLICKHOUSE_STRICT === '1' ||
@@ -116,6 +123,10 @@ export class LevelFunnelService {
      */
     async getLevelFunnelDataFast(filters: LevelFunnelFilters): Promise<LevelMetrics[]> {
         try {
+            if (this.isClickHouseStrict() && this.isLevelFunnelClickHouseRequested() && !clickHouseService.isEnabled()) {
+                throw new Error('ClickHouse strict mode enabled for level funnel, but ClickHouse is not configured/enabled in API env');
+            }
+
             const {
                 gameId,
                 startDate,

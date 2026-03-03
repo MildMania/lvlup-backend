@@ -15,6 +15,7 @@ export class ClickHouseService {
   private readonly username?: string;
   private readonly password?: string;
   private readonly defaultTimeoutMs: number;
+  private readonly pingTimeoutMs: number;
 
   constructor() {
     this.enabled =
@@ -25,6 +26,7 @@ export class ClickHouseService {
     this.username = process.env.CLICKHOUSE_USER || undefined;
     this.password = process.env.CLICKHOUSE_PASSWORD || undefined;
     this.defaultTimeoutMs = Number(process.env.CLICKHOUSE_HTTP_TIMEOUT_MS || 15000);
+    this.pingTimeoutMs = Number(process.env.CLICKHOUSE_PING_TIMEOUT_MS || 30000);
   }
 
   isEnabled(): boolean {
@@ -35,7 +37,7 @@ export class ClickHouseService {
     if (!this.isEnabled()) return false;
     try {
       const res = await this.request('SELECT 1 FORMAT JSONEachRow', undefined, {
-        timeoutMs: 5000
+        timeoutMs: this.pingTimeoutMs
       });
       return res.ok;
     } catch (error) {
@@ -111,4 +113,3 @@ export class ClickHouseService {
 }
 
 export default new ClickHouseService();
-

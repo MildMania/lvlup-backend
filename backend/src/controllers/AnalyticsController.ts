@@ -9,12 +9,20 @@ import logger from '../utils/logger';
 import prisma from '../prisma';
 import { cache } from '../utils/simpleCache';
 import { logAnalyticsMetrics } from '../utils/analyticsDebug';
+import clickHouseService from '../services/ClickHouseService';
 
 const analyticsService = new AnalyticsService();
 const monetizationCohortService = new MonetizationCohortService();
 const revenueService = new RevenueService();
 
 export class AnalyticsController {
+    private quoteClickHouseString(value: string): string {
+        const escaped = value
+            .replace(/\\/g, '\\\\')
+            .replace(/'/g, "\\'");
+        return `'${escaped}'`;
+    }
+
     private async resolveExternalUserId(gameId: string, payload: any): Promise<{ userId: string | null; source: string | null }> {
         const explicitUserId = typeof payload?.userId === 'string' ? payload.userId.trim() : '';
         if (explicitUserId) {
@@ -500,7 +508,75 @@ export class AnalyticsController {
     async getRevenueSummary(req: AuthenticatedRequest, res: Response<ApiResponse>) {
         try {
             const gameId = requireGameId(req);
+            const readRevenueSummaryFromClickHouse =
+                process.env.ANALYTICS_READ_REVENUE_SUMMARY_FROM_CLICKHOUSE === '1' ||
+                process.env.ANALYTICS_READ_REVENUE_SUMMARY_FROM_CLICKHOUSE === 'true';
             const useRollups = process.env.USE_MONETIZATION_ROLLUPS === '1' || process.env.USE_MONETIZATION_ROLLUPS === 'true';
+
+            if (readRevenueSummaryFromClickHouse && clickHouseService.isEnabled()) {
+                try {
+                    const qGameId = this.quoteClickHouseString(gameId);
+                    const [revenueRows, usersRows] = await Promise.all([
+                        clickHouseService.query<Array<{
+                            adRevenue: number;
+                            iapRevenue: number;
+                            adImpressionCount: number;
+                            iapCount: number;
+                            payingUsersCount: number;
+                        }>[number]>(`
+                            SELECT
+                                sumIf(revenueUSD, revenueType = 'AD_IMPRESSION') AS adRevenue,
+                                sumIf(revenueUSD, revenueType = 'IN_APP_PURCHASE') AS iapRevenue,
+                                countIf(revenueType = 'AD_IMPRESSION') AS adImpressionCount,
+                                countIf(revenueType = 'IN_APP_PURCHASE') AS iapCount,
+                                uniqExactIf(userId, revenueType = 'IN_APP_PURCHASE') AS payingUsersCount
+                            FROM revenue_raw
+                            WHERE gameId = ${qGameId}
+                        `),
+                        clickHouseService.query<Array<{ totalUsers: number }>[number]>(`
+                            SELECT uniqExact(id) AS totalUsers
+                            FROM users_raw
+                            WHERE gameId = ${qGameId}
+                        `)
+                    ]);
+
+                    const revenue = revenueRows[0] || {
+                        adRevenue: 0,
+                        iapRevenue: 0,
+                        adImpressionCount: 0,
+                        iapCount: 0,
+                        payingUsersCount: 0,
+                    };
+                    const totalUsers = Number(usersRows[0]?.totalUsers || 0);
+                    const adRevenue = Number(revenue.adRevenue || 0);
+                    const iapRevenue = Number(revenue.iapRevenue || 0);
+                    const totalRevenue = adRevenue + iapRevenue;
+                    const payingUsersCount = Number(revenue.payingUsersCount || 0);
+
+                    const summary = {
+                        totalRevenue: Math.round(totalRevenue * 100) / 100,
+                        adRevenue: Math.round(adRevenue * 100) / 100,
+                        iapRevenue: Math.round(iapRevenue * 100) / 100,
+                        adImpressionCount: Number(revenue.adImpressionCount || 0),
+                        iapCount: Number(revenue.iapCount || 0),
+                        payingUsersCount,
+                        totalUsers,
+                        conversionRate: totalUsers > 0 ? (payingUsersCount / totalUsers) * 100 : 0,
+                        arpu: totalUsers > 0 ? totalRevenue / totalUsers : 0,
+                        arppu: payingUsersCount > 0 ? iapRevenue / payingUsersCount : 0
+                    };
+
+                    return res.status(200).json({
+                        success: true,
+                        data: summary
+                    });
+                } catch (clickHouseError) {
+                    logger.warn('[Analytics] ClickHouse revenue summary read failed; falling back to Postgres', {
+                        gameId,
+                        error: clickHouseError instanceof Error ? clickHouseError.message : String(clickHouseError),
+                    });
+                }
+            }
 
             if (useRollups) {
                 const [dailyRows, payingUsersCount, totalUsers] = await Promise.all([

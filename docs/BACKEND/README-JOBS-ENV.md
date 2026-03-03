@@ -162,6 +162,10 @@ Typical modes:
   - Default: `0`
   - Read `/analytics/metrics/playtime` from ClickHouse with Postgres fallback.
 
+- `ANALYTICS_READ_COHORT_FROM_CLICKHOUSE`
+  - Default: `0`
+  - Read `/analytics/cohort/*` metrics from ClickHouse rollup tables with Postgres fallback.
+
 ## Recommended low-cost production setup
 
 If DB memory/cost is tight, use:

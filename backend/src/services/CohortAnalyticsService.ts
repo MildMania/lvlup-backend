@@ -1,5 +1,7 @@
 import { PrismaClient, Prisma } from '@prisma/client';
 import prismaInstance from '../prisma';
+import clickHouseService from './ClickHouseService';
+import logger from '../utils/logger';
 
 // Cohort data for a specific install date
 export interface CohortData {
@@ -24,8 +26,22 @@ export interface CohortAnalyticsParams {
 export class CohortAnalyticsService {
     private prisma: PrismaClient;
 
-    constructor() {
-        this.prisma = prismaInstance;
+    constructor(prismaClient?: PrismaClient) {
+        this.prisma = prismaClient || prismaInstance;
+    }
+
+    private quoteClickHouseString(value: string): string {
+        const escaped = value
+            .replace(/\\/g, '\\\\')
+            .replace(/'/g, "\\'");
+        return `'${escaped}'`;
+    }
+
+    private readFromClickHouse(): boolean {
+        return (
+            process.env.ANALYTICS_READ_COHORT_FROM_CLICKHOUSE === '1' ||
+            process.env.ANALYTICS_READ_COHORT_FROM_CLICKHOUSE === 'true'
+        ) && clickHouseService.isEnabled();
     }
 
     /**
@@ -140,6 +156,57 @@ export class CohortAnalyticsService {
         const platformFilter = this.normalizeFilter(filters?.platform);
         const countryFilter = this.normalizeFilter(filters?.country);
         const versionFilter = this.normalizeFilter(filters?.version);
+
+        if (this.readFromClickHouse()) {
+            try {
+                const q = (value: string) => this.quoteClickHouseString(value);
+                const platformIn = platformFilter.length ? platformFilter.map(q).join(',') : '';
+                const countryIn = countryFilter.length ? countryFilter.map(q).join(',') : '';
+                const versionIn = versionFilter.length ? versionFilter.map(q).join(',') : '';
+                const rows = await clickHouseService.query<Array<{
+                    installDate: string;
+                    dayIndex: number;
+                    cohortSize: number;
+                    retainedUsers: number;
+                    retainedLevelCompletes: number;
+                }>[number]>(`
+                    SELECT
+                      toDate(installDate) AS installDate,
+                      dayIndex AS dayIndex,
+                      sumIf(cohortSize, NOT (platform = '' AND countryCode = '' AND appVersion = '')) AS cohortSize,
+                      sum(retainedUsers) AS retainedUsers,
+                      sum(retainedLevelCompletes) AS retainedLevelCompletes
+                    FROM cohort_retention_daily_raw
+                    WHERE gameId = ${q(gameId)}
+                      AND installDate >= toDateTime64(${q(startDate.toISOString())}, 3, 'UTC')
+                      AND installDate <= toDateTime64(${q(endDate.toISOString())}, 3, 'UTC')
+                      AND dayIndex IN (${days.join(',')})
+                      ${platformFilter.length ? `AND platform IN (${platformIn})` : ''}
+                      ${countryFilter.length ? `AND countryCode IN (${countryIn})` : ''}
+                      ${versionFilter.length ? `AND appVersion IN (${versionIn})` : ''}
+                    GROUP BY installDate, dayIndex
+                `);
+
+                const normalized = rows.map((row) => ({
+                    installDate: new Date(`${row.installDate}T00:00:00.000Z`),
+                    dayIndex: Number(row.dayIndex || 0),
+                    cohortSize: Number(row.cohortSize || 0),
+                    retainedUsers: Number(row.retainedUsers || 0),
+                    retainedLevelCompletes: Number(row.retainedLevelCompletes || 0)
+                }));
+
+                return this.buildCohortDataFromRollups(normalized, days, (row) => ({
+                    value: row.cohortSize > 0 ? (row.retainedUsers / row.cohortSize) * 100 : 0,
+                    userCount: row.retainedUsers
+                }));
+            } catch (error) {
+                logger.warn('[CohortAnalytics] ClickHouse retention read failed; falling back to Postgres', {
+                    gameId,
+                    error: error instanceof Error ? error.message : String(error)
+                });
+            }
+        }
+
         const cohortSizeAgg = this.cohortSizeAggregateSql();
 
         const rows = await this.prisma.$queryRaw<
@@ -187,6 +254,75 @@ export class CohortAnalyticsService {
         const platformFilter = this.normalizeFilter(filters?.platform);
         const countryFilter = this.normalizeFilter(filters?.country);
         const versionFilter = this.normalizeFilter(filters?.version);
+
+        if (this.readFromClickHouse()) {
+            try {
+                const q = (value: string) => this.quoteClickHouseString(value);
+                const platformIn = platformFilter.length ? platformFilter.map(q).join(',') : '';
+                const countryIn = countryFilter.length ? countryFilter.map(q).join(',') : '';
+                const versionIn = versionFilter.length ? versionFilter.map(q).join(',') : '';
+                const rows = await clickHouseService.query<Array<{
+                    installDate: string;
+                    dayIndex: number;
+                    cohortSize: number;
+                    sessionUsers: number;
+                    totalSessions: number;
+                    totalDurationSec: number;
+                }>[number]>(`
+                    SELECT
+                      toDate(installDate) AS installDate,
+                      dayIndex AS dayIndex,
+                      sumIf(cohortSize, NOT (platform = '' AND countryCode = '' AND appVersion = '')) AS cohortSize,
+                      sum(sessionUsers) AS sessionUsers,
+                      sum(totalSessions) AS totalSessions,
+                      sum(totalDurationSec) AS totalDurationSec
+                    FROM cohort_session_metrics_daily_raw
+                    WHERE gameId = ${q(gameId)}
+                      AND installDate >= toDateTime64(${q(startDate.toISOString())}, 3, 'UTC')
+                      AND installDate <= toDateTime64(${q(endDate.toISOString())}, 3, 'UTC')
+                      AND dayIndex IN (${days.join(',')})
+                      ${platformFilter.length ? `AND platform IN (${platformIn})` : ''}
+                      ${countryFilter.length ? `AND countryCode IN (${countryIn})` : ''}
+                      ${versionFilter.length ? `AND appVersion IN (${versionIn})` : ''}
+                    GROUP BY installDate, dayIndex
+                `);
+
+                const normalized = rows.map((row) => ({
+                    installDate: new Date(`${row.installDate}T00:00:00.000Z`),
+                    dayIndex: Number(row.dayIndex || 0),
+                    cohortSize: Number(row.cohortSize || 0),
+                    sessionUsers: Number(row.sessionUsers || 0),
+                    totalSessions: Number(row.totalSessions || 0),
+                    totalDurationSec: Number(row.totalDurationSec || 0)
+                }));
+
+                return this.buildCohortDataFromRollups(normalized, days, (row) => {
+                    const sessionUsers = row.sessionUsers;
+                    const totalSessions = row.totalSessions;
+                    const totalDurationSec = row.totalDurationSec;
+
+                    if (metric === 'playtime') {
+                        const avgMinutes = sessionUsers > 0 ? (totalDurationSec / sessionUsers) / 60 : 0;
+                        return { value: Math.round(avgMinutes * 10) / 10, userCount: sessionUsers };
+                    }
+
+                    if (metric === 'session-count') {
+                        const avgSessions = sessionUsers > 0 ? totalSessions / sessionUsers : 0;
+                        return { value: Math.round(avgSessions * 100) / 100, userCount: sessionUsers };
+                    }
+
+                    const avgLengthMin = totalSessions > 0 ? (totalDurationSec / totalSessions) / 60 : 0;
+                    return { value: Math.round(avgLengthMin * 10) / 10, userCount: sessionUsers };
+                });
+            } catch (error) {
+                logger.warn('[CohortAnalytics] ClickHouse session-metrics read failed; falling back to Postgres', {
+                    gameId,
+                    metric,
+                    error: error instanceof Error ? error.message : String(error)
+                });
+            }
+        }
+
         const cohortSizeAgg = this.cohortSizeAggregateSql();
 
         const rows = await this.prisma.$queryRaw<
@@ -315,34 +451,55 @@ export class CohortAnalyticsService {
         // Avg Reached Level is cumulative by horizon day (dN), so we must read
         // contiguous day indices 0..N. Using only selected sparse days (e.g. 0..7,14)
         // undercounts d14/d30 by skipping d8..d13.
-        const rows = await this.prisma.$queryRaw<
-            Array<{ installDate: Date; dayIndex: number; cohortSize: bigint; retainedUsers: bigint; retainedLevelCompletes: bigint }>
-        >(Prisma.sql`
-            SELECT
-                "installDate" AS "installDate",
-                "dayIndex" AS "dayIndex",
-                ${cohortSizeAgg} AS "cohortSize",
-                COALESCE(SUM("retainedUsers"), 0)::bigint AS "retainedUsers",
-                COALESCE(SUM("retainedLevelCompletes"), 0)::bigint AS "retainedLevelCompletes"
-            FROM "cohort_retention_daily"
-            WHERE "gameId" = ${gameId}
-              AND "installDate" >= ${startDate}
-              AND "installDate" <= ${endDate}
-              AND "dayIndex" >= 0
-              AND "dayIndex" <= ${maxDay}
-              ${platformFilter.length ? Prisma.sql`AND "platform" IN (${Prisma.join(platformFilter)})` : Prisma.sql``}
-              ${countryFilter.length ? Prisma.sql`AND "countryCode" IN (${Prisma.join(countryFilter)})` : Prisma.sql``}
-              ${versionFilter.length ? Prisma.sql`AND "appVersion" IN (${Prisma.join(versionFilter)})` : Prisma.sql``}
-            GROUP BY "installDate","dayIndex"
-        `);
+        let normalizedRows: Array<{ installDate: Date; dayIndex: number; cohortSize: number; retainedUsers: number; retainedLevelCompletes: number }>;
 
-        const normalizedRows = rows.map((row) => ({
-            installDate: row.installDate,
-            dayIndex: row.dayIndex,
-            cohortSize: Number(row.cohortSize || 0),
-            retainedUsers: Number(row.retainedUsers || 0),
-            retainedLevelCompletes: Number(row.retainedLevelCompletes || 0)
-        }));
+        if (this.readFromClickHouse()) {
+            try {
+                const q = (value: string) => this.quoteClickHouseString(value);
+                const platformIn = platformFilter.length ? platformFilter.map(q).join(',') : '';
+                const countryIn = countryFilter.length ? countryFilter.map(q).join(',') : '';
+                const versionIn = versionFilter.length ? versionFilter.map(q).join(',') : '';
+                const rows = await clickHouseService.query<Array<{
+                    installDate: string;
+                    dayIndex: number;
+                    cohortSize: number;
+                    retainedUsers: number;
+                    retainedLevelCompletes: number;
+                }>[number]>(`
+                    SELECT
+                      toDate(installDate) AS installDate,
+                      dayIndex AS dayIndex,
+                      sumIf(cohortSize, NOT (platform = '' AND countryCode = '' AND appVersion = '')) AS cohortSize,
+                      sum(retainedUsers) AS retainedUsers,
+                      sum(retainedLevelCompletes) AS retainedLevelCompletes
+                    FROM cohort_retention_daily_raw
+                    WHERE gameId = ${q(gameId)}
+                      AND installDate >= toDateTime64(${q(startDate.toISOString())}, 3, 'UTC')
+                      AND installDate <= toDateTime64(${q(endDate.toISOString())}, 3, 'UTC')
+                      AND dayIndex >= 0
+                      AND dayIndex <= ${maxDay}
+                      ${platformFilter.length ? `AND platform IN (${platformIn})` : ''}
+                      ${countryFilter.length ? `AND countryCode IN (${countryIn})` : ''}
+                      ${versionFilter.length ? `AND appVersion IN (${versionIn})` : ''}
+                    GROUP BY installDate, dayIndex
+                `);
+                normalizedRows = rows.map((row) => ({
+                    installDate: new Date(`${row.installDate}T00:00:00.000Z`),
+                    dayIndex: Number(row.dayIndex || 0),
+                    cohortSize: Number(row.cohortSize || 0),
+                    retainedUsers: Number(row.retainedUsers || 0),
+                    retainedLevelCompletes: Number(row.retainedLevelCompletes || 0)
+                }));
+            } catch (error) {
+                logger.warn('[CohortAnalytics] ClickHouse avg-reached read failed; falling back to Postgres', {
+                    gameId,
+                    error: error instanceof Error ? error.message : String(error)
+                });
+                normalizedRows = await this.getRetentionRowsForRollups(gameId, startDate, endDate, Array.from({ length: maxDay + 1 }, (_, i) => i), filters);
+            }
+        } else {
+            normalizedRows = await this.getRetentionRowsForRollups(gameId, startDate, endDate, Array.from({ length: maxDay + 1 }, (_, i) => i), filters);
+        }
 
         const byInstall = new Map<string, Map<number, typeof normalizedRows[number]>>();
         for (const row of normalizedRows) {
@@ -415,6 +572,52 @@ export class CohortAnalyticsService {
         const platformFilter = this.normalizeFilter(filters?.platform);
         const countryFilter = this.normalizeFilter(filters?.country);
         const versionFilter = this.normalizeFilter(filters?.version);
+
+        if (this.readFromClickHouse()) {
+            try {
+                const q = (value: string) => this.quoteClickHouseString(value);
+                const platformIn = platformFilter.length ? platformFilter.map(q).join(',') : '';
+                const countryIn = countryFilter.length ? countryFilter.map(q).join(',') : '';
+                const versionIn = versionFilter.length ? versionFilter.map(q).join(',') : '';
+                const rows = await clickHouseService.query<Array<{
+                    installDate: string;
+                    dayIndex: number;
+                    cohortSize: number;
+                    retainedUsers: number;
+                    retainedLevelCompletes: number;
+                }>[number]>(`
+                    SELECT
+                      toDate(installDate) AS installDate,
+                      dayIndex AS dayIndex,
+                      sumIf(cohortSize, NOT (platform = '' AND countryCode = '' AND appVersion = '')) AS cohortSize,
+                      sum(retainedUsers) AS retainedUsers,
+                      sum(retainedLevelCompletes) AS retainedLevelCompletes
+                    FROM cohort_retention_daily_raw
+                    WHERE gameId = ${q(gameId)}
+                      AND installDate >= toDateTime64(${q(startDate.toISOString())}, 3, 'UTC')
+                      AND installDate <= toDateTime64(${q(endDate.toISOString())}, 3, 'UTC')
+                      AND dayIndex IN (${days.join(',')})
+                      ${platformFilter.length ? `AND platform IN (${platformIn})` : ''}
+                      ${countryFilter.length ? `AND countryCode IN (${countryIn})` : ''}
+                      ${versionFilter.length ? `AND appVersion IN (${versionIn})` : ''}
+                    GROUP BY installDate, dayIndex
+                `);
+
+                return rows.map((row) => ({
+                    installDate: new Date(`${row.installDate}T00:00:00.000Z`),
+                    dayIndex: Number(row.dayIndex || 0),
+                    cohortSize: Number(row.cohortSize || 0),
+                    retainedUsers: Number(row.retainedUsers || 0),
+                    retainedLevelCompletes: Number(row.retainedLevelCompletes || 0)
+                }));
+            } catch (error) {
+                logger.warn('[CohortAnalytics] ClickHouse retention-rows read failed; falling back to Postgres', {
+                    gameId,
+                    error: error instanceof Error ? error.message : String(error)
+                });
+            }
+        }
+
         const cohortSizeAgg = this.cohortSizeAggregateSql();
 
         const rows = await this.prisma.$queryRaw<

@@ -44,6 +44,13 @@ export class CohortAnalyticsService {
         ) && clickHouseService.isEnabled();
     }
 
+    private isClickHouseStrict(): boolean {
+        return (
+            process.env.ANALYTICS_CLICKHOUSE_STRICT === '1' ||
+            process.env.ANALYTICS_CLICKHOUSE_STRICT === 'true'
+        );
+    }
+
     /**
      * Calculate cohort retention table
      * @param gameId The game ID
@@ -200,6 +207,7 @@ export class CohortAnalyticsService {
                     userCount: row.retainedUsers
                 }));
             } catch (error) {
+                if (this.isClickHouseStrict()) throw error;
                 logger.warn('[CohortAnalytics] ClickHouse retention read failed; falling back to Postgres', {
                     gameId,
                     error: error instanceof Error ? error.message : String(error)
@@ -315,6 +323,7 @@ export class CohortAnalyticsService {
                     return { value: Math.round(avgLengthMin * 10) / 10, userCount: sessionUsers };
                 });
             } catch (error) {
+                if (this.isClickHouseStrict()) throw error;
                 logger.warn('[CohortAnalytics] ClickHouse session-metrics read failed; falling back to Postgres', {
                     gameId,
                     metric,
@@ -491,6 +500,7 @@ export class CohortAnalyticsService {
                     retainedLevelCompletes: Number(row.retainedLevelCompletes || 0)
                 }));
             } catch (error) {
+                if (this.isClickHouseStrict()) throw error;
                 logger.warn('[CohortAnalytics] ClickHouse avg-reached read failed; falling back to Postgres', {
                     gameId,
                     error: error instanceof Error ? error.message : String(error)
@@ -611,6 +621,7 @@ export class CohortAnalyticsService {
                     retainedLevelCompletes: Number(row.retainedLevelCompletes || 0)
                 }));
             } catch (error) {
+                if (this.isClickHouseStrict()) throw error;
                 logger.warn('[CohortAnalytics] ClickHouse retention-rows read failed; falling back to Postgres', {
                     gameId,
                     error: error instanceof Error ? error.message : String(error)

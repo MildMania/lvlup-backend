@@ -23,6 +23,13 @@ export class AnalyticsController {
         return `'${escaped}'`;
     }
 
+    private isClickHouseStrict(): boolean {
+        return (
+            process.env.ANALYTICS_CLICKHOUSE_STRICT === '1' ||
+            process.env.ANALYTICS_CLICKHOUSE_STRICT === 'true'
+        );
+    }
+
     private async resolveExternalUserId(gameId: string, payload: any): Promise<{ userId: string | null; source: string | null }> {
         const explicitUserId = typeof payload?.userId === 'string' ? payload.userId.trim() : '';
         if (explicitUserId) {
@@ -571,6 +578,7 @@ export class AnalyticsController {
                         data: summary
                     });
                 } catch (clickHouseError) {
+                    if (this.isClickHouseStrict()) throw clickHouseError;
                     logger.warn('[Analytics] ClickHouse revenue summary read failed; falling back to Postgres', {
                         gameId,
                         error: clickHouseError instanceof Error ? clickHouseError.message : String(clickHouseError),

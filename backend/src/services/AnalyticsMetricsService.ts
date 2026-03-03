@@ -40,6 +40,13 @@ export class AnalyticsMetricsService {
         return `'${escaped}'`;
     }
 
+    private isClickHouseStrict(): boolean {
+        return (
+            process.env.ANALYTICS_CLICKHOUSE_STRICT === '1' ||
+            process.env.ANALYTICS_CLICKHOUSE_STRICT === 'true'
+        );
+    }
+
     // Calculate retention metrics with flexible retention days and filters
     async calculateRetention(
         gameId: string,
@@ -89,6 +96,7 @@ export class AnalyticsMetricsService {
                     cache.set(cacheKey, clickHouseData, 1800);
                     return clickHouseData;
                 } catch (clickHouseError) {
+                    if (this.isClickHouseStrict()) throw clickHouseError;
                     logger.warn('[AnalyticsMetrics] ClickHouse retention read failed; falling back to Postgres', {
                         gameId,
                         error: clickHouseError instanceof Error ? clickHouseError.message : String(clickHouseError),
@@ -244,6 +252,7 @@ export class AnalyticsMetricsService {
                     cache.set(cacheKey, data, 300);
                     return data;
                 } catch (clickHouseError) {
+                    if (this.isClickHouseStrict()) throw clickHouseError;
                     logger.warn('[AnalyticsMetrics] ClickHouse active users read failed; falling back to Postgres', {
                         gameId,
                         error: clickHouseError instanceof Error ? clickHouseError.message : String(clickHouseError),
@@ -505,6 +514,7 @@ export class AnalyticsMetricsService {
                     cache.set(cacheKey, clickHouseData, 300);
                     return clickHouseData;
                 } catch (clickHouseError) {
+                    if (this.isClickHouseStrict()) throw clickHouseError;
                     logger.warn('[AnalyticsMetrics] ClickHouse playtime read failed; falling back to Postgres', {
                         gameId,
                         error: clickHouseError instanceof Error ? clickHouseError.message : String(clickHouseError),

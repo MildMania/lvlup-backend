@@ -34,6 +34,13 @@ export class AnalyticsService {
         return AnalyticsService.IGNORED_EVENT_NAMES.has(eventName.toLowerCase());
     }
 
+    private isClickHouseStrict(): boolean {
+        return (
+            process.env.ANALYTICS_CLICKHOUSE_STRICT === '1' ||
+            process.env.ANALYTICS_CLICKHOUSE_STRICT === 'true'
+        );
+    }
+
     /**
      * Validate and use client timestamp with fallback to server time
      * 
@@ -738,6 +745,7 @@ export class AnalyticsService {
                 try {
                     return await this.getEventsFromClickHouse(gameId, limit, offset, sort, filters);
                 } catch (clickHouseError) {
+                    if (this.isClickHouseStrict()) throw clickHouseError;
                     logger.warn('[Analytics] ClickHouse events read failed; falling back to Postgres', {
                         gameId,
                         error: clickHouseError instanceof Error ? clickHouseError.message : String(clickHouseError),

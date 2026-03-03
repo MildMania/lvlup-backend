@@ -111,6 +111,10 @@ Typical modes:
 
 ## ClickHouse pipeline controls
 
+- `ANALYTICS_CLICKHOUSE_STRICT`
+  - Default: `0`
+  - Global verification/safety mode for analytics reads: when enabled, ClickHouse-enabled endpoints do not fall back to Postgres.
+
 - `ENABLE_CLICKHOUSE_PIPELINE`
   - Default: `0`
   - Enables worker-side Postgres -> ClickHouse incremental sync cron.
@@ -169,10 +173,6 @@ Typical modes:
 - `ANALYTICS_READ_LEVEL_FUNNEL_FROM_CLICKHOUSE`
   - Default: `0`
   - Read `/level-funnel` from ClickHouse rollup tables with Postgres fallback.
-
-- `ANALYTICS_READ_LEVEL_FUNNEL_FROM_CLICKHOUSE_STRICT`
-  - Default: `0`
-  - Verification mode for `/level-funnel`: if enabled, disables Postgres fallback and surfaces ClickHouse read errors.
 
 ## Recommended low-cost production setup
 

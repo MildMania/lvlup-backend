@@ -66,8 +66,8 @@ export class LevelFunnelService {
 
     private isClickHouseStrict(): boolean {
         return (
-            process.env.ANALYTICS_READ_LEVEL_FUNNEL_FROM_CLICKHOUSE_STRICT === '1' ||
-            process.env.ANALYTICS_READ_LEVEL_FUNNEL_FROM_CLICKHOUSE_STRICT === 'true'
+            process.env.ANALYTICS_CLICKHOUSE_STRICT === '1' ||
+            process.env.ANALYTICS_CLICKHOUSE_STRICT === 'true'
         );
     }
 

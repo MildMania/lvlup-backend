@@ -48,13 +48,18 @@ export class AnalyticsMetricsService {
         filters?: AnalyticsFilterParams
     ): Promise<RetentionData[]> {
         try {
+            const readFromClickHouse =
+                process.env.ANALYTICS_READ_RETENTION_FROM_CLICKHOUSE === '1' ||
+                process.env.ANALYTICS_READ_RETENTION_FROM_CLICKHOUSE === 'true';
+
             // Generate cache key
             const cacheKey = generateCacheKey(
                 'retention',
                 gameId,
                 startDate.toISOString(),
                 endDate.toISOString(),
-                JSON.stringify(filters || {})
+                JSON.stringify(filters || {}),
+                readFromClickHouse ? 'ch' : 'pg'
             );
 
             // Check cache first (10 minute TTL for retention since it's expensive)
@@ -71,6 +76,25 @@ export class AnalyticsMetricsService {
             const retentionDays = filters?.retentionDays && filters.retentionDays.length > 0
                 ? filters.retentionDays.sort((a, b) => a - b)  // Sort ascending
                 : [1, 3, 7, 14, 30];
+
+            if (readFromClickHouse && clickHouseService.isEnabled()) {
+                try {
+                    const clickHouseData = await this.calculateRetentionFromClickHouse(
+                        gameId,
+                        startDate,
+                        endDate,
+                        retentionDays,
+                        filters
+                    );
+                    cache.set(cacheKey, clickHouseData, 1800);
+                    return clickHouseData;
+                } catch (clickHouseError) {
+                    logger.warn('[AnalyticsMetrics] ClickHouse retention read failed; falling back to Postgres', {
+                        gameId,
+                        error: clickHouseError instanceof Error ? clickHouseError.message : String(clickHouseError),
+                    });
+                }
+            }
 
             const retentionPromises = retentionDays.map(async (day) => {
                 const countries = filters?.country
@@ -127,6 +151,60 @@ export class AnalyticsMetricsService {
             logger.error('Error calculating retention:', error);
             throw error;
         }
+    }
+
+    private async calculateRetentionFromClickHouse(
+        gameId: string,
+        startDate: Date,
+        endDate: Date,
+        retentionDays: number[],
+        filters?: AnalyticsFilterParams
+    ): Promise<RetentionData[]> {
+        const countries = filters?.country
+            ? (Array.isArray(filters.country) ? filters.country : [filters.country])
+            : [];
+        const platforms = filters?.platform
+            ? (Array.isArray(filters.platform) ? filters.platform : [filters.platform])
+            : [];
+        const versions = filters?.version
+            ? (Array.isArray(filters.version) ? filters.version : [filters.version])
+            : [];
+        const q = (value: string) => this.quoteClickHouseString(value);
+        const countryIn = countries.length ? countries.map(q).join(',') : '';
+        const platformIn = platforms.length ? platforms.map(q).join(',') : '';
+        const versionIn = versions.length ? versions.map(q).join(',') : '';
+
+        const retentionPromises = retentionDays.map(async (day) => {
+            const eligibleEnd = new Date(endDate);
+            eligibleEnd.setUTCDate(eligibleEnd.getUTCDate() - day);
+
+            const rows = await clickHouseService.query<Array<{ cohort_size: number; retained_users: number }>[number]>(`
+                SELECT
+                  sumIf(cohortSize, dayIndex = 0) AS cohort_size,
+                  sumIf(retainedUsers, dayIndex = ${day}) AS retained_users
+                FROM cohort_retention_daily_raw
+                WHERE gameId = ${q(gameId)}
+                  AND installDate >= toDateTime64(${q(startDate.toISOString())}, 3, 'UTC')
+                  AND installDate <= toDateTime64(${q(eligibleEnd.toISOString())}, 3, 'UTC')
+                  AND dayIndex IN (0, ${day})
+                  ${platforms.length ? `AND platform IN (${platformIn})` : ''}
+                  ${countries.length ? `AND countryCode IN (${countryIn})` : ''}
+                  ${versions.length ? `AND appVersion IN (${versionIn})` : ''}
+            `);
+
+            const cohortSize = Number(rows[0]?.cohort_size || 0);
+            const retainedCount = Number(rows[0]?.retained_users || 0);
+            const percentage = cohortSize > 0 ? (retainedCount / cohortSize) * 100 : 0;
+
+            return {
+                day,
+                count: retainedCount,
+                percentage: Math.round(percentage * 100) / 100
+            };
+        });
+
+        const retentionData = await Promise.all(retentionPromises);
+        return retentionData.sort((a, b) => a.day - b.day);
     }
 
     // Calculate daily, weekly, monthly active users with filters
@@ -381,13 +459,18 @@ export class AnalyticsMetricsService {
         filters?: AnalyticsFilterParams
     ): Promise<PlaytimeData[]> {
         try {
+            const readFromClickHouse =
+                process.env.ANALYTICS_READ_PLAYTIME_FROM_CLICKHOUSE === '1' ||
+                process.env.ANALYTICS_READ_PLAYTIME_FROM_CLICKHOUSE === 'true';
+
             // Generate cache key
             const cacheKey = generateCacheKey(
                 'playtime',
                 gameId,
                 startDate.toISOString(),
                 endDate.toISOString(),
-                JSON.stringify(filters || {})
+                JSON.stringify(filters || {}),
+                readFromClickHouse ? 'ch' : 'pg'
             );
 
             // Check cache first (5 minute TTL)
@@ -408,6 +491,26 @@ export class AnalyticsMetricsService {
             const versions = filters?.version
                 ? (Array.isArray(filters.version) ? filters.version : [filters.version])
                 : [];
+
+            if (readFromClickHouse && clickHouseService.isEnabled()) {
+                try {
+                    const clickHouseData = await this.calculatePlaytimeMetricsFromClickHouse(
+                        gameId,
+                        startDate,
+                        endDate,
+                        countries,
+                        platforms,
+                        versions
+                    );
+                    cache.set(cacheKey, clickHouseData, 300);
+                    return clickHouseData;
+                } catch (clickHouseError) {
+                    logger.warn('[AnalyticsMetrics] ClickHouse playtime read failed; falling back to Postgres', {
+                        gameId,
+                        error: clickHouseError instanceof Error ? clickHouseError.message : String(clickHouseError),
+                    });
+                }
+            }
 
             const rows = await this.prisma.$queryRaw<
                 Array<{ day: Date; total_sessions: bigint; unique_users: bigint; total_duration: bigint }>
@@ -468,5 +571,75 @@ export class AnalyticsMetricsService {
             logger.error('Error calculating playtime metrics:', error);
             throw error;
         }
+    }
+
+    private async calculatePlaytimeMetricsFromClickHouse(
+        gameId: string,
+        startDate: Date,
+        endDate: Date,
+        countries: string[],
+        platforms: string[],
+        versions: string[]
+    ): Promise<PlaytimeData[]> {
+        const q = (value: string) => this.quoteClickHouseString(value);
+        const countryIn = countries.length ? countries.map(q).join(',') : '';
+        const platformIn = platforms.length ? platforms.map(q).join(',') : '';
+        const versionIn = versions.length ? versions.map(q).join(',') : '';
+
+        const rows = await clickHouseService.query<Array<{
+            date: string;
+            total_sessions: number;
+            unique_users: number;
+            total_duration: number;
+        }>[number]>(`
+            WITH
+              toDate(${q(startDate.toISOString())}) AS start_day,
+              toDate(${q(endDate.toISOString())}) AS end_day,
+              dateDiff('day', start_day, end_day) + 1 AS day_count
+            SELECT
+              formatDateTime(d.day, '%Y-%m-%d') AS date,
+              ifNull(sa.total_sessions, 0) AS total_sessions,
+              ifNull(sa.unique_users, 0) AS unique_users,
+              ifNull(sa.total_duration, 0) AS total_duration
+            FROM
+              (
+                SELECT addDays(start_day, number) AS day
+                FROM numbers(day_count)
+              ) d
+            LEFT JOIN
+              (
+                SELECT
+                  toDate(addDays(installDate, dayIndex)) AS day,
+                  sum(totalSessions) AS total_sessions,
+                  sum(sessionUsers) AS unique_users,
+                  sum(totalDurationSec) AS total_duration
+                FROM cohort_session_metrics_daily_raw
+                WHERE gameId = ${q(gameId)}
+                  AND toDate(addDays(installDate, dayIndex)) >= start_day
+                  AND toDate(addDays(installDate, dayIndex)) <= end_day
+                  ${platforms.length ? `AND platform IN (${platformIn})` : ''}
+                  ${versions.length ? `AND appVersion IN (${versionIn})` : ''}
+                  ${countries.length ? `AND countryCode IN (${countryIn})` : ''}
+                GROUP BY day
+              ) sa
+            ON sa.day = d.day
+            ORDER BY d.day ASC
+        `);
+
+        return rows.map((row) => {
+            const totalSessions = Number(row.total_sessions || 0);
+            const uniqueUsers = Number(row.unique_users || 0);
+            const totalDuration = Number(row.total_duration || 0);
+            const avgSessionDuration = totalSessions > 0 ? totalDuration / totalSessions : 0;
+            const sessionsPerUser = uniqueUsers > 0 ? totalSessions / uniqueUsers : 0;
+            const totalPlaytime = uniqueUsers > 0 ? totalDuration / uniqueUsers : 0;
+
+            return {
+                date: row.date,
+                avgSessionDuration,
+                totalPlaytime,
+                sessionsPerUser
+            };
+        });
     }
 }

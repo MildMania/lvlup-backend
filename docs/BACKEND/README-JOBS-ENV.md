@@ -109,6 +109,59 @@ Typical modes:
   - Default: `10000`
   - Maximum API-key cache entry count before FIFO eviction.
 
+## ClickHouse pipeline controls
+
+- `ENABLE_CLICKHOUSE_PIPELINE`
+  - Default: `0`
+  - Enables worker-side Postgres -> ClickHouse incremental sync cron.
+
+- `CLICKHOUSE_URL`, `CLICKHOUSE_DATABASE`, `CLICKHOUSE_USER`, `CLICKHOUSE_PASSWORD`
+  - ClickHouse HTTP connection settings for sync + read-path queries.
+
+- `CLICKHOUSE_SYNC_TABLES`
+  - Default: `"events,revenue,sessions,users,cohort_retention_daily,cohort_session_metrics_daily"`
+  - Comma-separated list of tables to sync in each cron cycle.
+
+- `CLICKHOUSE_SYNC_BATCH_SIZE`
+  - Default: `10000`
+  - Max rows per batch per table.
+
+- `CLICKHOUSE_SYNC_MAX_BATCHES`
+  - Default: `5`
+  - Max batches processed per table in one sync cycle.
+
+- `CLICKHOUSE_SYNC_CRON`
+  - Default: `"*/5 * * * *"`
+  - Cron schedule for background sync cycles.
+
+- `CLICKHOUSE_HTTP_TIMEOUT_MS`
+  - Default: `15000`
+  - Request timeout for normal ClickHouse operations (query/insert/command).
+
+- `CLICKHOUSE_PING_TIMEOUT_MS`
+  - Default: `30000`
+  - Dedicated timeout for ClickHouse health ping.
+
+- `ANALYTICS_READ_EVENTS_FROM_CLICKHOUSE`
+  - Default: `0`
+  - Read `/analytics/events` from ClickHouse with Postgres fallback on failure.
+
+- `ANALYTICS_READ_REVENUE_SUMMARY_FROM_CLICKHOUSE`
+  - Default: `0`
+  - Read `/analytics/metrics/revenue-summary` from ClickHouse with Postgres fallback.
+
+- `ANALYTICS_READ_ACTIVE_USERS_FROM_CLICKHOUSE`
+  - Default: `0`
+  - Read `/analytics/metrics/active-users` from ClickHouse with Postgres fallback.
+
+- `ANALYTICS_READ_RETENTION_FROM_CLICKHOUSE`
+  - Default: `0`
+  - Read `/analytics/metrics/retention` from ClickHouse with Postgres fallback.
+
+- `ANALYTICS_READ_PLAYTIME_FROM_CLICKHOUSE`
+  - Default: `0`
+  - Read `/analytics/metrics/playtime` from ClickHouse with Postgres fallback.
+
 ## Recommended low-cost production setup
 
 If DB memory/cost is tight, use:

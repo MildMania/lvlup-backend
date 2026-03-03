@@ -68,7 +68,7 @@ describe('ClickHouseSyncService', () => {
 
     await service.runSyncCycle();
 
-    expect(mockedClickHouse.command).toHaveBeenCalledTimes(4);
+    expect(mockedClickHouse.command).toHaveBeenCalledTimes(6);
     expect(mockedClickHouse.insertJsonEachRow).toHaveBeenCalledWith('events_raw', [
       expect.objectContaining({
         id: 'evt_1',
@@ -170,4 +170,3 @@ describe('ClickHouseSyncService', () => {
     ]);
   });
 });
-

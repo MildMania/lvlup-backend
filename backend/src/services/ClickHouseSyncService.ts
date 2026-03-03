@@ -3,7 +3,13 @@ import prisma from '../prisma';
 import logger from '../utils/logger';
 import clickHouseService from './ClickHouseService';
 
-type SyncTable = 'events' | 'revenue' | 'sessions' | 'users';
+type SyncTable =
+  | 'events'
+  | 'revenue'
+  | 'sessions'
+  | 'users'
+  | 'cohort_retention_daily'
+  | 'cohort_session_metrics_daily';
 
 type Watermark = {
   lastTs: Date;
@@ -21,12 +27,17 @@ export class ClickHouseSyncService {
     this.prisma = prismaClient || prisma;
     this.batchSize = Number(process.env.CLICKHOUSE_SYNC_BATCH_SIZE || 10000);
     this.maxBatchesPerTable = Number(process.env.CLICKHOUSE_SYNC_MAX_BATCHES || 5);
-    const configured = (process.env.CLICKHOUSE_SYNC_TABLES || 'events,revenue,sessions,users')
+    const configured = (process.env.CLICKHOUSE_SYNC_TABLES || 'events,revenue,sessions,users,cohort_retention_daily,cohort_session_metrics_daily')
       .split(',')
       .map((v) => v.trim().toLowerCase())
       .filter(Boolean);
     this.enabledTables = configured.filter((v): v is SyncTable =>
-      v === 'events' || v === 'revenue' || v === 'sessions' || v === 'users'
+      v === 'events' ||
+      v === 'revenue' ||
+      v === 'sessions' ||
+      v === 'users' ||
+      v === 'cohort_retention_daily' ||
+      v === 'cohort_session_metrics_daily'
     );
   }
 
@@ -137,6 +148,45 @@ export class ClickHouseSyncService {
       ORDER BY (gameId, createdAt, id)
     `);
 
+    await clickHouseService.command(`
+      CREATE TABLE IF NOT EXISTS cohort_retention_daily_raw (
+        id String,
+        gameId String,
+        installDate DateTime64(3, 'UTC'),
+        dayIndex Int32,
+        platform String,
+        countryCode String,
+        appVersion String,
+        cohortSize Int32,
+        retainedUsers Int32,
+        retainedLevelCompletes Int32,
+        updatedAt DateTime64(3, 'UTC')
+      )
+      ENGINE = MergeTree
+      PARTITION BY toYYYYMM(installDate)
+      ORDER BY (gameId, installDate, dayIndex, platform, countryCode, appVersion, id)
+    `);
+
+    await clickHouseService.command(`
+      CREATE TABLE IF NOT EXISTS cohort_session_metrics_daily_raw (
+        id String,
+        gameId String,
+        installDate DateTime64(3, 'UTC'),
+        dayIndex Int32,
+        platform String,
+        countryCode String,
+        appVersion String,
+        cohortSize Int32,
+        sessionUsers Int32,
+        totalSessions Int32,
+        totalDurationSec Int32,
+        updatedAt DateTime64(3, 'UTC')
+      )
+      ENGINE = MergeTree
+      PARTITION BY toYYYYMM(installDate)
+      ORDER BY (gameId, installDate, dayIndex, platform, countryCode, appVersion, id)
+    `);
+
     this.initialized = true;
   }
 
@@ -166,6 +216,9 @@ export class ClickHouseSyncService {
   private getRowTimestamp(table: SyncTable, row: any): Date {
     if (table === 'events' || table === 'revenue') return new Date(row.serverReceivedAt);
     if (table === 'sessions') return new Date(row.startTime);
+    if (table === 'cohort_retention_daily' || table === 'cohort_session_metrics_daily') {
+      return new Date(row.updatedAt);
+    }
     return new Date(row.createdAt);
   }
 
@@ -274,6 +327,55 @@ export class ClickHouseSyncService {
       `);
     }
 
+    if (table === 'cohort_retention_daily') {
+      return this.prisma.$queryRaw<Array<any>>(Prisma.sql`
+        SELECT
+          c."id",
+          c."gameId",
+          c."installDate",
+          c."dayIndex",
+          COALESCE(c."platform",'') AS "platform",
+          COALESCE(c."countryCode",'') AS "countryCode",
+          COALESCE(c."appVersion",'') AS "appVersion",
+          c."cohortSize",
+          c."retainedUsers",
+          c."retainedLevelCompletes",
+          c."updatedAt"
+        FROM "cohort_retention_daily" c
+        WHERE (
+            c."updatedAt" > ${watermark.lastTs}
+            OR (c."updatedAt" = ${watermark.lastTs} AND c."id" > ${watermark.lastId})
+          )
+        ORDER BY c."updatedAt" ASC, c."id" ASC
+        LIMIT ${limit}
+      `);
+    }
+
+    if (table === 'cohort_session_metrics_daily') {
+      return this.prisma.$queryRaw<Array<any>>(Prisma.sql`
+        SELECT
+          c."id",
+          c."gameId",
+          c."installDate",
+          c."dayIndex",
+          COALESCE(c."platform",'') AS "platform",
+          COALESCE(c."countryCode",'') AS "countryCode",
+          COALESCE(c."appVersion",'') AS "appVersion",
+          c."cohortSize",
+          c."sessionUsers",
+          c."totalSessions",
+          c."totalDurationSec",
+          c."updatedAt"
+        FROM "cohort_session_metrics_daily" c
+        WHERE (
+            c."updatedAt" > ${watermark.lastTs}
+            OR (c."updatedAt" = ${watermark.lastTs} AND c."id" > ${watermark.lastId})
+          )
+        ORDER BY c."updatedAt" ASC, c."id" ASC
+        LIMIT ${limit}
+      `);
+    }
+
     return this.prisma.$queryRaw<Array<any>>(Prisma.sql`
       SELECT
         u."id",
@@ -320,6 +422,31 @@ export class ClickHouseSyncService {
       })));
       return;
     }
+    if (table === 'cohort_retention_daily') {
+      await clickHouseService.insertJsonEachRow('cohort_retention_daily_raw', rows.map((r) => ({
+        ...r,
+        dayIndex: this.toNumber(r.dayIndex),
+        cohortSize: this.toNumber(r.cohortSize),
+        retainedUsers: this.toNumber(r.retainedUsers),
+        retainedLevelCompletes: this.toNumber(r.retainedLevelCompletes),
+        installDate: this.toIso(r.installDate),
+        updatedAt: this.toIso(r.updatedAt)
+      })));
+      return;
+    }
+    if (table === 'cohort_session_metrics_daily') {
+      await clickHouseService.insertJsonEachRow('cohort_session_metrics_daily_raw', rows.map((r) => ({
+        ...r,
+        dayIndex: this.toNumber(r.dayIndex),
+        cohortSize: this.toNumber(r.cohortSize),
+        sessionUsers: this.toNumber(r.sessionUsers),
+        totalSessions: this.toNumber(r.totalSessions),
+        totalDurationSec: this.toNumber(r.totalDurationSec),
+        installDate: this.toIso(r.installDate),
+        updatedAt: this.toIso(r.updatedAt)
+      })));
+      return;
+    }
     await clickHouseService.insertJsonEachRow('users_raw', rows.map((r) => ({
       ...r,
       createdAt: this.toIso(r.createdAt)
@@ -329,7 +456,12 @@ export class ClickHouseSyncService {
   private toIso(value: Date | string): string {
     return value instanceof Date ? value.toISOString() : new Date(value).toISOString();
   }
+
+  private toNumber(value: unknown): number {
+    if (typeof value === 'bigint') return Number(value);
+    if (typeof value === 'number') return value;
+    return Number(value ?? 0);
+  }
 }
 
 export default new ClickHouseSyncService();
-

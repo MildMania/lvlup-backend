@@ -64,6 +64,13 @@ export class LevelFunnelService {
         ) && clickHouseService.isEnabled();
     }
 
+    private isClickHouseStrict(): boolean {
+        return (
+            process.env.ANALYTICS_READ_LEVEL_FUNNEL_FROM_CLICKHOUSE_STRICT === '1' ||
+            process.env.ANALYTICS_READ_LEVEL_FUNNEL_FROM_CLICKHOUSE_STRICT === 'true'
+        );
+    }
+
     private buildFunnelFilterSql(
         levelFunnel: string | undefined,
         levelFunnelVersion: string | number | undefined,
@@ -437,6 +444,7 @@ export class LevelFunnelService {
                 }
                 return result;
             } catch (error) {
+                if (this.isClickHouseStrict()) throw error;
                 logger.warn('Level funnel ClickHouse churn read failed; falling back to Postgres', {
                     gameId,
                     error: error instanceof Error ? error.message : String(error)
@@ -615,6 +623,7 @@ export class LevelFunnelService {
                     failCount: Number(r.failCount || 0)
                 }));
             } catch (error) {
+                if (this.isClickHouseStrict()) throw error;
                 logger.warn('Level funnel ClickHouse install-cohort read failed; falling back to Postgres', {
                     gameId,
                     error: error instanceof Error ? error.message : String(error)
@@ -788,6 +797,7 @@ export class LevelFunnelService {
 
                 return result;
             } catch (error) {
+                if (this.isClickHouseStrict()) throw error;
                 logger.warn('Level funnel ClickHouse user-count read failed; falling back to Postgres', {
                     gameId,
                     error: error instanceof Error ? error.message : String(error)
@@ -966,6 +976,7 @@ export class LevelFunnelService {
                     failCount: Number(row.failCount || 0)
                 }));
             } catch (error) {
+                if (this.isClickHouseStrict()) throw error;
                 logger.warn('Level funnel ClickHouse aggregate read failed; falling back to Postgres', {
                     gameId,
                     error: error instanceof Error ? error.message : String(error)

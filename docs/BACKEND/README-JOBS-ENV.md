@@ -170,6 +170,10 @@ Typical modes:
   - Default: `0`
   - Read `/level-funnel` from ClickHouse rollup tables with Postgres fallback.
 
+- `ANALYTICS_READ_LEVEL_FUNNEL_FROM_CLICKHOUSE_STRICT`
+  - Default: `0`
+  - Verification mode for `/level-funnel`: if enabled, disables Postgres fallback and surfaces ClickHouse read errors.
+
 ## Recommended low-cost production setup
 
 If DB memory/cost is tight, use:

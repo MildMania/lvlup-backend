@@ -23,15 +23,21 @@ export function startMonetizationAggregationJob(): void {
         yesterday.setUTCDate(yesterday.getUTCDate() - 1);
         yesterday.setUTCHours(0, 0, 0, 0);
 
+        let success = 0;
+        let errors = 0;
         for (const gameId of games) {
           try {
             await monetizationAggregationService.aggregateDaily(gameId, yesterday);
+            success++;
+          } catch (error) {
+            logger.error(`Monetization daily aggregation failed for game ${gameId}:`, error);
+            errors++;
           } finally {
             await maybeThrottleAggregation(`monetization-daily-job:${gameId}`);
           }
         }
 
-        logger.info(`Daily monetization aggregation complete for ${games.length} games`);
+        logger.info(`Daily monetization aggregation complete: ${success} succeeded, ${errors} failed`);
       } catch (error) {
         logger.error('Error in daily monetization aggregation job:', error);
       }
@@ -61,15 +67,21 @@ export function startMonetizationHourlyTodayJob(): void {
         const hourStart = new Date(hourEnd);
         hourStart.setUTCHours(hourStart.getUTCHours() - 1);
 
+        let success = 0;
+        let errors = 0;
         for (const gameId of games) {
           try {
             await monetizationAggregationService.aggregateHourlyIncrementForToday(gameId, hourStart, hourEnd);
+            success++;
+          } catch (error) {
+            logger.error(`Monetization hourly aggregation failed for game ${gameId}:`, error);
+            errors++;
           } finally {
             await maybeThrottleAggregation(`monetization-hourly-job:${gameId}`);
           }
         }
 
-        logger.info(`Hourly monetization aggregation complete for ${games.length} games`);
+        logger.info(`Hourly monetization aggregation complete: ${success} succeeded, ${errors} failed`);
       } catch (error) {
         logger.error('Error in hourly monetization aggregation job:', error);
       }

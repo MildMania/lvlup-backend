@@ -36,8 +36,14 @@ if (process.env.NODE_ENV !== 'production') {
 }
 
 const logger = winston.createLogger({
-    // Default to 'warn' in production, 'info' in development
-    level: process.env.LOG_LEVEL || (process.env.NODE_ENV === 'production' ? 'warn' : 'info'),
+    // Worker mode needs info-level startup/scheduler visibility by default.
+    level:
+        process.env.LOG_LEVEL ||
+        (
+            process.env.NODE_ENV === 'production'
+                ? (process.env.RUN_JOBS === 'true' && process.env.RUN_API === 'false' ? 'info' : 'warn')
+                : 'info'
+        ),
     format: logFormat,
     defaultMeta: { service: 'lvlup-backend' },
     transports

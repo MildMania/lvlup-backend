@@ -30,8 +30,8 @@ export function startLevelMetricsAggregationJob(): void {
 
         // Aggregate previous day
         const yesterday = new Date();
-        yesterday.setDate(yesterday.getDate() - 1);
-        yesterday.setHours(0, 0, 0, 0);
+        yesterday.setUTCDate(yesterday.getUTCDate() - 1);
+        yesterday.setUTCHours(0, 0, 0, 0);
 
         let successCount = 0;
         let errorCount = 0;

@@ -11,9 +11,11 @@ export class ActiveUsersAggregationService {
 
   constructor(prismaClient?: PrismaClient) {
     this.prisma = prismaClient || prisma;
+    // Legacy single-query daily DAU is the safer default for production stability.
+    // Chunked mode can be enabled explicitly when needed.
     this.useChunkedDailyExactDau =
-      process.env.ACTIVE_USERS_DAILY_CHUNKED !== '0' &&
-      process.env.ACTIVE_USERS_DAILY_CHUNKED !== 'false';
+      process.env.ACTIVE_USERS_DAILY_CHUNKED === '1' ||
+      process.env.ACTIVE_USERS_DAILY_CHUNKED === 'true';
   }
 
   async aggregateDailyActiveUsers(gameId: string, targetDate: Date): Promise<void> {
@@ -26,46 +28,27 @@ export class ActiveUsersAggregationService {
     logger.info(`Aggregating active users for ${gameId} on ${date.toISOString().split('T')[0]}`);
 
     if (this.useChunkedDailyExactDau) {
-      await this.aggregateExactDailyDauChunked(gameId, dayStart, dayEnd);
+      try {
+        await this.aggregateExactDailyDauChunked(gameId, dayStart, dayEnd);
+      } catch (error) {
+        const message =
+          (error as { message?: string } | null | undefined)?.message || String(error || '');
+        const code = (error as { code?: string } | null | undefined)?.code || '';
+        const isChunkedTransactionFailure =
+          code === 'P2028' || message.toLowerCase().includes('transaction not found');
+
+        if (!isChunkedTransactionFailure) {
+          throw error;
+        }
+
+        logger.warn(
+          `Chunked daily DAU aggregation failed for ${gameId}, falling back to legacy exact query`,
+          error
+        );
+        await this.aggregateExactDailyDauLegacy(gameId, dayStart, dayEnd);
+      }
     } else {
-      // Legacy exact DAU rollups in one query (faster, potentially higher peak memory on DB side)
-      await this.prisma.$executeRawUnsafe(
-        `
-        INSERT INTO "active_users_daily"
-          ("id","gameId","date","platform","countryCode","appVersion","dau","createdAt","updatedAt")
-        SELECT
-          concat('aud_', md5(
-            e."gameId"::text || '|' ||
-            date_trunc('day', e."timestamp")::text || '|' ||
-            COALESCE(e."platform",'') || '|' ||
-            COALESCE(e."countryCode",'') || '|' ||
-            COALESCE(e."appVersion",'')
-          )) as "id",
-          e."gameId",
-          date_trunc('day', e."timestamp")::timestamptz as "date",
-          COALESCE(e."platform",'') as "platform",
-          COALESCE(e."countryCode",'') as "countryCode",
-          COALESCE(e."appVersion",'') as "appVersion",
-          COUNT(DISTINCT e."userId") as "dau",
-          now() as "createdAt",
-          now() as "updatedAt"
-        FROM "events" e
-        WHERE e."gameId" = $1
-          AND e."timestamp" >= $2
-          AND e."timestamp" < $3
-        GROUP BY
-          e."gameId",
-          date_trunc('day', e."timestamp"),
-          COALESCE(e."platform",''),
-          COALESCE(e."countryCode",''),
-          COALESCE(e."appVersion",'')
-        ON CONFLICT ("gameId","date","platform","countryCode","appVersion")
-        DO UPDATE SET "dau" = EXCLUDED."dau", "updatedAt" = now()
-        `,
-        gameId,
-        dayStart,
-        dayEnd
-      );
+      await this.aggregateExactDailyDauLegacy(gameId, dayStart, dayEnd);
     }
 
     // HLL rollups for approximate WAU/MAU (computed in app, stored as BYTEA)
@@ -218,7 +201,6 @@ export class ActiveUsersAggregationService {
           ON CONFLICT ("userId","platform","countryCode","appVersion") DO NOTHING
         `;
 
-        await maybeThrottleAggregation(`active-users-daily-chunk:${gameId}`);
         cursor.setUTCHours(cursor.getUTCHours() + 1);
       }
 
@@ -246,7 +228,51 @@ export class ActiveUsersAggregationService {
         ON CONFLICT ("gameId","date","platform","countryCode","appVersion")
         DO UPDATE SET "dau" = EXCLUDED."dau", "updatedAt" = now()
       `;
+    }, {
+      maxWait: 20_000,
+      timeout: 10 * 60 * 1000
     });
+  }
+
+  private async aggregateExactDailyDauLegacy(gameId: string, dayStart: Date, dayEnd: Date): Promise<void> {
+    // Single-query exact DAU rollup (stable fallback for transaction-constrained environments)
+    await this.prisma.$executeRawUnsafe(
+      `
+      INSERT INTO "active_users_daily"
+        ("id","gameId","date","platform","countryCode","appVersion","dau","createdAt","updatedAt")
+      SELECT
+        concat('aud_', md5(
+          e."gameId"::text || '|' ||
+          date_trunc('day', e."timestamp")::text || '|' ||
+          COALESCE(e."platform",'') || '|' ||
+          COALESCE(e."countryCode",'') || '|' ||
+          COALESCE(e."appVersion",'')
+        )) as "id",
+        e."gameId",
+        date_trunc('day', e."timestamp")::timestamptz as "date",
+        COALESCE(e."platform",'') as "platform",
+        COALESCE(e."countryCode",'') as "countryCode",
+        COALESCE(e."appVersion",'') as "appVersion",
+        COUNT(DISTINCT e."userId") as "dau",
+        now() as "createdAt",
+        now() as "updatedAt"
+      FROM "events" e
+      WHERE e."gameId" = $1
+        AND e."timestamp" >= $2
+        AND e."timestamp" < $3
+      GROUP BY
+        e."gameId",
+        date_trunc('day', e."timestamp"),
+        COALESCE(e."platform",''),
+        COALESCE(e."countryCode",''),
+        COALESCE(e."appVersion",'')
+      ON CONFLICT ("gameId","date","platform","countryCode","appVersion")
+      DO UPDATE SET "dau" = EXCLUDED."dau", "updatedAt" = now()
+      `,
+      gameId,
+      dayStart,
+      dayEnd
+    );
   }
 }
 

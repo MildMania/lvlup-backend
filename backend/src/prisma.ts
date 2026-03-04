@@ -21,21 +21,23 @@ function ensureConnectionLimits(databaseUrl: string): string {
     return databaseUrl;
   }
 
-  // Check if connection limits are already configured
-  if (databaseUrl.includes('connection_limit')) {
-    logger.info('Database connection limits already configured');
-    return databaseUrl;
-  }
+  const configuredConnectionLimit = process.env.PRISMA_CONNECTION_LIMIT || '20';
+  const configuredPoolTimeout = process.env.PRISMA_POOL_TIMEOUT || '60';
+  const configuredConnectTimeout = process.env.PRISMA_CONNECT_TIMEOUT || '10';
 
   // Add connection limits to the URL
   try {
     const url = new URL(databaseUrl);
-    url.searchParams.set('connection_limit', '10');
-    url.searchParams.set('pool_timeout', '20');
-    url.searchParams.set('connect_timeout', '10');
+    url.searchParams.set('connection_limit', configuredConnectionLimit);
+    url.searchParams.set('pool_timeout', configuredPoolTimeout);
+    url.searchParams.set('connect_timeout', configuredConnectTimeout);
     
     const updatedUrl = url.toString();
-    logger.info('Added connection pool limits to DATABASE_URL');
+    logger.info('Added connection pool limits to DATABASE_URL', {
+      connectionLimit: configuredConnectionLimit,
+      poolTimeout: configuredPoolTimeout,
+      connectTimeout: configuredConnectTimeout,
+    });
     return updatedUrl;
   } catch (error) {
     logger.error('Failed to parse DATABASE_URL, using as-is:', error);

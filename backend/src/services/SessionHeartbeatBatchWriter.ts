@@ -43,7 +43,7 @@ interface FlushMetrics {
 
 export class SessionHeartbeatBatchWriter {
     private prisma: PrismaClient;
-    private buffer: PendingHeartbeat[] = [];
+    private buffer: Map<string, PendingHeartbeat> = new Map();
     private flushTimer: NodeJS.Timeout | null = null;
     private isShuttingDown: boolean = false;
     private isFlushing: boolean = false;
@@ -68,21 +68,22 @@ export class SessionHeartbeatBatchWriter {
         }
 
         // Enforce buffer limit to prevent unbounded memory growth
-        if (this.buffer.length >= MAX_BUFFER_SIZE) {
+        if (this.buffer.size >= MAX_BUFFER_SIZE) {
             logger.error(`SessionHeartbeatBatchWriter buffer full (${MAX_BUFFER_SIZE} heartbeats), dropping heartbeat to prevent memory exhaustion`);
             this.totalDropped++;
             return;
         }
 
-        this.buffer.push(heartbeat);
+        // Keep only latest heartbeat per session to reduce write pressure and pool contention.
+        this.buffer.set(heartbeat.sessionId, heartbeat);
         
         // Start timer if this is the first heartbeat in an empty buffer
-        if (this.buffer.length === 1) {
+        if (this.buffer.size === 1) {
             this.startFlushTimer();
         }
         
         // Flush immediately if batch size threshold reached
-        if (this.buffer.length >= MAX_BATCH_SIZE) {
+        if (this.buffer.size >= MAX_BATCH_SIZE) {
             this.cancelFlushTimer();
             // Use setImmediate to avoid blocking the request
             setImmediate(() => this.flush());
@@ -123,7 +124,7 @@ export class SessionHeartbeatBatchWriter {
         }
         
         // Nothing to flush
-        if (this.buffer.length === 0) {
+        if (this.buffer.size === 0) {
             this.cancelFlushTimer();
             return;
         }
@@ -132,46 +133,27 @@ export class SessionHeartbeatBatchWriter {
         this.cancelFlushTimer();
         
         // Take snapshot of current buffer and clear it
-        const heartbeatsToFlush = this.buffer.slice();
-        this.buffer = [];
+        const heartbeatsToFlush = Array.from(this.buffer.values());
+        this.buffer.clear();
         
         const startTime = Date.now();
         
         try {
-            // Batch UPDATE heartbeats using transaction
-            // Update sessions with new lastHeartbeat, endTime, duration
-            let updatedCount = 0;
-            
-            for (const heartbeat of heartbeatsToFlush) {
-                try {
-                    const updateData: any = {
-                        lastHeartbeat: heartbeat.lastHeartbeat,
-                        endTime: heartbeat.endTime,
-                        duration: heartbeat.duration
-                    };
-
-                    // Update countryCode if provided
-                    if (heartbeat.countryCode) {
-                        updateData.countryCode = heartbeat.countryCode;
-                    }
-
-                    await this.prisma.session.update({
-                        where: { id: heartbeat.sessionId },
-                        data: updateData
-                    });
-
-                    updatedCount++;
-                } catch (error: any) {
-                    // Skip individual heartbeat errors and continue with others
-                    if (error.code === 'P2025') {
-                        // Session not found - this is expected for old/deleted sessions
-                        logger.debug(`Session ${heartbeat.sessionId} not found, skipping heartbeat update`);
-                        updatedCount++;
-                    } else {
-                        logger.warn(`Failed to update heartbeat for session ${heartbeat.sessionId}:`, error.message);
-                    }
-                }
-            }
+            // Batch UPDATE heartbeats in a single transaction.
+            // Duration is computed from startTime in DB to avoid read-before-write.
+            const updates = heartbeatsToFlush.map((heartbeat) =>
+                this.prisma.$executeRaw`
+                    UPDATE "sessions"
+                    SET
+                        "lastHeartbeat" = ${heartbeat.lastHeartbeat},
+                        "endTime" = ${heartbeat.endTime},
+                        "duration" = GREATEST(EXTRACT(EPOCH FROM (${heartbeat.endTime} - "startTime"))::int, 0),
+                        "countryCode" = COALESCE(${heartbeat.countryCode}, "countryCode")
+                    WHERE "id" = ${heartbeat.sessionId}
+                `
+            );
+            const updateResults = await this.prisma.$transaction(updates);
+            const updatedCount = updateResults.reduce((sum, count) => sum + Number(count || 0), 0);
             
             const flushDuration = Date.now() - startTime;
             this.totalFlushed += updatedCount;
@@ -195,32 +177,19 @@ export class SessionHeartbeatBatchWriter {
             try {
                 let updatedCount = 0;
                 
-                for (const heartbeat of heartbeatsToFlush) {
-                    try {
-                        const updateData: any = {
-                            lastHeartbeat: heartbeat.lastHeartbeat,
-                            endTime: heartbeat.endTime,
-                            duration: heartbeat.duration
-                        };
-
-                        if (heartbeat.countryCode) {
-                            updateData.countryCode = heartbeat.countryCode;
-                        }
-
-                        await this.prisma.session.update({
-                            where: { id: heartbeat.sessionId },
-                            data: updateData
-                        });
-
-                        updatedCount++;
-                    } catch (innerError: any) {
-                        if (innerError.code === 'P2025') {
-                            updatedCount++;
-                        } else {
-                            logger.warn(`Retry failed for session ${heartbeat.sessionId}:`, innerError.message);
-                        }
-                    }
-                }
+                const retryUpdates = heartbeatsToFlush.map((heartbeat) =>
+                    this.prisma.$executeRaw`
+                        UPDATE "sessions"
+                        SET
+                            "lastHeartbeat" = ${heartbeat.lastHeartbeat},
+                            "endTime" = ${heartbeat.endTime},
+                            "duration" = GREATEST(EXTRACT(EPOCH FROM (${heartbeat.endTime} - "startTime"))::int, 0),
+                            "countryCode" = COALESCE(${heartbeat.countryCode}, "countryCode")
+                        WHERE "id" = ${heartbeat.sessionId}
+                    `
+                );
+                const retryResults = await this.prisma.$transaction(retryUpdates);
+                updatedCount = retryResults.reduce((sum, count) => sum + Number(count || 0), 0);
                 
                 const retryDuration = Date.now() - startTime;
                 this.totalFlushed += updatedCount;
@@ -263,8 +232,8 @@ export class SessionHeartbeatBatchWriter {
         }
         
         // Flush remaining buffered heartbeats
-        if (this.buffer.length > 0) {
-            logger.info(`[SessionHeartbeatBatchWriter] Flushing ${this.buffer.length} remaining heartbeats...`);
+        if (this.buffer.size > 0) {
+            logger.info(`[SessionHeartbeatBatchWriter] Flushing ${this.buffer.size} remaining heartbeats...`);
             await this.flush();
         }
         
@@ -280,7 +249,7 @@ export class SessionHeartbeatBatchWriter {
      * Get current buffer size (for monitoring)
      */
     getBufferSize(): number {
-        return this.buffer.length;
+        return this.buffer.size;
     }
 
     /**
@@ -288,7 +257,7 @@ export class SessionHeartbeatBatchWriter {
      */
     getMetrics() {
         return {
-            bufferSize: this.buffer.length,
+            bufferSize: this.buffer.size,
             totalFlushed: this.totalFlushed,
             totalFailed: this.totalFailed,
             totalDropped: this.totalDropped,
@@ -304,4 +273,3 @@ export class SessionHeartbeatBatchWriter {
 
 // Singleton instance
 export const sessionHeartbeatBatchWriter = new SessionHeartbeatBatchWriter();
-

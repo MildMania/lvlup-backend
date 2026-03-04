@@ -1,0 +1,52 @@
+# Frontend Endpoint DB Map
+
+This document lists frontend-consumed analytics/health endpoints and the backend read source used by each endpoint.
+
+Legend:
+- `Postgres only`: reads from Postgres only
+- `ClickHouse or Postgres fallback`: tries ClickHouse first when flag is enabled, falls back to Postgres on disabled/unavailable/error (unless strict mode)
+- `Hybrid`: endpoint combines data paths where some parts may use ClickHouse and others use Postgres
+
+## Engagement / Dashboard / Monetization / Level Funnel
+
+| Endpoint | Used by | DB source | Flag / Notes |
+|---|---|---|---|
+| `/api/analytics/events` | Live Events page | ClickHouse or Postgres fallback | `ANALYTICS_READ_EVENTS_FROM_CLICKHOUSE` |
+| `/api/analytics/dashboard` | Dashboard summary cards | Postgres only (for current frontend usage) | Uses Postgres rollups/users; frontend calls with `includeRetention=false` |
+| `/api/analytics/metrics/retention` | Dashboard + analytics retention views | ClickHouse or Postgres fallback | `ANALYTICS_READ_RETENTION_FROM_CLICKHOUSE` |
+| `/api/analytics/retention/cohorts` | Dashboard retention chart | ClickHouse or Postgres fallback | Proxies to retention metrics controller |
+| `/api/analytics/metrics/active-users` | Dashboard active users chart | ClickHouse or Postgres fallback | `ANALYTICS_READ_ACTIVE_USERS_FROM_CLICKHOUSE` |
+| `/api/analytics/metrics/playtime` | Dashboard playtime chart | ClickHouse or Postgres fallback | `ANALYTICS_READ_PLAYTIME_FROM_CLICKHOUSE` |
+| `/api/analytics/filters/options` | Analytics filters + Level Funnel filters | Postgres only | Reads from Postgres rollup tables |
+| `/api/analytics/cohort/retention` | Engagement analytics | ClickHouse or Postgres fallback | `ANALYTICS_READ_COHORT_FROM_CLICKHOUSE` |
+| `/api/analytics/cohort/playtime` | Engagement analytics | ClickHouse or Postgres fallback | `ANALYTICS_READ_COHORT_FROM_CLICKHOUSE` |
+| `/api/analytics/cohort/session-count` | Engagement analytics | ClickHouse or Postgres fallback | `ANALYTICS_READ_COHORT_FROM_CLICKHOUSE` |
+| `/api/analytics/cohort/session-length` | Engagement analytics | ClickHouse or Postgres fallback | `ANALYTICS_READ_COHORT_FROM_CLICKHOUSE` |
+| `/api/analytics/cohort/avg-completed-levels` | Engagement analytics | ClickHouse or Postgres fallback | `ANALYTICS_READ_COHORT_FROM_CLICKHOUSE` |
+| `/api/analytics/cohort/avg-reached-level` | Engagement analytics | ClickHouse or Postgres fallback | `ANALYTICS_READ_COHORT_FROM_CLICKHOUSE` |
+| `/api/analytics/metrics/monetization-cohorts` | Monetization tab | Hybrid | Cohort base may use CH via cohort service; monetization rollups are Postgres |
+| `/api/analytics/metrics/revenue-summary` | Monetization summary cards | ClickHouse or Postgres fallback | `ANALYTICS_READ_REVENUE_SUMMARY_FROM_CLICKHOUSE` |
+| `/api/analytics/level-funnel` | Level Funnel dashboard | ClickHouse or Postgres fallback | `ANALYTICS_READ_LEVEL_FUNNEL_FROM_CLICKHOUSE` |
+
+## Health & Errors
+
+| Endpoint | Used by | DB source | Flag / Notes |
+|---|---|---|---|
+| `/api/games/:gameId/health/metrics` | Health tab cards + top errors | Postgres only | Reads `crash_logs` + `sessions` |
+| `/api/games/:gameId/health/timeline` | Health error timeline chart | Postgres only | Reads `crash_logs` + `sessions` |
+| `/api/games/:gameId/health/crashes` | Health recent error logs | Postgres only | Reads `crash_logs` |
+| `/api/games/:gameId/health/error-instances` | Health error details modal/tooltip | Postgres only | Reads `crash_logs` |
+
+## Unmatched Frontend Calls (currently)
+
+| Frontend-called endpoint | Status |
+|---|---|
+| `/api/games/:gameId/health/filter-options` | No matching backend route found in current `games/health` routes |
+| `/api/analytics/users` | No matching backend analytics route found |
+
+## Related Strict Mode
+
+If strict mode is enabled:
+- `ANALYTICS_CLICKHOUSE_STRICT=true`
+
+Then ClickHouse read failures do not fall back and endpoint request can fail instead.

@@ -19,6 +19,12 @@ type Watermark = {
   lastId: string;
 };
 
+type SyncStats = {
+  fetched: number;
+  inserted: number;
+  skipped: number;
+};
+
 export class ClickHouseSyncService {
   private prisma: PrismaClient;
   private readonly batchSize: number;
@@ -58,8 +64,10 @@ export class ClickHouseSyncService {
     for (const table of this.enabledTables) {
       const start = Date.now();
       try {
-        const synced = await this.syncTable(table);
-        logger.info(`[ClickHouseSync] ${table}: synced ${synced} rows in ${Date.now() - start}ms`);
+        const stats = await this.syncTable(table);
+        logger.info(
+          `[ClickHouseSync] ${table}: fetched ${stats.fetched}, inserted ${stats.inserted}, skipped ${stats.skipped} rows in ${Date.now() - start}ms`
+        );
       } catch (error) {
         logger.error(`[ClickHouseSync] ${table} sync failed`, error);
       }
@@ -274,15 +282,17 @@ export class ClickHouseSyncService {
     this.initialized = true;
   }
 
-  private async syncTable(table: SyncTable): Promise<number> {
-    let total = 0;
+  private async syncTable(table: SyncTable): Promise<SyncStats> {
+    let fetched = 0;
+    let inserted = 0;
+    let skipped = 0;
     let batches = 0;
     while (batches < this.maxBatchesPerTable) {
       const watermark = await this.getWatermark(table);
       const rows = await this.fetchBatch(table, watermark);
       if (rows.length === 0) break;
 
-      await this.insertBatch(table, rows);
+      const batchResult = await this.insertBatch(table, rows);
       const last = rows[rows.length - 1] as any;
       const nextTs = this.getRowTimestamp(table, last);
       await this.setWatermark(table, {
@@ -290,11 +300,13 @@ export class ClickHouseSyncService {
         lastId: String(last.id)
       });
 
-      total += rows.length;
+      fetched += rows.length;
+      inserted += batchResult.inserted;
+      skipped += batchResult.skipped;
       batches += 1;
       if (rows.length < this.batchSize) break;
     }
-    return total;
+    return { fetched, inserted, skipped };
   }
 
   private getRowTimestamp(table: SyncTable, row: any): Date {
@@ -586,11 +598,12 @@ export class ClickHouseSyncService {
     `);
   }
 
-  private async insertBatch(table: SyncTable, rows: any[]): Promise<void> {
-    if (rows.length === 0) return;
+  private async insertBatch(table: SyncTable, rows: any[]): Promise<{ inserted: number; skipped: number }> {
+    if (rows.length === 0) return { inserted: 0, skipped: 0 };
     const targetTable = this.getTargetTableName(table);
-    const dedupedRows = await this.filterAlreadySyncedRows(targetTable, rows);
-    if (dedupedRows.length === 0) return;
+    const dedupResult = await this.filterAlreadySyncedRows(targetTable, rows);
+    const dedupedRows = dedupResult.rows;
+    if (dedupedRows.length === 0) return { inserted: 0, skipped: dedupResult.skipped };
 
     if (table === 'events') {
       await clickHouseService.insertJsonEachRow('events_raw', dedupedRows.map((r) => ({
@@ -598,7 +611,7 @@ export class ClickHouseSyncService {
         timestamp: this.toIso(r.timestamp),
         serverReceivedAt: this.toIso(r.serverReceivedAt)
       })));
-      return;
+      return { inserted: dedupedRows.length, skipped: dedupResult.skipped };
     }
     if (table === 'revenue') {
       await clickHouseService.insertJsonEachRow('revenue_raw', dedupedRows.map((r) => ({
@@ -606,7 +619,7 @@ export class ClickHouseSyncService {
         timestamp: this.toIso(r.timestamp),
         serverReceivedAt: this.toIso(r.serverReceivedAt)
       })));
-      return;
+      return { inserted: dedupedRows.length, skipped: dedupResult.skipped };
     }
     if (table === 'sessions') {
       await clickHouseService.insertJsonEachRow('sessions_raw', dedupedRows.map((r) => ({
@@ -615,7 +628,7 @@ export class ClickHouseSyncService {
         endTime: r.endTime ? this.toIso(r.endTime) : null,
         lastHeartbeat: r.lastHeartbeat ? this.toIso(r.lastHeartbeat) : null
       })));
-      return;
+      return { inserted: dedupedRows.length, skipped: dedupResult.skipped };
     }
     if (table === 'cohort_retention_daily') {
       await clickHouseService.insertJsonEachRow('cohort_retention_daily_raw', dedupedRows.map((r) => ({
@@ -627,7 +640,7 @@ export class ClickHouseSyncService {
         installDate: this.toIso(r.installDate),
         updatedAt: this.toIso(r.updatedAt)
       })));
-      return;
+      return { inserted: dedupedRows.length, skipped: dedupResult.skipped };
     }
     if (table === 'cohort_session_metrics_daily') {
       await clickHouseService.insertJsonEachRow('cohort_session_metrics_daily_raw', dedupedRows.map((r) => ({
@@ -640,7 +653,7 @@ export class ClickHouseSyncService {
         installDate: this.toIso(r.installDate),
         updatedAt: this.toIso(r.updatedAt)
       })));
-      return;
+      return { inserted: dedupedRows.length, skipped: dedupResult.skipped };
     }
     if (table === 'level_metrics_daily') {
       await clickHouseService.insertJsonEachRow('level_metrics_daily_raw', dedupedRows.map((r) => ({
@@ -664,7 +677,7 @@ export class ClickHouseSyncService {
         createdAt: this.toIso(r.createdAt),
         updatedAt: this.toIso(r.updatedAt)
       })));
-      return;
+      return { inserted: dedupedRows.length, skipped: dedupResult.skipped };
     }
     if (table === 'level_metrics_daily_users') {
       await clickHouseService.insertJsonEachRow('level_metrics_daily_users_raw', dedupedRows.map((r) => ({
@@ -685,7 +698,7 @@ export class ClickHouseSyncService {
         date: this.toIso(r.date),
         createdAt: this.toIso(r.createdAt)
       })));
-      return;
+      return { inserted: dedupedRows.length, skipped: dedupResult.skipped };
     }
     if (table === 'level_churn_cohort_daily') {
       await clickHouseService.insertJsonEachRow('level_churn_cohort_daily_raw', dedupedRows.map((r) => ({
@@ -701,12 +714,13 @@ export class ClickHouseSyncService {
         createdAt: this.toIso(r.createdAt),
         updatedAt: this.toIso(r.updatedAt)
       })));
-      return;
+      return { inserted: dedupedRows.length, skipped: dedupResult.skipped };
     }
     await clickHouseService.insertJsonEachRow('users_raw', dedupedRows.map((r) => ({
       ...r,
       createdAt: this.toIso(r.createdAt)
     })));
+    return { inserted: dedupedRows.length, skipped: dedupResult.skipped };
   }
 
   private getTargetTableName(table: SyncTable): string {
@@ -721,17 +735,20 @@ export class ClickHouseSyncService {
     return 'level_churn_cohort_daily_raw';
   }
 
-  private async filterAlreadySyncedRows(targetTable: string, rows: any[]): Promise<any[]> {
+  private async filterAlreadySyncedRows(
+    targetTable: string,
+    rows: any[]
+  ): Promise<{ rows: any[]; skipped: number }> {
     const ids = Array.from(new Set(rows.map((r) => String(r.id))));
-    if (ids.length === 0) return rows;
+    if (ids.length === 0) return { rows, skipped: 0 };
     const existingIds = await this.findExistingIds(targetTable, ids);
-    if (existingIds.size === 0) return rows;
+    if (existingIds.size === 0) return { rows, skipped: 0 };
     const filtered = rows.filter((r) => !existingIds.has(String(r.id)));
     const skipped = rows.length - filtered.length;
     if (skipped > 0) {
-      logger.warn(`[ClickHouseSync] ${targetTable}: skipped ${skipped} rows already present by id`);
+      logger.debug(`[ClickHouseSync] ${targetTable}: skipped ${skipped} rows already present by id`);
     }
-    return filtered;
+    return { rows: filtered, skipped };
   }
 
   private async findExistingIds(targetTable: string, ids: string[]): Promise<Set<string>> {

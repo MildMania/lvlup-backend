@@ -9,12 +9,70 @@ import logger from '../utils/logger';
 import prisma from '../prisma';
 import { cache } from '../utils/simpleCache';
 import { logAnalyticsMetrics } from '../utils/analyticsDebug';
+import clickHouseService from '../services/ClickHouseService';
 
 const analyticsService = new AnalyticsService();
 const monetizationCohortService = new MonetizationCohortService();
 const revenueService = new RevenueService();
 
 export class AnalyticsController {
+    private quoteClickHouseString(value: string): string {
+        const escaped = value
+            .replace(/\\/g, '\\\\')
+            .replace(/'/g, "\\'");
+        return `'${escaped}'`;
+    }
+
+    private isClickHouseStrict(): boolean {
+        return (
+            process.env.ANALYTICS_CLICKHOUSE_STRICT === '1' ||
+            process.env.ANALYTICS_CLICKHOUSE_STRICT === 'true'
+        );
+    }
+
+    private async resolveExternalUserId(gameId: string, payload: any): Promise<{ userId: string | null; source: string | null }> {
+        const explicitUserId = typeof payload?.userId === 'string' ? payload.userId.trim() : '';
+        if (explicitUserId) {
+            return { userId: explicitUserId, source: 'userId' };
+        }
+
+        const sessionId = typeof payload?.sessionId === 'string' ? payload.sessionId.trim() : '';
+        if (sessionId) {
+            const session = await prisma.session.findUnique({
+                where: { id: sessionId },
+                select: {
+                    gameId: true,
+                    user: { select: { externalId: true } }
+                }
+            });
+            if (session?.gameId === gameId && session.user?.externalId) {
+                return { userId: session.user.externalId, source: 'session.user.externalId' };
+            }
+        }
+
+        const deviceCandidates = [
+            typeof payload?.deviceInfo?.deviceId === 'string' ? payload.deviceInfo.deviceId.trim() : '',
+            typeof payload?.events?.[0]?.deviceId === 'string' ? payload.events[0].deviceId.trim() : '',
+            typeof payload?.revenueData?.[0]?.deviceId === 'string' ? payload.revenueData[0].deviceId.trim() : '',
+        ].filter(Boolean);
+
+        for (const deviceId of deviceCandidates) {
+            const existingUser = await prisma.user.findFirst({
+                where: {
+                    gameId,
+                    deviceId
+                },
+                orderBy: { updatedAt: 'desc' },
+                select: { externalId: true }
+            });
+            if (existingUser?.externalId) {
+                return { userId: existingUser.externalId, source: 'deviceId->existingUser.externalId' };
+            }
+        }
+
+        return { userId: null, source: null };
+    }
+
     private logMemory(label: string) {
         const mem = process.memoryUsage();
         logAnalyticsMetrics(`[AnalyticsMetrics] ${label}`, {
@@ -104,56 +162,83 @@ export class AnalyticsController {
         try {
             const gameId = requireGameId(req);
             const batchData: BatchEventData = req.body;
+            const { userId: resolvedUserId, source: resolvedUserIdSource } = await this.resolveExternalUserId(gameId, batchData);
+            const effectiveUserId = resolvedUserId || '';
 
             // Validate required fields
-            if (!batchData.userId) {
+            if (!effectiveUserId) {
+                logger.warn('Rejecting /events/batch: unable to resolve userId', {
+                    hasEventsArray: Array.isArray((batchData as any)?.events),
+                    receivedEvents: Array.isArray((batchData as any)?.events) ? (batchData as any).events.length : 0
+                });
                 return res.status(400).json({
                     success: false,
-                    error: 'User ID is required'
+                    error: 'User ID is required',
+                    code: 'USER_ID_REQUIRED'
+                });
+            }
+
+            if (!batchData.userId) {
+                logger.warn('Resolved missing /events/batch userId from fallback', {
+                    source: resolvedUserIdSource,
+                    effectiveUserId
                 });
             }
 
             if (!batchData.events || !Array.isArray(batchData.events) || batchData.events.length === 0) {
+                logger.warn('Rejecting /events/batch: events array missing/empty', {
+                    userId: batchData.userId,
+                    hasEventsArray: Array.isArray((batchData as any)?.events),
+                    receivedEvents: Array.isArray((batchData as any)?.events) ? (batchData as any).events.length : 0
+                });
                 return res.status(400).json({
                     success: false,
-                    error: 'Events array is required and cannot be empty'
+                    error: 'Events array is required and cannot be empty',
+                    code: 'EVENTS_ARRAY_REQUIRED'
                 });
             }
 
-            // Validate max batch size
-            if (batchData.events.length > 100) {
-                return res.status(400).json({
-                    success: false,
-                    error: 'Batch size exceeds maximum limit of 100 events'
+            // Keep ingestion resilient:
+            // - Drop malformed events instead of failing entire batch
+            // - Process large payloads in chunks to avoid 400s on oversized offline flushes
+            const EVENT_NAME_REGEX = /^[a-zA-Z0-9_.:-]+$/;
+            const validEvents = batchData.events.filter(
+                (event) => !!event && !!event.eventName && EVENT_NAME_REGEX.test(event.eventName)
+            );
+            const droppedEvents = batchData.events.length - validEvents.length;
+
+            if (validEvents.length === 0) {
+                logger.warn('Accepting batch with 0 valid events after validation', {
+                    userId: batchData.userId,
+                    receivedEvents: batchData.events.length
+                });
+                return res.status(200).json({
+                    success: true,
+                    data: {
+                        processed: 0,
+                        droppedInvalidEvents: droppedEvents
+                    }
                 });
             }
 
-            // Validate each event in the batch
-            for (let i = 0; i < batchData.events.length; i++) {
-                const event = batchData.events[i];
+            const CHUNK_SIZE = 100;
+            let processed = 0;
 
-                if (!event || !event.eventName) {
-                    return res.status(400).json({
-                        success: false,
-                        error: `Event at index ${i} is missing eventName`
-                    });
-                }
-
-                // Validate event name format
-                if (!/^[a-zA-Z0-9_]+$/.test(event.eventName)) {
-                    return res.status(400).json({
-                        success: false,
-                        error: `Event name at index ${i} can only contain letters, numbers and underscores`
-                    });
-                }
+            for (let i = 0; i < validEvents.length; i += CHUNK_SIZE) {
+                const chunk = validEvents.slice(i, i + CHUNK_SIZE);
+                const result = await analyticsService.trackBatchEvents(gameId, {
+                    ...batchData,
+                    userId: effectiveUserId,
+                    events: chunk
+                });
+                processed += result.count;
             }
-
-            const result = await analyticsService.trackBatchEvents(gameId, batchData);
 
             res.status(200).json({
                 success: true,
                 data: {
-                    processed: result.count
+                    processed,
+                    droppedInvalidEvents: droppedEvents
                 }
             });
         } catch (error) {
@@ -200,7 +285,7 @@ export class AnalyticsController {
                 
                 if (timeDiffMs > FUTURE_TOLERANCE_MS) {
                     const diffSeconds = (timeDiffMs / 1000).toFixed(2);
-                    logger.warn(
+                    logger.debug(
                         `startTime is ${diffSeconds}s in the future (beyond tolerance), resetting to current time. Client Timestamp: ${sessionData.startTime}, Server Timestamp: ${serverTime.toISOString()}`);
                     sessionData.startTime = serverTime.toISOString();
                 }
@@ -397,9 +482,12 @@ export class AnalyticsController {
     async getEvents(req: AuthenticatedRequest, res: Response<ApiResponse>) {
         try {
             const gameId = requireGameId(req);
-            const limit = parseInt(req.query.limit as string) || 100;
-            const offset = parseInt(req.query.offset as string) || 0;
-            const sort = (req.query.sort as string) || 'desc';
+            const requestedLimit = parseInt(req.query.limit as string) || 100;
+            const requestedOffset = parseInt(req.query.offset as string) || 0;
+            const limit = Math.min(Math.max(requestedLimit, 1), 200);
+            const offset = Math.min(Math.max(requestedOffset, 0), 2000);
+            const requestedSort = (req.query.sort as string) || 'desc';
+            const sort = requestedSort === 'asc' ? 'asc' : 'desc';
             const userId = req.query.userId as string | undefined;
             const eventName = req.query.eventName as string | undefined;
             const search = req.query.search as string | undefined;
@@ -427,7 +515,76 @@ export class AnalyticsController {
     async getRevenueSummary(req: AuthenticatedRequest, res: Response<ApiResponse>) {
         try {
             const gameId = requireGameId(req);
+            const readRevenueSummaryFromClickHouse =
+                process.env.ANALYTICS_READ_REVENUE_SUMMARY_FROM_CLICKHOUSE === '1' ||
+                process.env.ANALYTICS_READ_REVENUE_SUMMARY_FROM_CLICKHOUSE === 'true';
             const useRollups = process.env.USE_MONETIZATION_ROLLUPS === '1' || process.env.USE_MONETIZATION_ROLLUPS === 'true';
+
+            if (readRevenueSummaryFromClickHouse && clickHouseService.isEnabled()) {
+                try {
+                    const qGameId = this.quoteClickHouseString(gameId);
+                    const [revenueRows, usersRows] = await Promise.all([
+                        clickHouseService.query<Array<{
+                            adRevenue: number;
+                            iapRevenue: number;
+                            adImpressionCount: number;
+                            iapCount: number;
+                            payingUsersCount: number;
+                        }>[number]>(`
+                            SELECT
+                                sumIf(revenueUSD, revenueType = 'AD_IMPRESSION') AS adRevenue,
+                                sumIf(revenueUSD, revenueType = 'IN_APP_PURCHASE') AS iapRevenue,
+                                countIf(revenueType = 'AD_IMPRESSION') AS adImpressionCount,
+                                countIf(revenueType = 'IN_APP_PURCHASE') AS iapCount,
+                                uniqExactIf(userId, revenueType = 'IN_APP_PURCHASE') AS payingUsersCount
+                            FROM revenue_raw
+                            WHERE gameId = ${qGameId}
+                        `),
+                        clickHouseService.query<Array<{ totalUsers: number }>[number]>(`
+                            SELECT uniqExact(id) AS totalUsers
+                            FROM users_raw
+                            WHERE gameId = ${qGameId}
+                        `)
+                    ]);
+
+                    const revenue = revenueRows[0] || {
+                        adRevenue: 0,
+                        iapRevenue: 0,
+                        adImpressionCount: 0,
+                        iapCount: 0,
+                        payingUsersCount: 0,
+                    };
+                    const totalUsers = Number(usersRows[0]?.totalUsers || 0);
+                    const adRevenue = Number(revenue.adRevenue || 0);
+                    const iapRevenue = Number(revenue.iapRevenue || 0);
+                    const totalRevenue = adRevenue + iapRevenue;
+                    const payingUsersCount = Number(revenue.payingUsersCount || 0);
+
+                    const summary = {
+                        totalRevenue: Math.round(totalRevenue * 100) / 100,
+                        adRevenue: Math.round(adRevenue * 100) / 100,
+                        iapRevenue: Math.round(iapRevenue * 100) / 100,
+                        adImpressionCount: Number(revenue.adImpressionCount || 0),
+                        iapCount: Number(revenue.iapCount || 0),
+                        payingUsersCount,
+                        totalUsers,
+                        conversionRate: totalUsers > 0 ? (payingUsersCount / totalUsers) * 100 : 0,
+                        arpu: totalUsers > 0 ? totalRevenue / totalUsers : 0,
+                        arppu: payingUsersCount > 0 ? iapRevenue / payingUsersCount : 0
+                    };
+
+                    return res.status(200).json({
+                        success: true,
+                        data: summary
+                    });
+                } catch (clickHouseError) {
+                    if (this.isClickHouseStrict()) throw clickHouseError;
+                    logger.warn('[Analytics] ClickHouse revenue summary read failed; falling back to Postgres', {
+                        gameId,
+                        error: clickHouseError instanceof Error ? clickHouseError.message : String(clickHouseError),
+                    });
+                }
+            }
 
             if (useRollups) {
                 const [dailyRows, payingUsersCount, totalUsers] = await Promise.all([
@@ -615,12 +772,23 @@ export class AnalyticsController {
         try {
             const gameId = requireGameId(req);
             const { userId, sessionId, revenueData } = req.body;
+            const { userId: resolvedUserId, source: resolvedUserIdSource } = await this.resolveExternalUserId(gameId, req.body);
+            const effectiveUserId = resolvedUserId || '';
 
             // Validate required fields
-            if (!userId) {
+            if (!effectiveUserId) {
                 return res.status(400).json({
                     success: false,
-                    error: 'User ID is required'
+                    error: 'User ID is required',
+                    code: 'USER_ID_REQUIRED'
+                });
+            }
+
+            if (!userId) {
+                logger.warn('Resolved missing /revenue userId from fallback', {
+                    source: resolvedUserIdSource,
+                    effectiveUserId,
+                    revenueItems: Array.isArray(revenueData) ? revenueData.length : 0
                 });
             }
 
@@ -633,7 +801,7 @@ export class AnalyticsController {
 
             // Get or create user first
             const userProfile: UserProfile = {
-                externalId: userId,
+                externalId: effectiveUserId,
                 deviceId: revenueData[0]?.deviceId,
                 platform: revenueData[0]?.platform,
                 version: revenueData[0]?.appVersion,

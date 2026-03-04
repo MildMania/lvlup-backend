@@ -8,6 +8,7 @@ export interface ApiResponse {
     data?: any;
     summary?: any;
     error?: string;
+    code?: string;
     message?: string;
 }
 

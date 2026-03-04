@@ -2,6 +2,7 @@ import cron from 'node-cron';
 import cohortAggregationService, { COHORT_DAY_INDICES } from '../services/CohortAggregationService';
 import logger from '../utils/logger';
 import { withJobAdvisoryLock } from './advisoryLock';
+import { maybeThrottleAggregation } from '../utils/aggregationThrottle';
 
 export function startCohortAggregationJob(): void {
   logger.info('Initializing cohort aggregation cron job...');
@@ -31,6 +32,8 @@ export function startCohortAggregationJob(): void {
           } catch (error) {
             logger.error(`Cohort aggregation failed for game ${gameId}:`, error);
             errors++;
+          } finally {
+            await maybeThrottleAggregation(`cohort-daily-job:${gameId}`);
           }
         }
 
@@ -73,6 +76,8 @@ export function startCohortHourlyTodayJob(): void {
           } catch (error) {
             logger.error(`Cohort hourly incremental update failed for game ${gameId}:`, error);
             errors++;
+          } finally {
+            await maybeThrottleAggregation(`cohort-hourly-job:${gameId}`);
           }
         }
 

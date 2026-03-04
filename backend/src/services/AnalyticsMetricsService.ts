@@ -4,6 +4,7 @@ import { AnalyticsFilterParams } from '../types/api';
 import { cache, generateCacheKey } from '../utils/simpleCache';
 import prisma from '../prisma';
 import { HLL } from '../utils/hll';
+import clickHouseService from './ClickHouseService';
 
 export interface RetentionData {
     day: number;
@@ -32,6 +33,20 @@ export class AnalyticsMetricsService {
         this.prisma = prismaClient || prisma;
     }
 
+    private quoteClickHouseString(value: string): string {
+        const escaped = value
+            .replace(/\\/g, '\\\\')
+            .replace(/'/g, "\\'");
+        return `'${escaped}'`;
+    }
+
+    private isClickHouseStrict(): boolean {
+        return (
+            process.env.ANALYTICS_CLICKHOUSE_STRICT === '1' ||
+            process.env.ANALYTICS_CLICKHOUSE_STRICT === 'true'
+        );
+    }
+
     // Calculate retention metrics with flexible retention days and filters
     async calculateRetention(
         gameId: string,
@@ -40,13 +55,18 @@ export class AnalyticsMetricsService {
         filters?: AnalyticsFilterParams
     ): Promise<RetentionData[]> {
         try {
+            const readFromClickHouse =
+                process.env.ANALYTICS_READ_RETENTION_FROM_CLICKHOUSE === '1' ||
+                process.env.ANALYTICS_READ_RETENTION_FROM_CLICKHOUSE === 'true';
+
             // Generate cache key
             const cacheKey = generateCacheKey(
                 'retention',
                 gameId,
                 startDate.toISOString(),
                 endDate.toISOString(),
-                JSON.stringify(filters || {})
+                JSON.stringify(filters || {}),
+                readFromClickHouse ? 'ch' : 'pg'
             );
 
             // Check cache first (10 minute TTL for retention since it's expensive)
@@ -63,6 +83,26 @@ export class AnalyticsMetricsService {
             const retentionDays = filters?.retentionDays && filters.retentionDays.length > 0
                 ? filters.retentionDays.sort((a, b) => a - b)  // Sort ascending
                 : [1, 3, 7, 14, 30];
+
+            if (readFromClickHouse && clickHouseService.isEnabled()) {
+                try {
+                    const clickHouseData = await this.calculateRetentionFromClickHouse(
+                        gameId,
+                        startDate,
+                        endDate,
+                        retentionDays,
+                        filters
+                    );
+                    cache.set(cacheKey, clickHouseData, 1800);
+                    return clickHouseData;
+                } catch (clickHouseError) {
+                    if (this.isClickHouseStrict()) throw clickHouseError;
+                    logger.warn('[AnalyticsMetrics] ClickHouse retention read failed; falling back to Postgres', {
+                        gameId,
+                        error: clickHouseError instanceof Error ? clickHouseError.message : String(clickHouseError),
+                    });
+                }
+            }
 
             const retentionPromises = retentionDays.map(async (day) => {
                 const countries = filters?.country
@@ -121,6 +161,60 @@ export class AnalyticsMetricsService {
         }
     }
 
+    private async calculateRetentionFromClickHouse(
+        gameId: string,
+        startDate: Date,
+        endDate: Date,
+        retentionDays: number[],
+        filters?: AnalyticsFilterParams
+    ): Promise<RetentionData[]> {
+        const countries = filters?.country
+            ? (Array.isArray(filters.country) ? filters.country : [filters.country])
+            : [];
+        const platforms = filters?.platform
+            ? (Array.isArray(filters.platform) ? filters.platform : [filters.platform])
+            : [];
+        const versions = filters?.version
+            ? (Array.isArray(filters.version) ? filters.version : [filters.version])
+            : [];
+        const q = (value: string) => this.quoteClickHouseString(value);
+        const countryIn = countries.length ? countries.map(q).join(',') : '';
+        const platformIn = platforms.length ? platforms.map(q).join(',') : '';
+        const versionIn = versions.length ? versions.map(q).join(',') : '';
+
+        const retentionPromises = retentionDays.map(async (day) => {
+            const eligibleEnd = new Date(endDate);
+            eligibleEnd.setUTCDate(eligibleEnd.getUTCDate() - day);
+
+            const rows = await clickHouseService.query<Array<{ cohort_size: number; retained_users: number }>[number]>(`
+                SELECT
+                  sumIf(cohortSize, dayIndex = 0) AS cohort_size,
+                  sumIf(retainedUsers, dayIndex = ${day}) AS retained_users
+                FROM cohort_retention_daily_raw
+                WHERE gameId = ${q(gameId)}
+                  AND installDate >= parseDateTime64BestEffort(${q(startDate.toISOString())})
+                  AND installDate <= parseDateTime64BestEffort(${q(eligibleEnd.toISOString())})
+                  AND dayIndex IN (0, ${day})
+                  ${platforms.length ? `AND platform IN (${platformIn})` : ''}
+                  ${countries.length ? `AND countryCode IN (${countryIn})` : ''}
+                  ${versions.length ? `AND appVersion IN (${versionIn})` : ''}
+            `);
+
+            const cohortSize = Number(rows[0]?.cohort_size || 0);
+            const retainedCount = Number(rows[0]?.retained_users || 0);
+            const percentage = cohortSize > 0 ? (retainedCount / cohortSize) * 100 : 0;
+
+            return {
+                day,
+                count: retainedCount,
+                percentage: Math.round(percentage * 100) / 100
+            };
+        });
+
+        const retentionData = await Promise.all(retentionPromises);
+        return retentionData.sort((a, b) => a.day - b.day);
+    }
+
     // Calculate daily, weekly, monthly active users with filters
     async calculateActiveUsers(
         gameId: string,
@@ -129,13 +223,18 @@ export class AnalyticsMetricsService {
         filters?: AnalyticsFilterParams
     ): Promise<ActiveUserData[]> {
         try {
+            const readFromClickHouse =
+                process.env.ANALYTICS_READ_ACTIVE_USERS_FROM_CLICKHOUSE === '1' ||
+                process.env.ANALYTICS_READ_ACTIVE_USERS_FROM_CLICKHOUSE === 'true';
+
             // Generate cache key
             const cacheKey = generateCacheKey(
                 'activeUsers',
                 gameId,
                 startDate.toISOString(),
                 endDate.toISOString(),
-                JSON.stringify(filters || {})
+                JSON.stringify(filters || {}),
+                readFromClickHouse ? 'ch' : 'pg'
             );
 
             // Check cache first (5 minute TTL)
@@ -147,107 +246,21 @@ export class AnalyticsMetricsService {
 
             logger.debug(`Cache miss for active users: ${cacheKey}, calculating...`);
 
-            const countries = filters?.country
-                ? (Array.isArray(filters.country) ? filters.country : [filters.country])
-                : [];
-            const platforms = filters?.platform
-                ? (Array.isArray(filters.platform) ? filters.platform : [filters.platform])
-                : [];
-            const versions = filters?.version
-                ? (Array.isArray(filters.version) ? filters.version : [filters.version])
-                : [];
-
-            const days: Date[] = [];
-            const cursor = new Date(startDate);
-            cursor.setUTCHours(0, 0, 0, 0);
-            const end = new Date(endDate);
-            end.setUTCHours(0, 0, 0, 0);
-            while (cursor <= end) {
-                days.push(new Date(cursor));
-                cursor.setUTCDate(cursor.getUTCDate() + 1);
-            }
-
-            const dauRows = await this.prisma.$queryRaw<
-                Array<{ day: Date; dau: bigint }>
-            >(Prisma.sql`
-                SELECT
-                    date_trunc('day', "date") AS "day",
-                    COALESCE(SUM("dau"), 0) AS "dau"
-                FROM "active_users_daily"
-                WHERE "gameId" = ${gameId}
-                  AND "date" >= ${startDate}
-                  AND "date" <= ${endDate}
-                  ${countries.length ? Prisma.sql`AND "countryCode" IN (${Prisma.join(countries)})` : Prisma.sql``}
-                  ${platforms.length ? Prisma.sql`AND "platform" IN (${Prisma.join(platforms)})` : Prisma.sql``}
-                  ${versions.length ? Prisma.sql`AND "appVersion" IN (${Prisma.join(versions)})` : Prisma.sql``}
-                GROUP BY 1
-            `);
-
-            const hllStart = new Date(startDate);
-            hllStart.setUTCDate(hllStart.getUTCDate() - 29);
-
-            const hllRows = await this.prisma.$queryRaw<
-                Array<{ day: Date; hll: Buffer }>
-            >(Prisma.sql`
-                SELECT
-                    date_trunc('day', "date") AS "day",
-                    "hll" AS "hll"
-                FROM "active_users_hll_daily"
-                WHERE "gameId" = ${gameId}
-                  AND "date" >= ${hllStart}
-                  AND "date" <= ${endDate}
-                  ${countries.length ? Prisma.sql`AND "countryCode" IN (${Prisma.join(countries)})` : Prisma.sql``}
-                  ${platforms.length ? Prisma.sql`AND "platform" IN (${Prisma.join(platforms)})` : Prisma.sql``}
-                  ${versions.length ? Prisma.sql`AND "appVersion" IN (${Prisma.join(versions)})` : Prisma.sql``}
-            `);
-
-            const dauByDay = new Map<string, number>();
-            for (const row of dauRows) {
-                const key = row.day.toISOString().split('T')[0] || '';
-                dauByDay.set(key, Number(row.dau || 0));
-            }
-
-            const hllByDay = new Map<string, HLL>();
-            for (const row of hllRows) {
-                const key = row.day.toISOString().split('T')[0] || '';
-                const existing = hllByDay.get(key);
-                const current = HLL.fromBuffer(row.hll);
-                if (existing) {
-                    existing.union(current);
-                } else {
-                    hllByDay.set(key, current);
+            if (readFromClickHouse && clickHouseService.isEnabled()) {
+                try {
+                    const data = await this.calculateActiveUsersFromClickHouse(gameId, startDate, endDate, filters);
+                    cache.set(cacheKey, data, 300);
+                    return data;
+                } catch (clickHouseError) {
+                    if (this.isClickHouseStrict()) throw clickHouseError;
+                    logger.warn('[AnalyticsMetrics] ClickHouse active users read failed; falling back to Postgres', {
+                        gameId,
+                        error: clickHouseError instanceof Error ? clickHouseError.message : String(clickHouseError),
+                    });
                 }
             }
 
-            const dailyData: ActiveUserData[] = days.map((day) => {
-                const key = day.toISOString().split('T')[0] || '';
-                const dau = dauByDay.get(key) || 0;
-
-                const wauHll = new HLL();
-                for (let i = 6; i >= 0; i--) {
-                    const d = new Date(day);
-                    d.setUTCDate(d.getUTCDate() - i);
-                    const k = d.toISOString().split('T')[0] || '';
-                    const hll = hllByDay.get(k);
-                    if (hll) wauHll.union(hll);
-                }
-
-                const mauHll = new HLL();
-                for (let i = 29; i >= 0; i--) {
-                    const d = new Date(day);
-                    d.setUTCDate(d.getUTCDate() - i);
-                    const k = d.toISOString().split('T')[0] || '';
-                    const hll = hllByDay.get(k);
-                    if (hll) mauHll.union(hll);
-                }
-
-                return {
-                    date: key,
-                    dau,
-                    wau: wauHll.count(),
-                    mau: mauHll.count()
-                };
-            });
+            const dailyData = await this.calculateActiveUsersFromPostgres(gameId, startDate, endDate, filters);
 
             // Cache for 5 minutes (300 seconds)
             cache.set(cacheKey, dailyData, 300);
@@ -260,6 +273,262 @@ export class AnalyticsMetricsService {
         }
     }
 
+    private async calculateActiveUsersFromPostgres(
+        gameId: string,
+        startDate: Date,
+        endDate: Date,
+        filters?: AnalyticsFilterParams
+    ): Promise<ActiveUserData[]> {
+        const countries = filters?.country
+            ? (Array.isArray(filters.country) ? filters.country : [filters.country])
+            : [];
+        const platforms = filters?.platform
+            ? (Array.isArray(filters.platform) ? filters.platform : [filters.platform])
+            : [];
+        const versions = filters?.version
+            ? (Array.isArray(filters.version) ? filters.version : [filters.version])
+            : [];
+
+        const days: Date[] = [];
+        const cursor = new Date(startDate);
+        cursor.setUTCHours(0, 0, 0, 0);
+        const end = new Date(endDate);
+        end.setUTCHours(0, 0, 0, 0);
+        while (cursor <= end) {
+            days.push(new Date(cursor));
+            cursor.setUTCDate(cursor.getUTCDate() + 1);
+        }
+
+        const dauRows = await this.prisma.$queryRaw<
+            Array<{ day: Date; dau: bigint }>
+        >(Prisma.sql`
+            SELECT
+                date_trunc('day', "date") AS "day",
+                COALESCE(SUM("dau"), 0) AS "dau"
+            FROM "active_users_daily"
+            WHERE "gameId" = ${gameId}
+              AND "date" >= ${startDate}
+              AND "date" <= ${endDate}
+              ${countries.length ? Prisma.sql`AND "countryCode" IN (${Prisma.join(countries)})` : Prisma.sql``}
+              ${platforms.length ? Prisma.sql`AND "platform" IN (${Prisma.join(platforms)})` : Prisma.sql``}
+              ${versions.length ? Prisma.sql`AND "appVersion" IN (${Prisma.join(versions)})` : Prisma.sql``}
+            GROUP BY 1
+        `);
+
+        const hllStart = new Date(startDate);
+        hllStart.setUTCDate(hllStart.getUTCDate() - 29);
+
+        const hllRows = await this.prisma.$queryRaw<
+            Array<{ day: Date; hll: Buffer }>
+        >(Prisma.sql`
+            SELECT
+                date_trunc('day', "date") AS "day",
+                "hll" AS "hll"
+            FROM "active_users_hll_daily"
+            WHERE "gameId" = ${gameId}
+              AND "date" >= ${hllStart}
+              AND "date" <= ${endDate}
+              ${countries.length ? Prisma.sql`AND "countryCode" IN (${Prisma.join(countries)})` : Prisma.sql``}
+              ${platforms.length ? Prisma.sql`AND "platform" IN (${Prisma.join(platforms)})` : Prisma.sql``}
+              ${versions.length ? Prisma.sql`AND "appVersion" IN (${Prisma.join(versions)})` : Prisma.sql``}
+        `);
+
+        const dauByDay = new Map<string, number>();
+        for (const row of dauRows) {
+            const key = row.day.toISOString().split('T')[0] || '';
+            dauByDay.set(key, Number(row.dau || 0));
+        }
+
+        const hllByDay = new Map<string, HLL>();
+        for (const row of hllRows) {
+            const key = row.day.toISOString().split('T')[0] || '';
+            const existing = hllByDay.get(key);
+            const current = HLL.fromBuffer(row.hll);
+            if (existing) {
+                existing.union(current);
+            } else {
+                hllByDay.set(key, current);
+            }
+        }
+
+        return days.map((day) => {
+            const key = day.toISOString().split('T')[0] || '';
+            const dau = dauByDay.get(key) || 0;
+
+            const wauHll = new HLL();
+            for (let i = 6; i >= 0; i--) {
+                const d = new Date(day);
+                d.setUTCDate(d.getUTCDate() - i);
+                const k = d.toISOString().split('T')[0] || '';
+                const hll = hllByDay.get(k);
+                if (hll) wauHll.union(hll);
+            }
+
+            const mauHll = new HLL();
+            for (let i = 29; i >= 0; i--) {
+                const d = new Date(day);
+                d.setUTCDate(d.getUTCDate() - i);
+                const k = d.toISOString().split('T')[0] || '';
+                const hll = hllByDay.get(k);
+                if (hll) mauHll.union(hll);
+            }
+
+            return {
+                date: key,
+                dau,
+                wau: wauHll.count(),
+                mau: mauHll.count()
+            };
+        });
+    }
+
+    private async calculateActiveUsersFromClickHouse(
+        gameId: string,
+        startDate: Date,
+        endDate: Date,
+        filters?: AnalyticsFilterParams
+    ): Promise<ActiveUserData[]> {
+        const start = new Date(startDate);
+        start.setUTCHours(0, 0, 0, 0);
+        const end = new Date(endDate);
+        end.setUTCHours(0, 0, 0, 0);
+        const dayCount = Math.max(
+            1,
+            Math.floor((end.getTime() - start.getTime()) / (24 * 60 * 60 * 1000)) + 1
+        );
+        const historyStart = new Date(start);
+        historyStart.setUTCDate(historyStart.getUTCDate() - 29);
+
+        const countries = filters?.country
+            ? (Array.isArray(filters.country) ? filters.country : [filters.country])
+            : [];
+        const platforms = filters?.platform
+            ? (Array.isArray(filters.platform) ? filters.platform : [filters.platform])
+            : [];
+        const versions = filters?.version
+            ? (Array.isArray(filters.version) ? filters.version : [filters.version])
+            : [];
+
+        const q = (value: string) => this.quoteClickHouseString(value);
+        const countryIn = countries.length ? countries.map(q).join(',') : '';
+        const platformIn = platforms.length ? platforms.map(q).join(',') : '';
+        const versionIn = versions.length ? versions.map(q).join(',') : '';
+
+        const rows = await clickHouseService.query<Array<{
+            date: string;
+            dau: number;
+            wau: number;
+            mau: number;
+        }>[number]>(`
+            WITH
+              toDate(${q(start.toISOString().slice(0, 10))}) AS start_day,
+              toDate(${q(end.toISOString().slice(0, 10))}) AS end_day,
+              toDate(${q(historyStart.toISOString().slice(0, 10))}) AS history_start
+            SELECT
+              toString(days.day) AS date,
+              ifNull(dau_rows.dau, 0) AS dau,
+              ifNull(wau_rows.wau, 0) AS wau,
+              ifNull(mau_rows.mau, 0) AS mau
+            FROM
+              (
+                SELECT addDays(start_day, number) AS day
+                FROM numbers(${dayCount})
+              ) days
+            LEFT JOIN
+              (
+                SELECT
+                  event_day AS day,
+                  uniqExact(userId) AS dau
+                FROM
+                  (
+                    SELECT
+                      toDate(serverReceivedAt) AS event_day,
+                      userId
+                    FROM events_raw
+                    WHERE gameId = ${q(gameId)}
+                      AND toDate(serverReceivedAt) >= start_day
+                      AND toDate(serverReceivedAt) <= end_day
+                      ${platforms.length ? `AND platform IN (${platformIn})` : ''}
+                      ${countries.length ? `AND countryCode IN (${countryIn})` : ''}
+                      ${versions.length ? `AND appVersion IN (${versionIn})` : ''}
+                    GROUP BY event_day, userId
+                  ) base
+                GROUP BY day
+              ) dau_rows
+            ON dau_rows.day = days.day
+            LEFT JOIN
+              (
+                SELECT
+                  day,
+                  uniqExact(userId) AS wau
+                FROM
+                  (
+                    SELECT
+                      addDays(event_day, offs) AS day,
+                      userId
+                    FROM
+                      (
+                        SELECT
+                          toDate(serverReceivedAt) AS event_day,
+                          userId
+                        FROM events_raw
+                        WHERE gameId = ${q(gameId)}
+                          AND toDate(serverReceivedAt) >= addDays(start_day, -6)
+                          AND toDate(serverReceivedAt) <= end_day
+                          ${platforms.length ? `AND platform IN (${platformIn})` : ''}
+                          ${countries.length ? `AND countryCode IN (${countryIn})` : ''}
+                          ${versions.length ? `AND appVersion IN (${versionIn})` : ''}
+                        GROUP BY event_day, userId
+                      ) source_days
+                    ARRAY JOIN range(0, 7) AS offs
+                    WHERE addDays(event_day, offs) >= start_day
+                      AND addDays(event_day, offs) <= end_day
+                  ) expanded
+                GROUP BY day
+              ) wau_rows
+            ON wau_rows.day = days.day
+            LEFT JOIN
+              (
+                SELECT
+                  day,
+                  uniqExact(userId) AS mau
+                FROM
+                  (
+                    SELECT
+                      addDays(event_day, offs) AS day,
+                      userId
+                    FROM
+                      (
+                        SELECT
+                          toDate(serverReceivedAt) AS event_day,
+                          userId
+                        FROM events_raw
+                        WHERE gameId = ${q(gameId)}
+                          AND toDate(serverReceivedAt) >= history_start
+                          AND toDate(serverReceivedAt) <= end_day
+                          ${platforms.length ? `AND platform IN (${platformIn})` : ''}
+                          ${countries.length ? `AND countryCode IN (${countryIn})` : ''}
+                          ${versions.length ? `AND appVersion IN (${versionIn})` : ''}
+                        GROUP BY event_day, userId
+                      ) source_days
+                    ARRAY JOIN range(0, 30) AS offs
+                    WHERE addDays(event_day, offs) >= start_day
+                      AND addDays(event_day, offs) <= end_day
+                  ) expanded
+                GROUP BY day
+              ) mau_rows
+            ON mau_rows.day = days.day
+            ORDER BY days.day ASC
+        `);
+
+        return rows.map((row) => ({
+            date: row.date,
+            dau: Number(row.dau || 0),
+            wau: Number(row.wau || 0),
+            mau: Number(row.mau || 0),
+        }));
+    }
+
     // Calculate daily playtime metrics with filters
     async calculatePlaytimeMetrics(
         gameId: string,
@@ -268,13 +537,18 @@ export class AnalyticsMetricsService {
         filters?: AnalyticsFilterParams
     ): Promise<PlaytimeData[]> {
         try {
+            const readFromClickHouse =
+                process.env.ANALYTICS_READ_PLAYTIME_FROM_CLICKHOUSE === '1' ||
+                process.env.ANALYTICS_READ_PLAYTIME_FROM_CLICKHOUSE === 'true';
+
             // Generate cache key
             const cacheKey = generateCacheKey(
                 'playtime',
                 gameId,
                 startDate.toISOString(),
                 endDate.toISOString(),
-                JSON.stringify(filters || {})
+                JSON.stringify(filters || {}),
+                readFromClickHouse ? 'ch' : 'pg'
             );
 
             // Check cache first (5 minute TTL)
@@ -295,6 +569,27 @@ export class AnalyticsMetricsService {
             const versions = filters?.version
                 ? (Array.isArray(filters.version) ? filters.version : [filters.version])
                 : [];
+
+            if (readFromClickHouse && clickHouseService.isEnabled()) {
+                try {
+                    const clickHouseData = await this.calculatePlaytimeMetricsFromClickHouse(
+                        gameId,
+                        startDate,
+                        endDate,
+                        countries,
+                        platforms,
+                        versions
+                    );
+                    cache.set(cacheKey, clickHouseData, 300);
+                    return clickHouseData;
+                } catch (clickHouseError) {
+                    if (this.isClickHouseStrict()) throw clickHouseError;
+                    logger.warn('[AnalyticsMetrics] ClickHouse playtime read failed; falling back to Postgres', {
+                        gameId,
+                        error: clickHouseError instanceof Error ? clickHouseError.message : String(clickHouseError),
+                    });
+                }
+            }
 
             const rows = await this.prisma.$queryRaw<
                 Array<{ day: Date; total_sessions: bigint; unique_users: bigint; total_duration: bigint }>
@@ -355,5 +650,75 @@ export class AnalyticsMetricsService {
             logger.error('Error calculating playtime metrics:', error);
             throw error;
         }
+    }
+
+    private async calculatePlaytimeMetricsFromClickHouse(
+        gameId: string,
+        startDate: Date,
+        endDate: Date,
+        countries: string[],
+        platforms: string[],
+        versions: string[]
+    ): Promise<PlaytimeData[]> {
+        const q = (value: string) => this.quoteClickHouseString(value);
+        const countryIn = countries.length ? countries.map(q).join(',') : '';
+        const platformIn = platforms.length ? platforms.map(q).join(',') : '';
+        const versionIn = versions.length ? versions.map(q).join(',') : '';
+
+        const rows = await clickHouseService.query<Array<{
+            date: string;
+            total_sessions: number;
+            unique_users: number;
+            total_duration: number;
+        }>[number]>(`
+            WITH
+              toDate(${q(startDate.toISOString().slice(0, 10))}) AS start_day,
+              toDate(${q(endDate.toISOString().slice(0, 10))}) AS end_day,
+              dateDiff('day', start_day, end_day) + 1 AS day_count
+            SELECT
+              formatDateTime(d.day, '%Y-%m-%d') AS date,
+              ifNull(sa.total_sessions, 0) AS total_sessions,
+              ifNull(sa.unique_users, 0) AS unique_users,
+              ifNull(sa.total_duration, 0) AS total_duration
+            FROM
+              (
+                SELECT addDays(start_day, number) AS day
+                FROM numbers(day_count)
+              ) d
+            LEFT JOIN
+              (
+                SELECT
+                  toDate(addDays(installDate, dayIndex)) AS day,
+                  sum(totalSessions) AS total_sessions,
+                  sum(sessionUsers) AS unique_users,
+                  sum(totalDurationSec) AS total_duration
+                FROM cohort_session_metrics_daily_raw
+                WHERE gameId = ${q(gameId)}
+                  AND toDate(addDays(installDate, dayIndex)) >= start_day
+                  AND toDate(addDays(installDate, dayIndex)) <= end_day
+                  ${platforms.length ? `AND platform IN (${platformIn})` : ''}
+                  ${versions.length ? `AND appVersion IN (${versionIn})` : ''}
+                  ${countries.length ? `AND countryCode IN (${countryIn})` : ''}
+                GROUP BY day
+              ) sa
+            ON sa.day = d.day
+            ORDER BY d.day ASC
+        `);
+
+        return rows.map((row) => {
+            const totalSessions = Number(row.total_sessions || 0);
+            const uniqueUsers = Number(row.unique_users || 0);
+            const totalDuration = Number(row.total_duration || 0);
+            const avgSessionDuration = totalSessions > 0 ? totalDuration / totalSessions : 0;
+            const sessionsPerUser = uniqueUsers > 0 ? totalSessions / uniqueUsers : 0;
+            const totalPlaytime = uniqueUsers > 0 ? totalDuration / uniqueUsers : 0;
+
+            return {
+                date: row.date,
+                avgSessionDuration,
+                totalPlaytime,
+                sessionsPerUser
+            };
+        });
     }
 }

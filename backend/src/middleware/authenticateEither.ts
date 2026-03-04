@@ -3,6 +3,79 @@ import { PrismaClient } from '@prisma/client';
 import tokenService from '../services/TokenService';
 import prisma from '../prisma';
 
+type CachedGameEntry = {
+    game: any;
+    expiresAt: number;
+};
+
+type CachedInvalidEntry = {
+    expiresAt: number;
+};
+
+const authGameCache = new Map<string, CachedGameEntry>();
+const authInvalidKeyCache = new Map<string, CachedInvalidEntry>();
+const AUTH_GAME_CACHE_TTL_MS = Math.max(
+    1,
+    Number(process.env.AUTH_GAME_CACHE_TTL_SECONDS || 60)
+) * 1000;
+const AUTH_GAME_NEG_CACHE_TTL_MS = Math.max(
+    1,
+    Number(process.env.AUTH_GAME_NEG_CACHE_TTL_SECONDS || 10)
+) * 1000;
+const AUTH_GAME_CACHE_MAX_ENTRIES = Math.max(
+    100,
+    Number(process.env.AUTH_GAME_CACHE_MAX_ENTRIES || 10000)
+);
+
+function evictIfCacheTooLarge(): void {
+    if (authGameCache.size <= AUTH_GAME_CACHE_MAX_ENTRIES) {
+        return;
+    }
+
+    // FIFO eviction based on insertion order.
+    const keysToDelete = authGameCache.size - AUTH_GAME_CACHE_MAX_ENTRIES;
+    let deleted = 0;
+    for (const key of authGameCache.keys()) {
+        authGameCache.delete(key);
+        deleted++;
+        if (deleted >= keysToDelete) break;
+    }
+}
+
+function getValidCachedGame(apiKey: string): any | null {
+    const cached = authGameCache.get(apiKey);
+    if (!cached) return null;
+    if (cached.expiresAt <= Date.now()) {
+        authGameCache.delete(apiKey);
+        return null;
+    }
+    return cached.game;
+}
+
+function setCachedGame(apiKey: string, game: any): void {
+    authGameCache.set(apiKey, {
+        game,
+        expiresAt: Date.now() + AUTH_GAME_CACHE_TTL_MS
+    });
+    evictIfCacheTooLarge();
+}
+
+function isCachedInvalidApiKey(apiKey: string): boolean {
+    const cached = authInvalidKeyCache.get(apiKey);
+    if (!cached) return false;
+    if (cached.expiresAt <= Date.now()) {
+        authInvalidKeyCache.delete(apiKey);
+        return false;
+    }
+    return true;
+}
+
+function setCachedInvalidApiKey(apiKey: string): void {
+    authInvalidKeyCache.set(apiKey, {
+        expiresAt: Date.now() + AUTH_GAME_NEG_CACHE_TTL_MS
+    });
+}
+
 /**
  * Middleware that accepts BOTH API key authentication (for games) 
  * AND dashboard authentication (for dashboard users)
@@ -17,12 +90,27 @@ export const authenticateEither = async (
         const apiKey = req.header('X-API-Key') || req.query.api_key;
         
         if (apiKey) {
+            const apiKeyString = String(apiKey);
+            const cachedGame = getValidCachedGame(apiKeyString);
+            if (cachedGame) {
+                req.game = cachedGame;
+                return next();
+            }
+
+            if (isCachedInvalidApiKey(apiKeyString)) {
+                return res.status(401).json({
+                    success: false,
+                    error: 'Invalid API key',
+                });
+            }
+
             // Validate API key (for game authentication)
             const game = await prisma.game.findUnique({
-                where: { apiKey: String(apiKey) },
+                where: { apiKey: apiKeyString },
             });
 
             if (!game) {
+                setCachedInvalidApiKey(apiKeyString);
                 return res.status(401).json({
                     success: false,
                     error: 'Invalid API key',
@@ -31,6 +119,7 @@ export const authenticateEither = async (
 
             // Attach game to request
             req.game = game;
+            setCachedGame(apiKeyString, game);
             return next();
         }
 
@@ -75,4 +164,3 @@ export const authenticateEither = async (
         });
     }
 };
-

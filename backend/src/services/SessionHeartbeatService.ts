@@ -102,7 +102,7 @@ export class SessionHeartbeatService {
                 return;
             }
 
-            logger.info(`Found ${inactiveSessions.length} inactive sessions to close`);
+            logger.debug(`Found ${inactiveSessions.length} inactive sessions to close`);
 
             let closedCount = 0;
             let errorCount = 0;
@@ -134,7 +134,7 @@ export class SessionHeartbeatService {
                 }
             }
 
-            logger.info(`Inactive session cleanup complete: ${closedCount} closed, ${errorCount} errors`);
+            logger.debug(`Inactive session cleanup complete: ${closedCount} closed, ${errorCount} errors`);
 
             // Log platform breakdown for monitoring
             const platformBreakdown = inactiveSessions.reduce((acc, session) => {
@@ -143,7 +143,7 @@ export class SessionHeartbeatService {
                 return acc;
             }, {} as Record<string, number>);
 
-            logger.info('Inactive sessions by platform:', platformBreakdown);
+            logger.debug('Inactive sessions by platform:', platformBreakdown);
 
         } catch (error) {
             logger.error('Error in inactive session cleanup:', error);
@@ -195,4 +195,3 @@ export class SessionHeartbeatService {
 
 // Export singleton instance
 export const sessionHeartbeatService = new SessionHeartbeatService();
-

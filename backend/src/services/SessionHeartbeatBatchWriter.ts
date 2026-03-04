@@ -1,4 +1,4 @@
-import { PrismaClient } from '@prisma/client';
+import { Prisma, PrismaClient } from '@prisma/client';
 import logger from '../utils/logger';
 import prisma from '../prisma';
 
@@ -29,8 +29,7 @@ const SHUTDOWN_GRACE_PERIOD_MS = 3000; // Max time to wait during shutdown
 interface PendingHeartbeat {
     sessionId: string;
     lastHeartbeat: Date;
-    endTime: Date;
-    duration: number;
+    duration?: number;
     countryCode: string | null;
 }
 
@@ -47,6 +46,7 @@ export class SessionHeartbeatBatchWriter {
     private flushTimer: NodeJS.Timeout | null = null;
     private isShuttingDown: boolean = false;
     private isFlushing: boolean = false;
+    private readonly flushChunkSize: number;
     
     // Metrics
     private totalFlushed: number = 0;
@@ -55,6 +55,7 @@ export class SessionHeartbeatBatchWriter {
 
     constructor(prismaClient?: PrismaClient) {
         this.prisma = prismaClient || prisma;
+        this.flushChunkSize = Math.max(1, Number(process.env.HEARTBEAT_BATCH_UPDATE_CHUNK_SIZE || 250));
     }
 
     /**
@@ -135,31 +136,20 @@ export class SessionHeartbeatBatchWriter {
         // Take snapshot of current buffer and clear it
         const heartbeatsToFlush = Array.from(this.buffer.values());
         this.buffer.clear();
+        const dedupedHeartbeats = this.dedupeBySession(heartbeatsToFlush);
         
         const startTime = Date.now();
         
         try {
-            // Batch UPDATE heartbeats in a single transaction.
-            // Duration is computed from startTime in DB to avoid read-before-write.
-            const updates = heartbeatsToFlush.map((heartbeat) =>
-                this.prisma.$executeRaw`
-                    UPDATE "sessions"
-                    SET
-                        "lastHeartbeat" = ${heartbeat.lastHeartbeat},
-                        "endTime" = ${heartbeat.endTime},
-                        "duration" = GREATEST(EXTRACT(EPOCH FROM (${heartbeat.endTime} - "startTime"))::int, 0),
-                        "countryCode" = COALESCE(${heartbeat.countryCode}, "countryCode")
-                    WHERE "id" = ${heartbeat.sessionId}
-                `
-            );
-            const updateResults = await this.prisma.$transaction(updates);
-            const updatedCount = updateResults.reduce((sum, count) => sum + Number(count || 0), 0);
+            // Batch update in SQL chunks to minimize roundtrips and WAL churn.
+            const updatedCount = await this.batchUpdateHeartbeats(dedupedHeartbeats);
             
             const flushDuration = Date.now() - startTime;
             this.totalFlushed += updatedCount;
             
-            logger.info(`[SessionHeartbeatBatchWriter] Flushed ${updatedCount}/${heartbeatsToFlush.length} heartbeats in ${flushDuration}ms`, {
+            logger.info(`[SessionHeartbeatBatchWriter] Flushed ${updatedCount}/${heartbeatsToFlush.length} heartbeats (${dedupedHeartbeats.length} deduped) in ${flushDuration}ms`, {
                 batchSize: heartbeatsToFlush.length,
+                dedupedBatchSize: dedupedHeartbeats.length,
                 successCount: updatedCount,
                 flushDuration,
                 totalFlushed: this.totalFlushed,
@@ -175,21 +165,7 @@ export class SessionHeartbeatBatchWriter {
             
             // Retry once
             try {
-                let updatedCount = 0;
-                
-                const retryUpdates = heartbeatsToFlush.map((heartbeat) =>
-                    this.prisma.$executeRaw`
-                        UPDATE "sessions"
-                        SET
-                            "lastHeartbeat" = ${heartbeat.lastHeartbeat},
-                            "endTime" = ${heartbeat.endTime},
-                            "duration" = GREATEST(EXTRACT(EPOCH FROM (${heartbeat.endTime} - "startTime"))::int, 0),
-                            "countryCode" = COALESCE(${heartbeat.countryCode}, "countryCode")
-                        WHERE "id" = ${heartbeat.sessionId}
-                    `
-                );
-                const retryResults = await this.prisma.$transaction(retryUpdates);
-                updatedCount = retryResults.reduce((sum, count) => sum + Number(count || 0), 0);
+                const updatedCount = await this.batchUpdateHeartbeats(dedupedHeartbeats);
                 
                 const retryDuration = Date.now() - startTime;
                 this.totalFlushed += updatedCount;
@@ -212,6 +188,67 @@ export class SessionHeartbeatBatchWriter {
         } finally {
             this.isFlushing = false;
         }
+    }
+
+    private dedupeBySession(heartbeats: PendingHeartbeat[]): PendingHeartbeat[] {
+        const latestBySession = new Map<string, PendingHeartbeat>();
+        for (const hb of heartbeats) {
+            const existing = latestBySession.get(hb.sessionId);
+            if (!existing || hb.lastHeartbeat >= existing.lastHeartbeat) {
+                latestBySession.set(hb.sessionId, hb);
+            }
+        }
+        return Array.from(latestBySession.values());
+    }
+
+    private async batchUpdateHeartbeats(heartbeats: PendingHeartbeat[]): Promise<number> {
+        if (heartbeats.length === 0) return 0;
+
+        let updatedTotal = 0;
+        for (let i = 0; i < heartbeats.length; i += this.flushChunkSize) {
+            const chunk = heartbeats.slice(i, i + this.flushChunkSize);
+            const valuesSql = Prisma.join(
+                chunk.map((hb) =>
+                    Prisma.sql`(${hb.sessionId}::text, ${hb.lastHeartbeat}::timestamptz, ${hb.duration ?? null}::integer, ${hb.countryCode}::text)`
+                )
+            );
+
+            const updated = await this.prisma.$executeRaw(Prisma.sql`
+                UPDATE "sessions" AS s
+                SET
+                  "lastHeartbeat" = CASE
+                    WHEN s."lastHeartbeat" IS NULL THEN v.last_heartbeat
+                    WHEN v.last_heartbeat > s."lastHeartbeat" THEN v.last_heartbeat
+                    ELSE s."lastHeartbeat"
+                  END,
+                  "duration" = CASE
+                    WHEN v.duration_sec IS NOT NULL THEN
+                      CASE
+                        WHEN s."duration" IS NULL THEN v.duration_sec
+                        WHEN v.duration_sec > s."duration" THEN v.duration_sec
+                        ELSE s."duration"
+                      END
+                    ELSE
+                      GREATEST(
+                        COALESCE(s."duration", 0),
+                        EXTRACT(EPOCH FROM (v.last_heartbeat - s."startTime"))::int,
+                        0
+                      )
+                  END,
+                  "countryCode" = CASE
+                    WHEN s."countryCode" IS NULL AND v.country_code IS NOT NULL THEN v.country_code
+                    ELSE s."countryCode"
+                  END
+                FROM (
+                  VALUES ${valuesSql}
+                ) AS v(session_id, last_heartbeat, duration_sec, country_code)
+                WHERE s."id" = v.session_id
+                  AND s."endTime" IS NULL
+            `);
+            updatedTotal += Number(updated || 0);
+        }
+
+        return updatedTotal;
     }
 
     /**

@@ -83,6 +83,26 @@ RUN_API=false RUN_JOBS=true DATABASE_URL=<railway_postgres_url> npm run dev
 
 The local worker must remain online for cron/rollup processing.
 
+## Job Env Reference
+
+For all background job environment flags and low-cost recommended settings, see:
+
+- `../docs/BACKEND/README-JOBS-ENV.md`
+- `../docs/BACKEND/README-EGRESS-RUNBOOK.md`
+- `../docs/BACKEND/CLICKHOUSE-MIGRATION-RUNBOOK.md`
+
+### Query Stats Snapshot
+
+Capture top query-cost snapshots for before/after comparisons:
+
+```bash
+npm run ops:query-stats-snapshot -- 25
+```
+
+Output:
+
+- `logs/query-stats/query-stats-<timestamp>.json`
+
 ### PM2 Worker Operations
 
 Start worker with PM2 (from `backend/`):

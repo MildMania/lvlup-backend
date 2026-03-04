@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useCallback } from 'react';
+import React, { useEffect, useState, useCallback, useRef } from 'react';
 import { Activity, RefreshCw, Filter, Search, Clock, User } from 'lucide-react';
 import './Events.css';
 
@@ -54,11 +54,12 @@ const Events: React.FC<EventsProps> = ({ gameInfo, isCollapsed = false }) => {
   const [events, setEvents] = useState<Event[]>([]);
   const [loading, setLoading] = useState(false);
   const [autoRefresh, setAutoRefresh] = useState(true);
-  const [refreshInterval, setRefreshInterval] = useState(5); // seconds
+  const [refreshInterval, setRefreshInterval] = useState(15); // seconds
   const [searchTerm, setSearchTerm] = useState('');
   const [filterEventType, setFilterEventType] = useState('all');
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
   const [clearedAtTimestamp, setClearedAtTimestamp] = useState<string | null>(null);
+  const isFetchingRef = useRef(false);
 
   const fetchEvents = useCallback(async () => {
     if (!gameInfo || gameInfo.id === 'default') {
@@ -66,6 +67,12 @@ const Events: React.FC<EventsProps> = ({ gameInfo, isCollapsed = false }) => {
       setLoading(false);
       return;
     }
+    
+    if (isFetchingRef.current) {
+      return;
+    }
+
+    isFetchingRef.current = true;
 
     setLoading(true); // Always set loading to true at start
     
@@ -125,6 +132,7 @@ const Events: React.FC<EventsProps> = ({ gameInfo, isCollapsed = false }) => {
       console.error('[Events] Error fetching events:', error);
     } finally {
       setLoading(false); // Always reset loading state
+      isFetchingRef.current = false;
     }
   }, [gameInfo, clearedAtTimestamp, searchTerm, filterEventType]);
 
@@ -151,6 +159,9 @@ const Events: React.FC<EventsProps> = ({ gameInfo, isCollapsed = false }) => {
     if (!autoRefresh) return;
 
     const interval = setInterval(() => {
+      if (document.visibilityState !== 'visible') {
+        return;
+      }
       fetchEvents();
     }, refreshInterval * 1000);
 
@@ -277,9 +288,8 @@ const Events: React.FC<EventsProps> = ({ gameInfo, isCollapsed = false }) => {
                 onChange={(e) => setRefreshInterval(Number(e.target.value))}
                 className="interval-select"
               >
-                <option value={3}>3s</option>
-                <option value={5}>5s</option>
                 <option value={10}>10s</option>
+                <option value={15}>15s</option>
                 <option value={30}>30s</option>
                 <option value={60}>1m</option>
               </select>
@@ -638,4 +648,3 @@ const Events: React.FC<EventsProps> = ({ gameInfo, isCollapsed = false }) => {
 };
 
 export default Events;
-

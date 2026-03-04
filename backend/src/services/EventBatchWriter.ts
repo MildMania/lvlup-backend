@@ -174,6 +174,7 @@ export class EventBatchWriter {
                 createManyArgs.skipDuplicates = true;
             }
             await this.prisma.event.createMany(createManyArgs);
+            await this.reconcileClosedSessionEndTimes(eventsToFlush);
             
             const flushDuration = Date.now() - startTime;
             this.totalFlushed += eventsToFlush.length;
@@ -199,6 +200,7 @@ export class EventBatchWriter {
                     retryCreateManyArgs.skipDuplicates = true;
                 }
                 await this.prisma.event.createMany(retryCreateManyArgs);
+                await this.reconcileClosedSessionEndTimes(eventsToFlush);
                 
                 const retryDuration = Date.now() - startTime;
                 this.totalFlushed += eventsToFlush.length;
@@ -221,6 +223,87 @@ export class EventBatchWriter {
             }
         } finally {
             this.isFlushing = false;
+        }
+    }
+
+    /**
+     * Safety net: if an event arrives for an already-closed session with a later timestamp,
+     * extend the session's endTime/duration to preserve consistency.
+     *
+     * Runs after successful batch insert and groups by sessionId to avoid per-event DB load.
+     */
+    private async reconcileClosedSessionEndTimes(events: PendingEvent[]): Promise<void> {
+        const sessionModel = (this.prisma as any)?.session;
+        if (!sessionModel?.findMany || !sessionModel?.updateMany) {
+            return;
+        }
+
+        const latestBySession = new Map<string, Date>();
+
+        for (const event of events) {
+            if (!event.sessionId) continue;
+
+            const currentMax = latestBySession.get(event.sessionId);
+            if (!currentMax || event.timestamp > currentMax) {
+                latestBySession.set(event.sessionId, event.timestamp);
+            }
+        }
+
+        if (latestBySession.size === 0) {
+            return;
+        }
+
+        const sessionIds = Array.from(latestBySession.keys());
+        const sessions = await sessionModel.findMany({
+            where: {
+                id: { in: sessionIds },
+                endTime: { not: null }
+            },
+            select: {
+                id: true,
+                startTime: true,
+                endTime: true
+            }
+        });
+
+        if (sessions.length === 0) {
+            return;
+        }
+
+        let extendedCount = 0;
+
+        for (const session of sessions) {
+            const latestEventTs = latestBySession.get(session.id);
+            if (!latestEventTs || !session.endTime || latestEventTs <= session.endTime) {
+                continue;
+            }
+
+            const duration = Math.max(
+                Math.floor((latestEventTs.getTime() - session.startTime.getTime()) / 1000),
+                0
+            );
+
+            const result = await sessionModel.updateMany({
+                where: {
+                    id: session.id,
+                    endTime: { lt: latestEventTs }
+                },
+                data: {
+                    endTime: latestEventTs,
+                    duration
+                }
+            });
+
+            if (result.count > 0) {
+                extendedCount += 1;
+            }
+        }
+
+        if (extendedCount > 0) {
+            logger.info(`[EventBatchWriter] Extended ${extendedCount} closed sessions based on late events`, {
+                checkedSessions: sessions.length,
+                candidateSessions: latestBySession.size
+            });
         }
     }
 

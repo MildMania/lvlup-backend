@@ -36,11 +36,17 @@ export class ClickHouseSyncService {
     this.prisma = prismaClient || prisma;
     this.batchSize = Number(process.env.CLICKHOUSE_SYNC_BATCH_SIZE || 10000);
     this.maxBatchesPerTable = Number(process.env.CLICKHOUSE_SYNC_MAX_BATCHES || 5);
-    const configured = (process.env.CLICKHOUSE_SYNC_TABLES || 'events,revenue,sessions,users,cohort_retention_daily,cohort_session_metrics_daily,level_metrics_daily,level_metrics_daily_users,level_churn_cohort_daily')
+    const clickHouseAggJobsEnabled =
+      process.env.ENABLE_CLICKHOUSE_AGGREGATION_JOBS === '1' ||
+      process.env.ENABLE_CLICKHOUSE_AGGREGATION_JOBS === 'true';
+    const defaultTables = clickHouseAggJobsEnabled
+      ? 'events,revenue,sessions,users'
+      : 'events,revenue,sessions,users,cohort_retention_daily,cohort_session_metrics_daily,level_metrics_daily,level_metrics_daily_users,level_churn_cohort_daily';
+    const configured = (process.env.CLICKHOUSE_SYNC_TABLES || defaultTables)
       .split(',')
       .map((v) => v.trim().toLowerCase())
       .filter(Boolean);
-    this.enabledTables = configured.filter((v): v is SyncTable =>
+    const parsedTables = configured.filter((v): v is SyncTable =>
       v === 'events' ||
       v === 'revenue' ||
       v === 'sessions' ||
@@ -51,6 +57,25 @@ export class ClickHouseSyncService {
       v === 'level_metrics_daily_users' ||
       v === 'level_churn_cohort_daily'
     );
+
+    if (clickHouseAggJobsEnabled) {
+      const filtered = parsedTables.filter(
+        (table) =>
+          table !== 'cohort_retention_daily' &&
+          table !== 'cohort_session_metrics_daily' &&
+          table !== 'level_metrics_daily' &&
+          table !== 'level_metrics_daily_users' &&
+          table !== 'level_churn_cohort_daily'
+      );
+      if (filtered.length !== parsedTables.length) {
+        logger.warn(
+          '[ClickHouseSync] ENABLE_CLICKHOUSE_AGGREGATION_JOBS is enabled; skipping Postgres->ClickHouse sync for aggregate tables'
+        );
+      }
+      this.enabledTables = filtered;
+    } else {
+      this.enabledTables = parsedTables;
+    }
   }
 
   isEnabled(): boolean {

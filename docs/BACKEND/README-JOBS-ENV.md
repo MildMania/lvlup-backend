@@ -53,9 +53,9 @@ Typical modes:
   - Daily monetization aggregation still runs.
 
 - `ACTIVE_USERS_DAILY_CHUNKED`
-  - Default: `true`
-  - `1`: computes exact DAU via hourly chunked de-dup (lower peak memory).
-  - `0`: legacy one-shot exact `COUNT(DISTINCT)` query (usually faster, can spike memory more).
+  - Default: `false`
+  - `1`: computes exact DAU via hourly chunked de-dup (lower peak memory, more transaction overhead).
+  - `0` (default): legacy one-shot exact `COUNT(DISTINCT)` query (more stable in production).
 
 - `COHORT_DAYINDEX_CHUNK_SIZE`
   - Default: `8`
@@ -125,6 +125,19 @@ Typical modes:
 - `CLICKHOUSE_SYNC_TABLES`
   - Default: `"events,revenue,sessions,users,cohort_retention_daily,cohort_session_metrics_daily,level_metrics_daily,level_metrics_daily_users,level_churn_cohort_daily"`
   - Comma-separated list of tables to sync in each cron cycle.
+  - If `ENABLE_CLICKHOUSE_AGGREGATION_JOBS=1`, aggregate-table sync is automatically skipped to avoid conflicts with ClickHouse-native rollup jobs.
+
+- `ENABLE_CLICKHOUSE_AGGREGATION_JOBS`
+  - Default: `0`
+  - When enabled, worker runs ClickHouse-native rollup jobs for daily/hourly analytics aggregates and skips Postgres aggregation cron jobs.
+
+- `CLICKHOUSE_AGGREGATION_GROUPS`
+  - Default: `level_metrics,active_users,cohort,monetization`
+  - Comma-separated list of ClickHouse aggregation groups to schedule.
+
+- `CLICKHOUSE_COHORT_DAY_INDICES`
+  - Default: `0..30,60,90,180,360,540,720`
+  - Day-index list used by ClickHouse cohort rebuild jobs.
 
 - `CLICKHOUSE_SYNC_BATCH_SIZE`
   - Default: `10000`

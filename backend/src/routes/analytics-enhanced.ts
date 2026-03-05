@@ -22,7 +22,7 @@ router.use(authenticateEither);
 /**
  * GET /analytics/filters/options - Get available filter options (countries, versions, platforms)
  */
-router.get('/filters/options', analyticsFiltersController.getFilterOptions);
+router.get('/filters/options', analyticsFiltersController.getFilterOptions.bind(analyticsFiltersController));
 
 // Engagement Metrics Endpoints
 /**

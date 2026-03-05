@@ -179,9 +179,21 @@ Typical modes:
   - Default: `0`
   - Read `/analytics/metrics/playtime` from ClickHouse with Postgres fallback.
 
+- `ANALYTICS_READ_DASHBOARD_FROM_CLICKHOUSE`
+  - Default: `0`
+  - Read `/analytics/dashboard` from ClickHouse with Postgres fallback.
+
+- `ANALYTICS_READ_FILTER_OPTIONS_FROM_CLICKHOUSE`
+  - Default: `0`
+  - Read `/analytics/filters/options` from ClickHouse with Postgres fallback.
+
 - `ANALYTICS_READ_COHORT_FROM_CLICKHOUSE`
   - Default: `0`
   - Read `/analytics/cohort/*` metrics from ClickHouse rollup tables with Postgres fallback.
+
+- `ANALYTICS_READ_MONETIZATION_COHORTS_FROM_CLICKHOUSE`
+  - Default: `0`
+  - Read `/analytics/metrics/monetization-cohorts` from ClickHouse with Postgres fallback.
 
 - `ANALYTICS_READ_LEVEL_FUNNEL_FROM_CLICKHOUSE`
   - Default: `0`

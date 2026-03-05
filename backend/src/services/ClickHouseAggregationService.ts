@@ -665,46 +665,40 @@ export class ClickHouseAggregationService {
       SELECT
         concat(
           'crd_',
-          gameId, '_',
-          formatDateTime(installDate, '%Y-%m-%d'), '_',
-          toString(dayIndex), '_',
-          platform, '_',
-          countryCode, '_',
-          appVersion
+          cu.gameId, '_',
+          formatDateTime(cu.installDate, '%Y-%m-%d'), '_',
+          toString(cu.dayIndex), '_',
+          ifNull(d.platform, ''), '_',
+          ifNull(d.countryCode, ''), '_',
+          ifNull(d.appVersion, '')
         ) AS id,
-        gameId,
-        toDateTime64(installDate, 3, 'UTC') AS installDate,
-        dayIndex,
-        platform,
-        countryCode,
-        appVersion,
+        cu.gameId AS gameId,
+        toDateTime64(cu.installDate, 3, 'UTC') AS installDate,
+        cu.dayIndex AS dayIndex,
+        ifNull(d.platform, '') AS platform,
+        ifNull(d.countryCode, '') AS countryCode,
+        ifNull(d.appVersion, '') AS appVersion,
         toInt32(count()) AS cohortSize,
-        toInt32(countIf(retained = 1)) AS retainedUsers,
-        toInt32(sum(levelCompletes)) AS retainedLevelCompletes,
+        toInt32(countIf(ifNull(r.retained, 0) = 1)) AS retainedUsers,
+        toInt32(sum(toInt32(ifNull(co.levelCompletes, 0)))) AS retainedLevelCompletes,
         now64(3) AS updatedAt
-      FROM (
-        SELECT
-          cu.gameId,
-          cu.userId,
-          cu.installDate,
-          cu.dayIndex,
-          ifNull(d.platform, '') AS platform,
-          ifNull(d.countryCode, '') AS countryCode,
-          ifNull(d.appVersion, '') AS appVersion,
-          toUInt8(ifNull(r.retained, 0)) AS retained,
-          toInt32(ifNull(co.levelCompletes, 0)) AS levelCompletes
-        FROM cohort_users cu
-        LEFT JOIN user_dims d
-          ON d.gameId = cu.gameId
-         AND d.userId = cu.userId
-        LEFT JOIN retained r
-          ON r.gameId = cu.gameId
-         AND r.userId = cu.userId
-        LEFT JOIN completes co
-          ON co.gameId = cu.gameId
-         AND co.userId = cu.userId
-      ) c
-      GROUP BY gameId, installDate, dayIndex, platform, countryCode, appVersion
+      FROM cohort_users cu
+      LEFT JOIN user_dims d
+        ON d.gameId = cu.gameId
+       AND d.userId = cu.userId
+      LEFT JOIN retained r
+        ON r.gameId = cu.gameId
+       AND r.userId = cu.userId
+      LEFT JOIN completes co
+        ON co.gameId = cu.gameId
+       AND co.userId = cu.userId
+      GROUP BY
+        cu.gameId,
+        cu.installDate,
+        cu.dayIndex,
+        ifNull(d.platform, ''),
+        ifNull(d.countryCode, ''),
+        ifNull(d.appVersion, '')
     `);
 
     await clickHouseService.command(`
@@ -776,44 +770,38 @@ export class ClickHouseAggregationService {
       SELECT
         concat(
           'csd_',
-          gameId, '_',
-          formatDateTime(installDate, '%Y-%m-%d'), '_',
-          toString(dayIndex), '_',
-          platform, '_',
-          countryCode, '_',
-          appVersion
+          cu.gameId, '_',
+          formatDateTime(cu.installDate, '%Y-%m-%d'), '_',
+          toString(cu.dayIndex), '_',
+          ifNull(d.platform, ''), '_',
+          ifNull(d.countryCode, ''), '_',
+          ifNull(d.appVersion, '')
         ) AS id,
-        gameId,
-        toDateTime64(installDate, 3, 'UTC') AS installDate,
-        dayIndex,
-        platform,
-        countryCode,
-        appVersion,
+        cu.gameId AS gameId,
+        toDateTime64(cu.installDate, 3, 'UTC') AS installDate,
+        cu.dayIndex AS dayIndex,
+        ifNull(d.platform, '') AS platform,
+        ifNull(d.countryCode, '') AS countryCode,
+        ifNull(d.appVersion, '') AS appVersion,
         toInt32(count()) AS cohortSize,
-        toInt32(countIf(totalSessions > 0)) AS sessionUsers,
-        toInt32(sum(totalSessions)) AS totalSessions,
-        toInt32(sum(totalDurationSec)) AS totalDurationSec,
+        toInt32(countIf(toInt32(ifNull(s.totalSessions, 0)) > 0)) AS sessionUsers,
+        toInt32(sum(toInt32(ifNull(s.totalSessions, 0)))) AS totalSessions,
+        toInt32(sum(toInt32(ifNull(s.totalDurationSec, 0)))) AS totalDurationSec,
         now64(3) AS updatedAt
-      FROM (
-        SELECT
-          cu.gameId,
-          cu.userId,
-          cu.installDate,
-          cu.dayIndex,
-          ifNull(d.platform, '') AS platform,
-          ifNull(d.countryCode, '') AS countryCode,
-          ifNull(d.appVersion, '') AS appVersion,
-          toInt32(ifNull(s.totalSessions, 0)) AS totalSessions,
-          toInt32(ifNull(s.totalDurationSec, 0)) AS totalDurationSec
-        FROM cohort_users cu
-        LEFT JOIN user_dims d
-          ON d.gameId = cu.gameId
-         AND d.userId = cu.userId
-        LEFT JOIN sessions_by_user s
-          ON s.gameId = cu.gameId
-         AND s.userId = cu.userId
-      ) c
-      GROUP BY gameId, installDate, dayIndex, platform, countryCode, appVersion
+      FROM cohort_users cu
+      LEFT JOIN user_dims d
+        ON d.gameId = cu.gameId
+       AND d.userId = cu.userId
+      LEFT JOIN sessions_by_user s
+        ON s.gameId = cu.gameId
+       AND s.userId = cu.userId
+      GROUP BY
+        cu.gameId,
+        cu.installDate,
+        cu.dayIndex,
+        ifNull(d.platform, ''),
+        ifNull(d.countryCode, ''),
+        ifNull(d.appVersion, '')
     `);
   }
 

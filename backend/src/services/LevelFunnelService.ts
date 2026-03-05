@@ -170,7 +170,6 @@ export class LevelFunnelService {
             
             // Determine if we're querying multiple days
             const daysDifference = Math.ceil((end.getTime() - start.getTime()) / (24 * 60 * 60 * 1000));
-            const isMultipleDays = daysDifference > 1;
             
             const hasInstallCohortFilter = !!(installStartDate || installEndDate);
 
@@ -251,23 +250,22 @@ export class LevelFunnelService {
             });
             
 
-            // Get accurate unique user counts from daily user rows (exact across days)
-            let userCountsByLevel: Map<number, {
+            // Get accurate unique user counts from daily user rows (exact across days/dimensions).
+            // We intentionally do this for both single-day and multi-day ranges because
+            // level_metrics_daily stores per-dimension user counts, and summing those can
+            // over-count unique players when users appear under multiple dimensions.
+            const userCountsByLevel: Map<number, {
                 startedPlayers: number;
                 completedPlayers: number;
                 boosterUsers: number;
                 egpUsers: number;
-            }> | null = null;
-
-            if (isMultipleDays) {
-                userCountsByLevel = await this.queryDailyUserCounts(gameId, start, end, {
-                    country,
-                    platform,
-                    version,
-                    levelFunnel,
-                    levelFunnelVersion
-                });
-            }
+            }> = await this.queryDailyUserCounts(gameId, start, end, {
+                country,
+                platform,
+                version,
+                levelFunnel,
+                levelFunnelVersion
+            });
 
             // Group by levelId and sum event counts from aggregated data
             const grouped = new Map<number, any>();
@@ -280,11 +278,11 @@ export class LevelFunnelService {
                         starts: 0,
                         completes: 0,
                         fails: 0,
-                        startedPlayers: 0, // Will be replaced with raw event counts for multi-day
-                        completedPlayers: 0, // Will be replaced with raw event counts for multi-day
-                        boosterUsers: 0, // Will be replaced with raw event counts for multi-day
+                        startedPlayers: 0, // Replaced with exact DISTINCT user counts from daily user rows
+                        completedPlayers: 0, // Replaced with exact DISTINCT user counts from daily user rows
+                        boosterUsers: 0, // Replaced with exact DISTINCT user counts from daily user rows
                         totalBoosterUsage: 0,
-                        egpUsers: 0, // Will be replaced with raw event counts for multi-day
+                        egpUsers: 0, // Replaced with exact DISTINCT user counts from daily user rows
                         totalEgpUsage: 0,
                         totalCompletionDuration: BigInt(0),
                         completionCount: 0,
@@ -305,27 +303,18 @@ export class LevelFunnelService {
                 group.totalFailDuration += BigInt(row.totalFailDuration);
                 group.failCount += row.failCount;
                 
-                // If single day, sum user counts from aggregated data
-                if (!isMultipleDays) {
-                    group.startedPlayers += row.startedPlayers;
-                    group.completedPlayers += row.completedPlayers;
-                    group.boosterUsers += row.boosterUsers;
-                    group.egpUsers += row.egpUsers;
-                }
             }
             
             const mergedData = grouped;
 
-            // Replace user counts with accurate raw event counts for multi-day queries
-            if (userCountsByLevel) {
-                for (const [levelId, counts] of userCountsByLevel.entries()) {
-                    const group = mergedData.get(levelId);
-                    if (group) {
-                        group.startedPlayers = counts.startedPlayers;
-                        group.completedPlayers = counts.completedPlayers;
-                        group.boosterUsers = counts.boosterUsers;
-                        group.egpUsers = counts.egpUsers;
-                    }
+            // Replace user counts with exact DISTINCT user counts.
+            for (const [levelId, counts] of userCountsByLevel.entries()) {
+                const group = mergedData.get(levelId);
+                if (group) {
+                    group.startedPlayers = counts.startedPlayers;
+                    group.completedPlayers = counts.completedPlayers;
+                    group.boosterUsers = counts.boosterUsers;
+                    group.egpUsers = counts.egpUsers;
                 }
             }
 

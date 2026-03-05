@@ -205,13 +205,21 @@ export class HealthMetricsService {
         SELECT
           argMax(id, timestamp) AS id,
           message,
-          ifNull(exceptionType, 'Unknown') AS exceptionType,
+          exceptionTypeKey AS exceptionType,
           toInt64(count()) AS cnt,
           toInt64(uniqExactIf(userId, userId IS NOT NULL AND userId != '')) AS affectedUsers,
           max(timestamp) AS lastOccurrence
-        FROM crash_logs_raw
-        WHERE ${crashWhere}
-        GROUP BY message, ifNull(exceptionType, 'Unknown')
+        FROM (
+          SELECT
+            id,
+            message,
+            ifNull(exceptionType, 'Unknown') AS exceptionTypeKey,
+            userId,
+            timestamp
+          FROM crash_logs_raw
+          WHERE ${crashWhere}
+        ) c
+        GROUP BY message, exceptionTypeKey
         ORDER BY cnt DESC
         LIMIT ${crashesLimit}
         OFFSET ${crashesOffset}
@@ -219,10 +227,15 @@ export class HealthMetricsService {
       clickHouseService.query<Array<{ totalCrashGroups: number }>[number]>(`
         SELECT toInt64(count()) AS totalCrashGroups
         FROM (
-          SELECT message, ifNull(exceptionType, 'Unknown')
-          FROM crash_logs_raw
-          WHERE ${crashWhere}
-          GROUP BY message, ifNull(exceptionType, 'Unknown')
+          SELECT message, exceptionTypeKey
+          FROM (
+            SELECT
+              message,
+              ifNull(exceptionType, 'Unknown') AS exceptionTypeKey
+            FROM crash_logs_raw
+            WHERE ${crashWhere}
+          ) c
+          GROUP BY message, exceptionTypeKey
         )
       `)
     ]);

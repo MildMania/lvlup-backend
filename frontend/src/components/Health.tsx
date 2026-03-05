@@ -164,7 +164,7 @@ const Health: React.FC<{ gameId: string }> = ({ gameId }) => {
         const apiUrl = import.meta.env.VITE_API_BASE_URL;
         const apiKey = getApiKey();
         
-        const response = await fetch(`${apiUrl}/games/${gameId}/health/filter-options`, {
+        const response = await fetch(`${apiUrl}/analytics/filters/options?gameId=${encodeURIComponent(gameId)}`, {
           headers: {
             'X-API-Key': apiKey,
             'Content-Type': 'application/json',
@@ -172,7 +172,8 @@ const Health: React.FC<{ gameId: string }> = ({ gameId }) => {
         });
         
         if (response.ok) {
-          const data = await response.json();
+          const payload = await response.json();
+          const data = payload?.data ?? payload;
           setAvailableCountries(['All', ...(data.countries || [])]);
           setAvailableVersions(['All', ...(data.versions || [])]);
         }

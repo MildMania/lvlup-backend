@@ -4,11 +4,9 @@
  * Phase 4: User Story 2 - Advanced Config Validation
  */
 
-import { PrismaClient } from '@prisma/client';
 import { ValidationRule, ValidationRuleType } from '../types/config.types';
 import logger from '../utils/logger';
-
-const prisma = new PrismaClient();
+import prisma from '../prisma';
 
 /**
  * Creates validation rules for a config
@@ -194,4 +192,3 @@ export async function copyValidationRules(
     throw error;
   }
 }
-

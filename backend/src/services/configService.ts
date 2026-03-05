@@ -4,7 +4,6 @@
  * Handles config creation, updates, deletion with cache invalidation
  */
 
-import { PrismaClient } from '@prisma/client';
 import {
   RemoteConfig,
   CreateConfigInput,
@@ -31,8 +30,8 @@ import {
   RuleNotFoundError,
 } from '../types/config.types';
 import logger from '../utils/logger';
+import prisma from '../prisma';
 
-const prisma = new PrismaClient();
 const MAX_RULES_PER_CONFIG = 30;
 const MAX_VALUE_SIZE = 100 * 1024; // 100KB
 
@@ -647,4 +646,3 @@ export async function reorderRules(rules: Array<{ id: string; priority: number }
     )
   );
 }
-

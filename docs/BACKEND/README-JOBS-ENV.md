@@ -123,7 +123,7 @@ Typical modes:
   - ClickHouse HTTP connection settings for sync + read-path queries.
 
 - `CLICKHOUSE_SYNC_TABLES`
-  - Default: `"events,revenue,sessions,users,cohort_retention_daily,cohort_session_metrics_daily,level_metrics_daily,level_metrics_daily_users,level_churn_cohort_daily"`
+  - Default: `"events,revenue,sessions,users,crash_logs,cohort_retention_daily,cohort_session_metrics_daily,level_metrics_daily,level_metrics_daily_users,level_churn_cohort_daily"`
   - Comma-separated list of tables to sync in each cron cycle.
   - If `ENABLE_CLICKHOUSE_AGGREGATION_JOBS=1`, aggregate-table sync is automatically skipped to avoid conflicts with ClickHouse-native rollup jobs.
 
@@ -198,6 +198,10 @@ Typical modes:
 - `ANALYTICS_READ_LEVEL_FUNNEL_FROM_CLICKHOUSE`
   - Default: `0`
   - Read `/level-funnel` from ClickHouse rollup tables with Postgres fallback.
+
+- `ANALYTICS_READ_HEALTH_FROM_CLICKHOUSE`
+  - Default: `0`
+  - Read `/games/:gameId/health/*` endpoints from ClickHouse with Postgres fallback.
 
 ## Recommended low-cost production setup
 

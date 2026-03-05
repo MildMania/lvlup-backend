@@ -37,7 +37,8 @@ export class ClickHouseService {
       'ANALYTICS_READ_LEVEL_FUNNEL_FROM_CLICKHOUSE',
       'ANALYTICS_READ_DASHBOARD_FROM_CLICKHOUSE',
       'ANALYTICS_READ_FILTER_OPTIONS_FROM_CLICKHOUSE',
-      'ANALYTICS_READ_MONETIZATION_COHORTS_FROM_CLICKHOUSE'
+      'ANALYTICS_READ_MONETIZATION_COHORTS_FROM_CLICKHOUSE',
+      'ANALYTICS_READ_HEALTH_FROM_CLICKHOUSE'
     ].some((key) => this.envTrue(key));
 
     this.enabled = pipelineEnabled || aggregationJobsEnabled || anyReadFlagEnabled;

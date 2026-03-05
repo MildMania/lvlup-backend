@@ -8,6 +8,7 @@ type SyncTable =
   | 'revenue'
   | 'sessions'
   | 'users'
+  | 'crash_logs'
   | 'cohort_retention_daily'
   | 'cohort_session_metrics_daily'
   | 'level_metrics_daily'
@@ -40,8 +41,8 @@ export class ClickHouseSyncService {
       process.env.ENABLE_CLICKHOUSE_AGGREGATION_JOBS === '1' ||
       process.env.ENABLE_CLICKHOUSE_AGGREGATION_JOBS === 'true';
     const defaultTables = clickHouseAggJobsEnabled
-      ? 'events,revenue,sessions,users'
-      : 'events,revenue,sessions,users,cohort_retention_daily,cohort_session_metrics_daily,level_metrics_daily,level_metrics_daily_users,level_churn_cohort_daily';
+      ? 'events,revenue,sessions,users,crash_logs'
+      : 'events,revenue,sessions,users,crash_logs,cohort_retention_daily,cohort_session_metrics_daily,level_metrics_daily,level_metrics_daily_users,level_churn_cohort_daily';
     const configured = (process.env.CLICKHOUSE_SYNC_TABLES || defaultTables)
       .split(',')
       .map((v) => v.trim().toLowerCase())
@@ -51,6 +52,7 @@ export class ClickHouseSyncService {
       v === 'revenue' ||
       v === 'sessions' ||
       v === 'users' ||
+      v === 'crash_logs' ||
       v === 'cohort_retention_daily' ||
       v === 'cohort_session_metrics_daily' ||
       v === 'level_metrics_daily' ||
@@ -177,6 +179,43 @@ export class ClickHouseSyncService {
       ENGINE = MergeTree
       PARTITION BY toYYYYMM(createdAt)
       ORDER BY (gameId, createdAt, id)
+    `);
+
+    await clickHouseService.command(`
+      CREATE TABLE IF NOT EXISTS crash_logs_raw (
+        id String,
+        gameId String,
+        userId Nullable(String),
+        sessionId Nullable(String),
+        crashType String,
+        severity String,
+        message String,
+        stackTrace String,
+        exceptionType Nullable(String),
+        platform String,
+        osVersion Nullable(String),
+        manufacturer Nullable(String),
+        device Nullable(String),
+        deviceId Nullable(String),
+        appVersion String,
+        appBuild Nullable(String),
+        bundleId Nullable(String),
+        engineVersion Nullable(String),
+        sdkVersion Nullable(String),
+        country String,
+        connectionType Nullable(String),
+        memoryUsage Nullable(Int64),
+        batteryLevel Nullable(Float64),
+        diskSpace Nullable(Int64),
+        breadcrumbs Nullable(String),
+        customData Nullable(String),
+        timestamp DateTime64(3, 'UTC'),
+        resolved UInt8,
+        resolvedAt Nullable(DateTime64(3, 'UTC'))
+      )
+      ENGINE = MergeTree
+      PARTITION BY toYYYYMM(timestamp)
+      ORDER BY (gameId, timestamp, id)
     `);
 
     await clickHouseService.command(`
@@ -337,6 +376,7 @@ export class ClickHouseSyncService {
   private getRowTimestamp(table: SyncTable, row: any): Date {
     if (table === 'events' || table === 'revenue') return new Date(row.serverReceivedAt);
     if (table === 'sessions') return new Date(row.startTime);
+    if (table === 'crash_logs') return new Date(row.timestamp);
     if (table === 'cohort_retention_daily' || table === 'cohort_session_metrics_daily') {
       return new Date(row.updatedAt);
     }
@@ -474,6 +514,48 @@ export class ClickHouseSyncService {
             OR (c."updatedAt" = ${watermark.lastTs} AND c."id" > ${watermark.lastId})
           )
         ORDER BY c."updatedAt" ASC, c."id" ASC
+        LIMIT ${limit}
+      `);
+    }
+
+    if (table === 'crash_logs') {
+      return this.prisma.$queryRaw<Array<any>>(Prisma.sql`
+        SELECT
+          c."id",
+          c."gameId",
+          c."userId",
+          c."sessionId",
+          c."crashType",
+          c."severity",
+          c."message",
+          c."stackTrace",
+          c."exceptionType",
+          COALESCE(c."platform",'') AS "platform",
+          c."osVersion",
+          c."manufacturer",
+          c."device",
+          c."deviceId",
+          COALESCE(c."appVersion",'') AS "appVersion",
+          c."appBuild",
+          c."bundleId",
+          c."engineVersion",
+          c."sdkVersion",
+          COALESCE(c."country",'') AS "country",
+          c."connectionType",
+          c."memoryUsage",
+          c."batteryLevel",
+          c."diskSpace",
+          c."breadcrumbs",
+          c."customData",
+          c."timestamp",
+          c."resolved",
+          c."resolvedAt"
+        FROM "crash_logs" c
+        WHERE (
+            c."timestamp" > ${watermark.lastTs}
+            OR (c."timestamp" = ${watermark.lastTs} AND c."id" > ${watermark.lastId})
+          )
+        ORDER BY c."timestamp" ASC, c."id" ASC
         LIMIT ${limit}
       `);
     }
@@ -655,6 +737,18 @@ export class ClickHouseSyncService {
       })));
       return { inserted: dedupedRows.length, skipped: dedupResult.skipped };
     }
+    if (table === 'crash_logs') {
+      await clickHouseService.insertJsonEachRow('crash_logs_raw', dedupedRows.map((r) => ({
+        ...r,
+        memoryUsage: r.memoryUsage !== null && r.memoryUsage !== undefined ? this.toNumber(r.memoryUsage) : null,
+        batteryLevel: r.batteryLevel !== null && r.batteryLevel !== undefined ? Number(r.batteryLevel) : null,
+        diskSpace: r.diskSpace !== null && r.diskSpace !== undefined ? this.toNumber(r.diskSpace) : null,
+        resolved: r.resolved ? 1 : 0,
+        timestamp: this.toIso(r.timestamp),
+        resolvedAt: r.resolvedAt ? this.toIso(r.resolvedAt) : null
+      })));
+      return { inserted: dedupedRows.length, skipped: dedupResult.skipped };
+    }
     if (table === 'cohort_retention_daily') {
       await clickHouseService.insertJsonEachRow('cohort_retention_daily_raw', dedupedRows.map((r) => ({
         ...r,
@@ -753,6 +847,7 @@ export class ClickHouseSyncService {
     if (table === 'revenue') return 'revenue_raw';
     if (table === 'sessions') return 'sessions_raw';
     if (table === 'users') return 'users_raw';
+    if (table === 'crash_logs') return 'crash_logs_raw';
     if (table === 'cohort_retention_daily') return 'cohort_retention_daily_raw';
     if (table === 'cohort_session_metrics_daily') return 'cohort_session_metrics_daily_raw';
     if (table === 'level_metrics_daily') return 'level_metrics_daily_raw';

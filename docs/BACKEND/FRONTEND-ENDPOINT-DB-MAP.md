@@ -32,10 +32,10 @@ Legend:
 
 | Endpoint | Used by | DB source | Flag / Notes |
 |---|---|---|---|
-| `/api/games/:gameId/health/metrics` | Health tab cards + top errors | Postgres only | Reads `crash_logs` + `sessions` |
-| `/api/games/:gameId/health/timeline` | Health error timeline chart | Postgres only | Reads `crash_logs` + `sessions` |
-| `/api/games/:gameId/health/crashes` | Health recent error logs | Postgres only | Reads `crash_logs` |
-| `/api/games/:gameId/health/error-instances` | Health error details modal/tooltip | Postgres only | Reads `crash_logs` |
+| `/api/games/:gameId/health/metrics` | Health tab cards + top errors | ClickHouse or Postgres fallback | `ANALYTICS_READ_HEALTH_FROM_CLICKHOUSE` |
+| `/api/games/:gameId/health/timeline` | Health error timeline chart | ClickHouse or Postgres fallback | `ANALYTICS_READ_HEALTH_FROM_CLICKHOUSE` |
+| `/api/games/:gameId/health/crashes` | Health recent error logs | ClickHouse or Postgres fallback | `ANALYTICS_READ_HEALTH_FROM_CLICKHOUSE` |
+| `/api/games/:gameId/health/error-instances` | Health error details modal/tooltip | ClickHouse or Postgres fallback | `ANALYTICS_READ_HEALTH_FROM_CLICKHOUSE` |
 
 ## Unmatched Frontend Calls (currently)
 

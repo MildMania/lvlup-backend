@@ -120,6 +120,8 @@ const Health: React.FC<{ gameId: string }> = ({ gameId }) => {
 
   // Filters
   const [dateRange, setDateRange] = useState('7d');
+  const [customStartDate, setCustomStartDate] = useState('');
+  const [customEndDate, setCustomEndDate] = useState('');
   const [platform, setPlatform] = useState('');
   const [selectedCountries, setSelectedCountries] = useState<string[]>([]);
   const [selectedVersions, setSelectedVersions] = useState<string[]>([]);
@@ -183,6 +185,16 @@ const Health: React.FC<{ gameId: string }> = ({ gameId }) => {
   }, [gameId]);
 
   const getDateRange = () => {
+    if (dateRange === 'custom') {
+      if (!customStartDate || !customEndDate || customStartDate > customEndDate) {
+        return null;
+      }
+
+      const start = new Date(`${customStartDate}T00:00:00.000Z`);
+      const end = new Date(`${customEndDate}T23:59:59.999Z`);
+      return { start, end };
+    }
+
     const end = new Date();
     const start = new Date();
     
@@ -207,6 +219,11 @@ const Health: React.FC<{ gameId: string }> = ({ gameId }) => {
   };
 
   const toggleCountry = (country: string) => {
+    if (country === 'All') {
+      setSelectedCountries([]);
+      return;
+    }
+
     setSelectedCountries(prev => 
       prev.includes(country) 
         ? prev.filter(c => c !== country)
@@ -215,6 +232,11 @@ const Health: React.FC<{ gameId: string }> = ({ gameId }) => {
   };
 
   const toggleVersion = (version: string) => {
+    if (version === 'All') {
+      setSelectedVersions([]);
+      return;
+    }
+
     setSelectedVersions(prev => 
       prev.includes(version) 
         ? prev.filter(v => v !== version)
@@ -223,13 +245,21 @@ const Health: React.FC<{ gameId: string }> = ({ gameId }) => {
   };
 
   useEffect(() => {
+    if (dateRange === 'custom' && (!customStartDate || !customEndDate || customStartDate > customEndDate)) {
+      return;
+    }
     fetchHealthData();
-  }, [gameId, dateRange, platform, selectedCountries, selectedVersions, severity, crashType, crashesPage]);
+  }, [gameId, dateRange, customStartDate, customEndDate, platform, selectedCountries, selectedVersions, severity, crashType, crashesPage]);
 
   const fetchHealthData = async () => {
     setLoading(true);
     try {
-      const { start, end } = getDateRange();
+      const range = getDateRange();
+      if (!range) {
+        setLoading(false);
+        return;
+      }
+      const { start, end } = range;
       const params = new URLSearchParams({
         startDate: start.toISOString(),
         endDate: end.toISOString(),
@@ -239,10 +269,14 @@ const Health: React.FC<{ gameId: string }> = ({ gameId }) => {
 
       if (platform) params.append('platform', platform);
       if (selectedCountries.length > 0) {
-        selectedCountries.forEach(country => params.append('country', country));
+        selectedCountries
+          .filter(country => country && country !== 'All')
+          .forEach(country => params.append('country', country));
       }
       if (selectedVersions.length > 0) {
-        selectedVersions.forEach(version => params.append('appVersion', version));
+        selectedVersions
+          .filter(version => version && version !== 'All')
+          .forEach(version => params.append('appVersion', version));
       }
       if (severity) params.append('severity', severity);
       if (crashType) params.append('crashType', crashType);
@@ -315,7 +349,12 @@ const Health: React.FC<{ gameId: string }> = ({ gameId }) => {
   const fetchErrorInstances = async (message: string, exceptionType: string, page: number = 0) => {
     setLoadingInstances(true);
     try {
-      const { start, end } = getDateRange();
+      const range = getDateRange();
+      if (!range) {
+        setLoadingInstances(false);
+        return;
+      }
+      const { start, end } = range;
       const params = new URLSearchParams({
         message,
         exceptionType,
@@ -327,10 +366,14 @@ const Health: React.FC<{ gameId: string }> = ({ gameId }) => {
 
       if (platform) params.append('platform', platform);
       if (selectedCountries.length > 0) {
-        selectedCountries.forEach(country => params.append('country', country));
+        selectedCountries
+          .filter(country => country && country !== 'All')
+          .forEach(country => params.append('country', country));
       }
       if (selectedVersions.length > 0) {
-        selectedVersions.forEach(version => params.append('appVersion', version));
+        selectedVersions
+          .filter(version => version && version !== 'All')
+          .forEach(version => params.append('appVersion', version));
       }
 
       const apiUrl = import.meta.env.VITE_API_BASE_URL;
@@ -383,7 +426,12 @@ const Health: React.FC<{ gameId: string }> = ({ gameId }) => {
     setHoveredStackTrace(null);
     
     try {
-      const { start, end } = getDateRange();
+      const range = getDateRange();
+      if (!range) {
+        setLoadingStackTrace(false);
+        return;
+      }
+      const { start, end } = range;
       const params = new URLSearchParams({
         message,
         exceptionType,
@@ -395,10 +443,14 @@ const Health: React.FC<{ gameId: string }> = ({ gameId }) => {
 
       if (platform) params.append('platform', platform);
       if (selectedCountries.length > 0) {
-        selectedCountries.forEach(country => params.append('country', country));
+        selectedCountries
+          .filter(country => country && country !== 'All')
+          .forEach(country => params.append('country', country));
       }
       if (selectedVersions.length > 0) {
-        selectedVersions.forEach(version => params.append('appVersion', version));
+        selectedVersions
+          .filter(version => version && version !== 'All')
+          .forEach(version => params.append('appVersion', version));
       }
 
       const apiUrl = import.meta.env.VITE_API_BASE_URL;
@@ -581,14 +633,47 @@ const Health: React.FC<{ gameId: string }> = ({ gameId }) => {
         <div className="header-controls">
           <select
             value={dateRange}
-            onChange={(e) => setDateRange(e.target.value)}
+            onChange={(e) => {
+              const value = e.target.value;
+              setDateRange(value);
+              if (value === 'custom' && (!customStartDate || !customEndDate)) {
+                const now = new Date();
+                const endDefault = now.toISOString().slice(0, 10);
+                const startDefault = new Date(now.getTime() - 6 * 24 * 60 * 60 * 1000)
+                  .toISOString()
+                  .slice(0, 10);
+                setCustomStartDate(startDefault);
+                setCustomEndDate(endDefault);
+              }
+            }}
             className="date-range-select"
           >
             <option value="24h">Last 24 Hours</option>
             <option value="7d">Last 7 Days</option>
             <option value="30d">Last 30 Days</option>
             <option value="90d">Last 90 Days</option>
+            <option value="custom">Custom Range</option>
           </select>
+
+          {dateRange === 'custom' && (
+            <div className="health-custom-date-range">
+              <input
+                type="date"
+                value={customStartDate}
+                onChange={(e) => setCustomStartDate(e.target.value)}
+                className="health-date-input"
+                max={customEndDate || undefined}
+              />
+              <span className="health-date-separator">to</span>
+              <input
+                type="date"
+                value={customEndDate}
+                onChange={(e) => setCustomEndDate(e.target.value)}
+                className="health-date-input"
+                min={customStartDate || undefined}
+              />
+            </div>
+          )}
 
           <button
             className="filters-toggle"
@@ -1405,4 +1490,3 @@ const Health: React.FC<{ gameId: string }> = ({ gameId }) => {
 };
 
 export default Health;
-

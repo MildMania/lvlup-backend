@@ -122,7 +122,7 @@ export class ClickHouseSyncService {
     `);
 
     await clickHouseService.command(`
-      CREATE TABLE IF NOT EXISTS sessions_raw (
+      CREATE TABLE IF NOT EXISTS sessions_raw_v2 (
         id String,
         gameId String,
         userId String,
@@ -132,11 +132,12 @@ export class ClickHouseSyncService {
         duration Nullable(Int32),
         platform String,
         countryCode String,
-        version String
+        version String,
+        updatedAt DateTime64(3, 'UTC')
       )
-      ENGINE = MergeTree
+      ENGINE = ReplacingMergeTree(updatedAt)
       PARTITION BY toYYYYMM(startTime)
-      ORDER BY (gameId, startTime, id)
+      ORDER BY (gameId, id)
     `);
 
     await clickHouseService.command(`
@@ -311,7 +312,7 @@ export class ClickHouseSyncService {
 
   private getRowTimestamp(table: SyncTable, row: any): Date {
     if (table === 'events' || table === 'revenue') return new Date(row.serverReceivedAt);
-    if (table === 'sessions') return new Date(row.startTime);
+    if (table === 'sessions') return new Date(row.updatedAt);
     if (table === 'cohort_retention_daily' || table === 'cohort_session_metrics_daily') {
       return new Date(row.updatedAt);
     }
@@ -416,15 +417,16 @@ export class ClickHouseSyncService {
           s."endTime",
           s."lastHeartbeat",
           s."duration",
+          s."updatedAt",
           COALESCE(s."platform",'') AS "platform",
           COALESCE(s."countryCode",'') AS "countryCode",
           COALESCE(s."version",'') AS "version"
         FROM "sessions" s
         WHERE (
-            s."startTime" > ${watermark.lastTs}
-            OR (s."startTime" = ${watermark.lastTs} AND s."id" > ${watermark.lastId})
+            s."updatedAt" > ${watermark.lastTs}
+            OR (s."updatedAt" = ${watermark.lastTs} AND s."id" > ${watermark.lastId})
           )
-        ORDER BY s."startTime" ASC, s."id" ASC
+        ORDER BY s."updatedAt" ASC, s."id" ASC
         LIMIT ${limit}
       `);
     }
@@ -601,7 +603,11 @@ export class ClickHouseSyncService {
   private async insertBatch(table: SyncTable, rows: any[]): Promise<{ inserted: number; skipped: number }> {
     if (rows.length === 0) return { inserted: 0, skipped: 0 };
     const targetTable = this.getTargetTableName(table);
-    const dedupResult = await this.filterAlreadySyncedRows(targetTable, rows);
+    // Sessions are mutable: keep all versions and let ReplacingMergeTree(updatedAt) collapse to latest.
+    const dedupResult =
+      table === 'sessions'
+        ? { rows, skipped: 0 }
+        : await this.filterAlreadySyncedRows(targetTable, rows);
     const dedupedRows = dedupResult.rows;
     if (dedupedRows.length === 0) return { inserted: 0, skipped: dedupResult.skipped };
 
@@ -622,11 +628,12 @@ export class ClickHouseSyncService {
       return { inserted: dedupedRows.length, skipped: dedupResult.skipped };
     }
     if (table === 'sessions') {
-      await clickHouseService.insertJsonEachRow('sessions_raw', dedupedRows.map((r) => ({
+      await clickHouseService.insertJsonEachRow('sessions_raw_v2', dedupedRows.map((r) => ({
         ...r,
         startTime: this.toIso(r.startTime),
         endTime: r.endTime ? this.toIso(r.endTime) : null,
-        lastHeartbeat: r.lastHeartbeat ? this.toIso(r.lastHeartbeat) : null
+        lastHeartbeat: r.lastHeartbeat ? this.toIso(r.lastHeartbeat) : null,
+        updatedAt: this.toIso(r.updatedAt)
       })));
       return { inserted: dedupedRows.length, skipped: dedupResult.skipped };
     }
@@ -726,7 +733,7 @@ export class ClickHouseSyncService {
   private getTargetTableName(table: SyncTable): string {
     if (table === 'events') return 'events_raw';
     if (table === 'revenue') return 'revenue_raw';
-    if (table === 'sessions') return 'sessions_raw';
+    if (table === 'sessions') return 'sessions_raw_v2';
     if (table === 'users') return 'users_raw';
     if (table === 'cohort_retention_daily') return 'cohort_retention_daily_raw';
     if (table === 'cohort_session_metrics_daily') return 'cohort_session_metrics_daily_raw';

@@ -14,7 +14,8 @@ import { startActiveUsersAggregationJob, startActiveUsersHourlyTodayJob } from '
 import { startCohortAggregationJob, startCohortHourlyTodayJob } from './jobs/cohortAggregation';
 import { startMonetizationAggregationJob, startMonetizationHourlyTodayJob } from './jobs/monetizationAggregation';
 import { startFxRatesSyncJob } from './jobs/fxRatesSync';
-import { startClickHouseSyncJob, runClickHouseSyncOnce } from './jobs/clickhouseSync';
+import { startClickHouseSyncJob, runClickHouseSyncOnceWithLock } from './jobs/clickhouseSync';
+import { startClickHouseAggregationJobs } from './jobs/clickhouseAggregations';
 import { eventBatchWriter } from './services/EventBatchWriter';
 import { revenueBatchWriter } from './services/RevenueBatchWriter';
 import { sessionHeartbeatBatchWriter } from './services/SessionHeartbeatBatchWriter';
@@ -26,6 +27,7 @@ const enableActiveUsersHourlyJob = process.env.ENABLE_ACTIVE_USERS_HOURLY === '1
 const enableCohortHourlyJob = process.env.ENABLE_COHORT_HOURLY === '1' || process.env.ENABLE_COHORT_HOURLY === 'true';
 const enableMonetizationHourlyJob = process.env.ENABLE_MONETIZATION_HOURLY === '1' || process.env.ENABLE_MONETIZATION_HOURLY === 'true';
 const enableClickHousePipeline = process.env.ENABLE_CLICKHOUSE_PIPELINE === '1' || process.env.ENABLE_CLICKHOUSE_PIPELINE === 'true';
+const enableClickHouseAggregationJobs = process.env.ENABLE_CLICKHOUSE_AGGREGATION_JOBS === '1' || process.env.ENABLE_CLICKHOUSE_AGGREGATION_JOBS === 'true';
 
 // In worker-only mode, keep externally provided env (e.g. PM2/.worker.env) ahead of .env.
 // In other modes, keep prior behavior where .env overrides inherited shell vars.
@@ -337,50 +339,61 @@ function startJobs(): void {
     dataRetentionService.start();
     logger.info('Data retention service started');
 
-    // Start level metrics aggregation cron job
-    startLevelMetricsAggregationJob();
-    logger.info('Level metrics aggregation cron job started');
-
-    // Start hourly aggregation for today (partial day)
-    // Disabled by default to reduce DB load/cost; enable explicitly with ENABLE_LEVEL_METRICS_HOURLY=1
-    if (enableLevelMetricsHourlyJob) {
-        startLevelMetricsHourlyTodayJob();
-        logger.info('Level metrics hourly aggregation job started');
+    if (enableClickHouseAggregationJobs) {
+        startClickHouseAggregationJobs({
+            enableLevelMetricsHourly: enableLevelMetricsHourlyJob,
+            enableActiveUsersHourly: enableActiveUsersHourlyJob,
+            enableCohortHourly: enableCohortHourlyJob,
+            enableMonetizationHourly: enableMonetizationHourlyJob,
+        });
+        logger.info('ClickHouse aggregation cron jobs started');
+        logger.info('Postgres aggregation cron jobs skipped (ENABLE_CLICKHOUSE_AGGREGATION_JOBS enabled)');
     } else {
-        logger.info('Level metrics hourly aggregation job skipped (ENABLE_LEVEL_METRICS_HOURLY not enabled)');
-    }
+        // Start level metrics aggregation cron job
+        startLevelMetricsAggregationJob();
+        logger.info('Level metrics aggregation cron job started');
 
-    // Start active users aggregation jobs
-    startActiveUsersAggregationJob();
-    logger.info('Active users aggregation cron job started');
+        // Start hourly aggregation for today (partial day)
+        // Disabled by default to reduce DB load/cost; enable explicitly with ENABLE_LEVEL_METRICS_HOURLY=1
+        if (enableLevelMetricsHourlyJob) {
+            startLevelMetricsHourlyTodayJob();
+            logger.info('Level metrics hourly aggregation job started');
+        } else {
+            logger.info('Level metrics hourly aggregation job skipped (ENABLE_LEVEL_METRICS_HOURLY not enabled)');
+        }
 
-    if (enableActiveUsersHourlyJob) {
-        startActiveUsersHourlyTodayJob();
-        logger.info('Active users hourly aggregation job started');
-    } else {
-        logger.info('Active users hourly aggregation job skipped (ENABLE_ACTIVE_USERS_HOURLY not enabled)');
-    }
+        // Start active users aggregation jobs
+        startActiveUsersAggregationJob();
+        logger.info('Active users aggregation cron job started');
 
-    // Start cohort aggregation jobs
-    startCohortAggregationJob();
-    logger.info('Cohort aggregation cron job started');
+        if (enableActiveUsersHourlyJob) {
+            startActiveUsersHourlyTodayJob();
+            logger.info('Active users hourly aggregation job started');
+        } else {
+            logger.info('Active users hourly aggregation job skipped (ENABLE_ACTIVE_USERS_HOURLY not enabled)');
+        }
 
-    if (enableCohortHourlyJob) {
-        startCohortHourlyTodayJob();
-        logger.info('Cohort hourly aggregation job started');
-    } else {
-        logger.info('Cohort hourly aggregation job skipped (ENABLE_COHORT_HOURLY not enabled)');
-    }
+        // Start cohort aggregation jobs
+        startCohortAggregationJob();
+        logger.info('Cohort aggregation cron job started');
 
-    // Start monetization aggregation jobs
-    startMonetizationAggregationJob();
-    logger.info('Monetization aggregation cron job started');
+        if (enableCohortHourlyJob) {
+            startCohortHourlyTodayJob();
+            logger.info('Cohort hourly aggregation job started');
+        } else {
+            logger.info('Cohort hourly aggregation job skipped (ENABLE_COHORT_HOURLY not enabled)');
+        }
 
-    if (enableMonetizationHourlyJob) {
-        startMonetizationHourlyTodayJob();
-        logger.info('Monetization hourly aggregation job started');
-    } else {
-        logger.info('Monetization hourly aggregation job skipped (ENABLE_MONETIZATION_HOURLY not enabled)');
+        // Start monetization aggregation jobs
+        startMonetizationAggregationJob();
+        logger.info('Monetization aggregation cron job started');
+
+        if (enableMonetizationHourlyJob) {
+            startMonetizationHourlyTodayJob();
+            logger.info('Monetization hourly aggregation job started');
+        } else {
+            logger.info('Monetization hourly aggregation job skipped (ENABLE_MONETIZATION_HOURLY not enabled)');
+        }
     }
 
     startFxRatesSyncJob();
@@ -390,7 +403,7 @@ function startJobs(): void {
         startClickHouseSyncJob();
         logger.info('ClickHouse sync cron job started');
         // Kick off one sync immediately to reduce initial lag.
-        void runClickHouseSyncOnce();
+        void runClickHouseSyncOnceWithLock('startup');
     } else {
         logger.info('ClickHouse sync cron job skipped (ENABLE_CLICKHOUSE_PIPELINE not enabled)');
     }

@@ -241,6 +241,21 @@ const EngagementTab: React.FC<{ gameInfo: any }> = ({ gameInfo }) => {
     }
   }, [gameInfo.id, filters, selectedDays, selectedPlatforms, selectedCountries, selectedVersions, selectedMetric]);
 
+  useEffect(() => {
+    const todayUtc = new Date().toISOString().split('T')[0];
+    if (filters.endDate !== todayUtc) return;
+
+    const intervalId = window.setInterval(() => {
+      if (selectedMetric === 'retention') {
+        fetchCohortData();
+      } else {
+        fetchMetricData();
+      }
+    }, 5 * 60 * 1000);
+
+    return () => window.clearInterval(intervalId);
+  }, [gameInfo.id, filters, selectedDays, selectedPlatforms, selectedCountries, selectedVersions, selectedMetric]);
+
   const toggleDay = (day: number) => {
     setSelectedDays(prev => 
       prev.includes(day) 
@@ -337,6 +352,9 @@ const EngagementTab: React.FC<{ gameInfo: any }> = ({ gameInfo }) => {
     <div className="tab-content">
       <h2>Engagement Analytics</h2>
       <p>Cohort retention analysis and user engagement metrics</p>
+      <p style={{ marginTop: '-8px', fontSize: '12px', opacity: 0.75 }}>
+        Live updates auto-refresh every 5 minutes when end date is today.
+      </p>
 
       {/* Metric Selector */}
       <div className="analytics-filters" style={{ marginBottom: '20px' }}>
@@ -799,6 +817,19 @@ const MonetizationTab: React.FC<{ gameInfo: any }> = ({ gameInfo }) => {
     fetchMonetizationCohorts();
   }, [gameInfo.id, filters, selectedDays, selectedPlatforms, selectedCountries, selectedVersions, selectedMetric, revenueSummaryLoaded]);
 
+  useEffect(() => {
+    const todayUtc = new Date().toISOString().split('T')[0];
+    if (!revenueSummaryLoaded) return;
+    if (filters.endDate !== todayUtc) return;
+    if (!selectedDays || selectedDays.length === 0) return;
+
+    const intervalId = window.setInterval(() => {
+      fetchMonetizationCohorts();
+    }, 5 * 60 * 1000);
+
+    return () => window.clearInterval(intervalId);
+  }, [gameInfo.id, filters, selectedDays, selectedPlatforms, selectedCountries, selectedVersions, revenueSummaryLoaded]);
+
   const getMetricValue = (metrics: any, day: number) => {
     const dayKey = `day${day}`;
     if (!metrics || !metrics[dayKey]) return undefined;
@@ -942,6 +973,9 @@ const MonetizationTab: React.FC<{ gameInfo: any }> = ({ gameInfo }) => {
     <div className="tab-content">
       <h2>Monetization Analytics</h2>
       <p>Cohort revenue analysis and monetization metrics</p>
+      <p style={{ marginTop: '-8px', fontSize: '12px', opacity: 0.75 }}>
+        Live updates auto-refresh every 5 minutes when end date is today.
+      </p>
 
       {/* Revenue Summary Cards */}
       {revenueSummary && (

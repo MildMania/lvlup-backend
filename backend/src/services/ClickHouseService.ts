@@ -26,6 +26,7 @@ export class ClickHouseService {
     this.pingTimeoutMs = Number(process.env.CLICKHOUSE_PING_TIMEOUT_MS || 30000);
 
     const pipelineEnabled = this.envTrue('ENABLE_CLICKHOUSE_PIPELINE');
+    const aggregationJobsEnabled = this.envTrue('ENABLE_CLICKHOUSE_AGGREGATION_JOBS');
     const anyReadFlagEnabled = [
       'ANALYTICS_READ_EVENTS_FROM_CLICKHOUSE',
       'ANALYTICS_READ_REVENUE_SUMMARY_FROM_CLICKHOUSE',
@@ -33,10 +34,14 @@ export class ClickHouseService {
       'ANALYTICS_READ_RETENTION_FROM_CLICKHOUSE',
       'ANALYTICS_READ_PLAYTIME_FROM_CLICKHOUSE',
       'ANALYTICS_READ_COHORT_FROM_CLICKHOUSE',
-      'ANALYTICS_READ_LEVEL_FUNNEL_FROM_CLICKHOUSE'
+      'ANALYTICS_READ_LEVEL_FUNNEL_FROM_CLICKHOUSE',
+      'ANALYTICS_READ_DASHBOARD_FROM_CLICKHOUSE',
+      'ANALYTICS_READ_FILTER_OPTIONS_FROM_CLICKHOUSE',
+      'ANALYTICS_READ_MONETIZATION_COHORTS_FROM_CLICKHOUSE',
+      'ANALYTICS_READ_HEALTH_FROM_CLICKHOUSE'
     ].some((key) => this.envTrue(key));
 
-    this.enabled = pipelineEnabled || anyReadFlagEnabled;
+    this.enabled = pipelineEnabled || aggregationJobsEnabled || anyReadFlagEnabled;
   }
 
   isEnabled(): boolean {

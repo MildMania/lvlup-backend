@@ -1,10 +1,10 @@
-import { runClickHouseSyncOnce } from '../jobs/clickhouseSync';
+import { runClickHouseSyncOnceWithLock } from '../jobs/clickhouseSync';
 import logger from '../utils/logger';
 
 async function main() {
   try {
     logger.info('[ClickHouseSync] Manual sync cycle started');
-    await runClickHouseSyncOnce();
+    await runClickHouseSyncOnceWithLock('manual');
     logger.info('[ClickHouseSync] Manual sync cycle completed');
     process.exit(0);
   } catch (error: any) {
@@ -14,4 +14,3 @@ async function main() {
 }
 
 void main();
-

@@ -54,10 +54,45 @@ export class LevelFunnelController {
             // Process dates using standard format (matches retention calculation pattern)
             const processedStartDate = startDate ? new Date(startDate as string + 'T00:00:00.000Z') : undefined;
             const processedEndDate = endDate ? new Date(endDate as string + 'T23:59:59.999Z') : undefined;
-
-            // Install cohort date range (filters users by User.createdAt)
             const processedInstallStartDate = installStartDate ? new Date(installStartDate as string + 'T00:00:00.000Z') : undefined;
             const processedInstallEndDate = installEndDate ? new Date(installEndDate as string + 'T23:59:59.999Z') : undefined;
+
+            if (startDate && processedStartDate && isNaN(processedStartDate.getTime())) {
+                return res.status(400).json({
+                    success: false,
+                    error: 'Invalid startDate format. Use ISO date format (YYYY-MM-DD)'
+                });
+            }
+            if (endDate && processedEndDate && isNaN(processedEndDate.getTime())) {
+                return res.status(400).json({
+                    success: false,
+                    error: 'Invalid endDate format. Use ISO date format (YYYY-MM-DD)'
+                });
+            }
+            if (installStartDate && processedInstallStartDate && isNaN(processedInstallStartDate.getTime())) {
+                return res.status(400).json({
+                    success: false,
+                    error: 'Invalid installStartDate format. Use ISO date format (YYYY-MM-DD)'
+                });
+            }
+            if (installEndDate && processedInstallEndDate && isNaN(processedInstallEndDate.getTime())) {
+                return res.status(400).json({
+                    success: false,
+                    error: 'Invalid installEndDate format. Use ISO date format (YYYY-MM-DD)'
+                });
+            }
+            if (processedStartDate && processedEndDate && processedEndDate < processedStartDate) {
+                return res.status(400).json({
+                    success: false,
+                    error: 'endDate cannot be before startDate'
+                });
+            }
+            if (processedInstallStartDate && processedInstallEndDate && processedInstallEndDate < processedInstallStartDate) {
+                return res.status(400).json({
+                    success: false,
+                    error: 'installEndDate cannot be before installStartDate'
+                });
+            }
 
             const filters = {
                 gameId: gameId as string,
@@ -174,6 +209,24 @@ export class LevelFunnelController {
             // Process dates using standard format (matches retention calculation pattern)
             const processedStartDate = startDate ? new Date(startDate as string + 'T00:00:00.000Z') : undefined;
             const processedEndDate = endDate ? new Date(endDate as string + 'T23:59:59.999Z') : undefined;
+            if (startDate && processedStartDate && isNaN(processedStartDate.getTime())) {
+                return res.status(400).json({
+                    success: false,
+                    error: 'Invalid startDate format. Use ISO date format (YYYY-MM-DD)'
+                });
+            }
+            if (endDate && processedEndDate && isNaN(processedEndDate.getTime())) {
+                return res.status(400).json({
+                    success: false,
+                    error: 'Invalid endDate format. Use ISO date format (YYYY-MM-DD)'
+                });
+            }
+            if (processedStartDate && processedEndDate && processedEndDate < processedStartDate) {
+                return res.status(400).json({
+                    success: false,
+                    error: 'endDate cannot be before startDate'
+                });
+            }
 
             const filters = {
                 gameId: gameId as string,

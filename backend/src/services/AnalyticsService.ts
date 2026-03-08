@@ -34,6 +34,13 @@ export class AnalyticsService {
         );
     }
 
+    private readDashboardFromClickHouse(): boolean {
+        return (
+            process.env.ANALYTICS_READ_DASHBOARD_FROM_CLICKHOUSE === '1' ||
+            process.env.ANALYTICS_READ_DASHBOARD_FROM_CLICKHOUSE === 'true'
+        );
+    }
+
     /**
      * Validate and use client timestamp with fallback to server time
      * 
@@ -542,6 +549,28 @@ export class AnalyticsService {
 
             logger.debug(`Cache miss for analytics: ${cacheKey}, fetching from database`);
 
+            if (this.readDashboardFromClickHouse() && this.isClickHouseStrict() && !clickHouseService.isEnabled()) {
+                throw new Error('ClickHouse strict mode enabled for dashboard, but ClickHouse is not configured/enabled in API env');
+            }
+
+            if (this.readDashboardFromClickHouse() && clickHouseService.isEnabled()) {
+                try {
+                    const clickHouseResult = await this.getAnalyticsFromClickHouse(gameId, startDate, endDate, {
+                        includeRetention,
+                        includeActiveUsersToday,
+                        includeTopEvents
+                    });
+                    cache.set(cacheKey, clickHouseResult, 300);
+                    return clickHouseResult;
+                } catch (clickHouseError) {
+                    if (this.isClickHouseStrict()) throw clickHouseError;
+                    logger.warn('[Analytics] ClickHouse dashboard read failed; falling back to Postgres', {
+                        gameId,
+                        error: clickHouseError instanceof Error ? clickHouseError.message : String(clickHouseError),
+                    });
+                }
+            }
+
             const [
                 newUsers,
                 totalActiveUsers,
@@ -628,6 +657,106 @@ export class AnalyticsService {
             logger.error('Error getting analytics:', error);
             throw error;
         }
+    }
+
+    private async getAnalyticsFromClickHouse(
+        gameId: string,
+        startDate: Date,
+        endDate: Date,
+        options: {
+            includeRetention: boolean;
+            includeActiveUsersToday: boolean;
+            includeTopEvents: boolean;
+        }
+    ): Promise<AnalyticsData> {
+        const q = (value: string) => this.quoteClickHouseString(value);
+        const qGameId = q(gameId);
+        const qStart = q(startDate.toISOString());
+        const qEnd = q(endDate.toISOString());
+
+        const [newUsersRows, activeUsersRows, sessionTotalsRows] = await Promise.all([
+            clickHouseService.query<Array<{ newUsers: number }>[number]>(`
+                SELECT uniqExact(id) AS newUsers
+                FROM users_raw
+                WHERE gameId = ${qGameId}
+                  AND createdAt >= parseDateTime64BestEffort(${qStart})
+                  AND createdAt <= parseDateTime64BestEffort(${qEnd})
+            `),
+            clickHouseService.query<Array<{ totalActiveUsers: number }>[number]>(`
+                SELECT uniqExact(userId) AS totalActiveUsers
+                FROM events_raw
+                WHERE gameId = ${qGameId}
+                  AND serverReceivedAt >= parseDateTime64BestEffort(${qStart})
+                  AND serverReceivedAt <= parseDateTime64BestEffort(${qEnd})
+            `),
+            clickHouseService.query<Array<{ totalSessions: number; totalDurationSec: number }>[number]>(`
+                SELECT
+                    toInt64(sum(totalSessions)) AS totalSessions,
+                    toInt64(sum(totalDurationSec)) AS totalDurationSec
+                FROM cohort_session_metrics_daily_raw
+                WHERE gameId = ${qGameId}
+                  AND toDate(addDays(installDate, dayIndex)) >= toDate(parseDateTime64BestEffort(${qStart}))
+                  AND toDate(addDays(installDate, dayIndex)) <= toDate(parseDateTime64BestEffort(${qEnd}))
+            `)
+        ]);
+
+        const newUsers = Number(newUsersRows[0]?.newUsers || 0);
+        const totalActiveUsers = Number(activeUsersRows[0]?.totalActiveUsers || 0);
+        const totalSessions = Number(sessionTotalsRows[0]?.totalSessions || 0);
+        const totalSessionDuration = Number(sessionTotalsRows[0]?.totalDurationSec || 0);
+
+        const avgSessionDuration = totalSessions > 0 ? Math.round(totalSessionDuration / totalSessions) : 0;
+        const avgSessionsPerUser = totalActiveUsers > 0 ?
+            Math.round((totalSessions / totalActiveUsers) * 100) / 100 : 0;
+        const avgPlaytimeDuration = totalActiveUsers > 0 ?
+            Math.round(totalSessionDuration / totalActiveUsers) : 0;
+
+        let retentionDay1 = 0;
+        let retentionDay7 = 0;
+        if (options.includeRetention) {
+            const { AnalyticsMetricsService } = await import('./AnalyticsMetricsService');
+            const metricsService = new AnalyticsMetricsService();
+            const retentionData = await metricsService.calculateRetention(
+                gameId,
+                startDate,
+                endDate,
+                { retentionDays: [1, 7] }
+            );
+            retentionDay1 = retentionData.find((r) => r.day === 1)?.percentage || 0;
+            retentionDay7 = retentionData.find((r) => r.day === 7)?.percentage || 0;
+        }
+
+        let activeUsersToday = 0;
+        if (options.includeActiveUsersToday) {
+            const today = new Date();
+            today.setHours(0, 0, 0, 0);
+            const tomorrow = new Date(today);
+            tomorrow.setDate(tomorrow.getDate() + 1);
+            const todayRows = await clickHouseService.query<Array<{ activeUsersToday: number }>[number]>(`
+                SELECT uniqExact(userId) AS activeUsersToday
+                FROM events_raw
+                WHERE gameId = ${qGameId}
+                  AND serverReceivedAt >= parseDateTime64BestEffort(${q(today.toISOString())})
+                  AND serverReceivedAt < parseDateTime64BestEffort(${q(tomorrow.toISOString())})
+            `);
+            activeUsersToday = Number(todayRows[0]?.activeUsersToday || 0);
+        }
+
+        return {
+            totalUsers: totalActiveUsers,
+            totalActiveUsers,
+            newUsers,
+            totalSessions,
+            totalEvents: 0,
+            avgSessionDuration,
+            avgSessionsPerUser,
+            avgPlaytimeDuration,
+            retentionDay1,
+            retentionDay7,
+            activeUsersToday,
+            topEvent: 'No events',
+            topEvents: []
+        };
     }
 
     private async getActiveUsersApprox(gameId: string, startDate: Date, endDate: Date): Promise<number> {

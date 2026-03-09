@@ -486,7 +486,25 @@ export class ClickHouseSyncService {
           COALESCE(s."platform",'') AS "platform",
           COALESCE(s."countryCode",'') AS "countryCode",
           COALESCE(s."version",'') AS "version"
-        FROM "sessions" s
+        FROM (
+          SELECT
+            x."id",
+            x."gameId",
+            x."userId",
+            x."startTime",
+            x."endTime",
+            x."lastHeartbeat",
+            x."duration",
+            GREATEST(
+              x."startTime",
+              COALESCE(x."endTime", x."startTime"),
+              COALESCE(x."lastHeartbeat", x."startTime")
+            ) AS "updatedAt",
+            x."platform",
+            x."countryCode",
+            x."version"
+          FROM "sessions" x
+        ) s
         WHERE (
             s."updatedAt" > ${watermark.lastTs}
             OR (s."updatedAt" = ${watermark.lastTs} AND s."id" > ${watermark.lastId})

@@ -2,10 +2,19 @@
 
 This document lists frontend-consumed analytics/health endpoints and the backend read source used by each endpoint.
 
+For current runtime checklist and env interpretation, also see:
+
+- `docs/BACKEND/SESSION-README.md`
+
 Legend:
 - `Postgres only`: reads from Postgres only
 - `ClickHouse or Postgres fallback`: tries ClickHouse first when flag is enabled, falls back to Postgres on disabled/unavailable/error (unless strict mode)
 - `Hybrid`: endpoint combines data paths where some parts may use ClickHouse and others use Postgres
+
+Notes:
+- If a `ANALYTICS_READ_*_FROM_CLICKHOUSE` flag is `0`, endpoint reads from Postgres.
+- If flag is `1` but ClickHouse is unavailable and strict mode is off, endpoint falls back to Postgres.
+- Strict mode (`ANALYTICS_CLICKHOUSE_STRICT=true`) disables fallback for ClickHouse-enabled endpoints.
 
 ## Engagement / Dashboard / Monetization / Level Funnel
 

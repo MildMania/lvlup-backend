@@ -1,5 +1,11 @@
 # ClickHouse Migration Runbook (Step-by-Step, Local Worker)
 
+Before using this runbook, read:
+
+- `docs/BACKEND/SESSION-README.md`
+
+This runbook is migration-oriented. For day-to-day runtime truth (active flags, fallback behavior, verification checklist), rely on `SESSION-README.md`.
+
 This runbook is designed for your current setup:
 
 - API service in Railway
@@ -411,4 +417,3 @@ npm run ops:query-stats-snapshot -- 25
 ```
 
 Compare top query totals and rows returned.
-

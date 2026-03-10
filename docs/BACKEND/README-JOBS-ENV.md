@@ -2,6 +2,10 @@
 
 This file documents background-job environment variables used by the backend.
 
+For session kickoff + runtime truth, read first:
+
+- `docs/BACKEND/SESSION-README.md`
+
 ## Core runtime flags
 
 - `RUN_API`
@@ -17,6 +21,13 @@ Typical modes:
 - API + jobs (normal app): `RUN_API=true`, `RUN_JOBS=true`
 - Worker-only (jobs only): `RUN_API=false`, `RUN_JOBS=true`
 - API-only (no cron): `RUN_API=true`, `RUN_JOBS=false`
+
+Recommended production split:
+
+- API service: `RUN_API=true`, `RUN_JOBS=false`
+- Worker service: `RUN_API=false`, `RUN_JOBS=true`
+
+This prevents background jobs from impacting API latency and pool pressure.
 
 ## Cost-control flags (hourly load)
 
@@ -130,6 +141,7 @@ Typical modes:
 - `ENABLE_CLICKHOUSE_AGGREGATION_JOBS`
   - Default: `0`
   - When enabled, worker runs ClickHouse-native rollup jobs for daily/hourly analytics aggregates and skips Postgres aggregation cron jobs.
+  - Important: this does **not** remove Postgres ingest/sync load. Postgres still receives writes and can still be read by fallback paths.
 
 - `CLICKHOUSE_AGGREGATION_GROUPS`
   - Default: `level_metrics,active_users,cohort,monetization`
@@ -207,8 +219,8 @@ Typical modes:
 
 If DB memory/cost is tight, use:
 
-- `RUN_API=true`
-- `RUN_JOBS=true`
+- API service: `RUN_API=true`, `RUN_JOBS=false`
+- Worker service: `RUN_API=false`, `RUN_JOBS=true`
 - `ENABLE_LEVEL_METRICS_HOURLY=0`
 - `LEVEL_CHURN_HOURLY_REFRESH=0`
 - `ENABLE_ACTIVE_USERS_HOURLY=0`
@@ -220,7 +232,7 @@ If DB memory/cost is tight, use:
 - `AGGREGATION_PAUSE_MS=0`
 - `AGGREGATION_FORCE_GC=0`
 
-This keeps daily aggregations and disables all hourly aggregation jobs.
+This keeps daily aggregations and disables all hourly aggregation jobs while keeping API responsive.
 
 ## Monitoring workflow (recommended)
 

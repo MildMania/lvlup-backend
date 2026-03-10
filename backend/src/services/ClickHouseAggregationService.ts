@@ -131,7 +131,7 @@ export class ClickHouseAggregationService {
     `);
 
     await clickHouseService.command(`
-      CREATE TABLE IF NOT EXISTS sessions_raw (
+      CREATE TABLE IF NOT EXISTS sessions_raw_v2 (
         id String,
         gameId String,
         userId String,
@@ -141,9 +141,10 @@ export class ClickHouseAggregationService {
         duration Nullable(Int32),
         platform String,
         countryCode String,
-        version String
+        version String,
+        updatedAt DateTime64(3, 'UTC')
       )
-      ENGINE = MergeTree
+      ENGINE = ReplacingMergeTree(updatedAt)
       PARTITION BY toYYYYMM(startTime)
       ORDER BY (gameId, startTime, id)
     `);
@@ -762,7 +763,7 @@ export class ClickHouseAggregationService {
                   toInt64(0)
                 )
               ) AS durationSec
-            FROM sessions_raw
+            FROM sessions_raw_v2
             WHERE toDate(startTime) = target_day
           ) s
           GROUP BY s.gameId, s.userId

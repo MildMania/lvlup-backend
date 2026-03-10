@@ -349,6 +349,54 @@ export class CohortAggregationService {
     }
   }
 
+  async aggregateSessionMetricsOnlyForTargetDay(
+    gameId: string,
+    targetDay: Date,
+    dayIndices = COHORT_DAY_INDICES
+  ): Promise<void> {
+    const target = new Date(targetDay);
+    target.setUTCHours(0, 0, 0, 0);
+    const targetEnd = new Date(target);
+    targetEnd.setUTCDate(targetEnd.getUTCDate() + 1);
+
+    for (const dayIndex of dayIndices) {
+      const installDate = new Date(target);
+      installDate.setUTCDate(installDate.getUTCDate() - dayIndex);
+      installDate.setUTCHours(0, 0, 0, 0);
+      const installEnd = new Date(installDate);
+      installEnd.setUTCDate(installEnd.getUTCDate() + 1);
+
+      const cohorts = await this.getCohortSizesByDimensions(gameId, installDate, installEnd);
+      if (cohorts.length === 0) continue;
+
+      for (const cohort of cohorts) {
+        const sessionMetrics = await this.getSessionMetricsByDimensions(
+          gameId,
+          installDate,
+          installEnd,
+          target,
+          targetEnd,
+          cohort.platform,
+          cohort.countryCode,
+          cohort.appVersion
+        );
+
+        await this.upsertSessionMetrics(
+          gameId,
+          installDate,
+          dayIndex,
+          cohort.platform,
+          cohort.countryCode,
+          cohort.appVersion,
+          cohort.cohortSize,
+          sessionMetrics.sessionUsers,
+          sessionMetrics.totalSessions,
+          sessionMetrics.totalDurationSec
+        );
+      }
+    }
+  }
+
   async getGamesWithUsers(): Promise<string[]> {
     const results = await this.prisma.user.findMany({
       distinct: ['gameId'],

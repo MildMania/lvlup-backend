@@ -5,17 +5,17 @@ import { withJobAdvisoryLock } from './advisoryLock';
 import { maybeThrottleAggregation } from '../utils/aggregationThrottle';
 
 export function startCohortAggregationJob(): void {
-  logger.info('Initializing cohort aggregation cron job...');
+  logger.info('[Postgres] Initializing cohort aggregation cron job...');
 
-  // Daily rollup for yesterday at 3:00 AM UTC
+  // Daily finalization pass for yesterday at 03:00 UTC
   cron.schedule('0 3 * * *', async () => {
     await withJobAdvisoryLock('cohort-daily', async () => {
       try {
-        logger.info('Starting daily cohort aggregation...');
+        logger.info('[Postgres] Starting daily cohort finalization pass for yesterday...');
         const games = await cohortAggregationService.getGamesWithUsers();
 
         if (games.length === 0) {
-          logger.info('No games with users to aggregate cohorts');
+          logger.info('[Postgres] No games with users to aggregate cohorts');
           return;
         }
 
@@ -30,35 +30,35 @@ export function startCohortAggregationJob(): void {
             await cohortAggregationService.aggregateForDate(gameId, yesterday, COHORT_DAY_INDICES);
             success++;
           } catch (error) {
-            logger.error(`Cohort aggregation failed for game ${gameId}:`, error);
+            logger.error(`[Postgres] Cohort aggregation failed for game ${gameId}:`, error);
             errors++;
           } finally {
             await maybeThrottleAggregation(`cohort-daily-job:${gameId}`);
           }
         }
 
-        logger.info(`Daily cohort aggregation complete: ${success} succeeded, ${errors} failed`);
+        logger.info(`[Postgres] Daily cohort finalization complete: ${success} succeeded, ${errors} failed`);
       } catch (error) {
-        logger.error('Error in daily cohort aggregation job:', error);
+        logger.error('[Postgres] Error in daily cohort aggregation job:', error);
       }
     });
   });
 
-  logger.info('Cohort aggregation cron job started (runs daily at 03:00 UTC)');
+  logger.info('[Postgres] Cohort aggregation cron job started (runs daily at 03:00 UTC)');
 }
 
 export function startCohortHourlyTodayJob(): void {
-  logger.info('Initializing hourly cohort aggregation for today...');
+  logger.info('[Postgres] Initializing hourly cohort aggregation for today + yesterday...');
 
-  // Hourly rollup for today at minute 15
+  // Hourly incremental updates for today + lightweight recompute for yesterday at minute 15
   cron.schedule('15 * * * *', async () => {
     await withJobAdvisoryLock('cohort-hourly-today', async () => {
       try {
-        logger.info('Starting incremental hourly cohort retention update...');
+        logger.info('[Postgres] Starting hourly cohort update (today incremental + yesterday recompute)...');
         const games = await cohortAggregationService.getGamesWithUsers();
 
         if (games.length === 0) {
-          logger.info('No games with users to aggregate cohorts for today');
+          logger.info('[Postgres] No games with users to aggregate cohorts');
           return;
         }
 
@@ -71,22 +71,28 @@ export function startCohortHourlyTodayJob(): void {
         let errors = 0;
         for (const gameId of games) {
           try {
+            // Keep low write volume for the active day.
             await cohortAggregationService.aggregateHourlyRetentionUsersForToday(gameId, hourStart, hourEnd);
+            // Refresh yesterday session metrics only (playtime/session count/session length inputs).
+            const yesterday = new Date(hourEnd);
+            yesterday.setUTCDate(yesterday.getUTCDate() - 1);
+            yesterday.setUTCHours(0, 0, 0, 0);
+            await cohortAggregationService.aggregateSessionMetricsOnlyForTargetDay(gameId, yesterday, COHORT_DAY_INDICES);
             success++;
           } catch (error) {
-            logger.error(`Cohort hourly incremental update failed for game ${gameId}:`, error);
+            logger.error(`[Postgres] Cohort hourly incremental update failed for game ${gameId}:`, error);
             errors++;
           } finally {
             await maybeThrottleAggregation(`cohort-hourly-job:${gameId}`);
           }
         }
 
-        logger.info(`Hourly cohort incremental update complete: ${success} succeeded, ${errors} failed`);
+        logger.info(`[Postgres] Hourly cohort update complete: ${success} succeeded, ${errors} failed`);
       } catch (error) {
-        logger.error('Error in hourly cohort incremental job:', error);
+        logger.error('[Postgres] Error in hourly cohort incremental job:', error);
       }
     });
   });
 
-  logger.info('Cohort hourly incremental job started (runs hourly at :15 UTC)');
+  logger.info('[Postgres] Cohort hourly job started (runs hourly at :15 UTC; today + yesterday)');
 }

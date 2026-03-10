@@ -140,8 +140,13 @@ This prevents background jobs from impacting API latency and pool pressure.
 
 - `ENABLE_CLICKHOUSE_AGGREGATION_JOBS`
   - Default: `0`
-  - When enabled, worker runs ClickHouse-native rollup jobs for daily/hourly analytics aggregates and skips Postgres aggregation cron jobs.
-  - Important: this does **not** remove Postgres ingest/sync load. Postgres still receives writes and can still be read by fallback paths.
+  - Controls ClickHouse-native rollup cron jobs for daily/hourly analytics aggregates.
+
+- `ENABLE_POSTGRES_AGGREGATION_JOBS`
+  - Default: `1`
+  - Controls Postgres aggregation cron jobs independently from ClickHouse aggregation jobs.
+  - You can run both systems in parallel by enabling both flags.
+  - Backward compatibility: if this flag is unset, legacy `ENABLE_POSTGRES_AGGREGATION_JOBS_WITH_CLICKHOUSE=1` is still honored.
 
 - `CLICKHOUSE_AGGREGATION_GROUPS`
   - Default: `level_metrics,active_users,cohort,monetization`

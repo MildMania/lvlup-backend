@@ -177,8 +177,8 @@ export class HealthMetricsService {
       }>[number]>(`
         SELECT
           (SELECT count() FROM crash_logs_raw WHERE ${crashWhere}) AS totalCrashes,
-          (SELECT count() FROM sessions_raw WHERE ${sessionWhere}) AS totalSessions,
-          (SELECT uniqExact(userId) FROM sessions_raw WHERE ${sessionWhere}) AS totalUsers,
+          (SELECT count() FROM sessions_raw_v2 WHERE ${sessionWhere}) AS totalSessions,
+          (SELECT uniqExact(userId) FROM sessions_raw_v2 WHERE ${sessionWhere}) AS totalUsers,
           (SELECT uniqExact(userId) FROM crash_logs_raw WHERE ${crashWhere} AND userId IS NOT NULL AND userId != '') AS affectedUsers,
           (SELECT uniqExact(sessionId) FROM crash_logs_raw WHERE ${crashWhere} AND sessionId IS NOT NULL AND sessionId != '') AS sessionsWithCrashes
       `),
@@ -467,7 +467,7 @@ export class HealthMetricsService {
         SELECT
           formatDateTime(toDate(startTime), '%Y-%m-%d') AS date,
           toInt64(uniqExact(userId)) AS totalUsers
-        FROM sessions_raw
+        FROM sessions_raw_v2
         WHERE ${sessionWhere}
         GROUP BY toDate(startTime)
       `)

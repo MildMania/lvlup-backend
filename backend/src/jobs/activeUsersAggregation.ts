@@ -5,17 +5,17 @@ import { withJobAdvisoryLock } from './advisoryLock';
 import { maybeThrottleAggregation } from '../utils/aggregationThrottle';
 
 export function startActiveUsersAggregationJob(): void {
-  logger.info('Initializing active users aggregation cron job...');
+  logger.info('[Postgres] Initializing active users aggregation cron job...');
 
   // Daily rollup for yesterday at 2:30 AM UTC
   cron.schedule('30 2 * * *', async () => {
     await withJobAdvisoryLock('active-users-daily', async () => {
       try {
-        logger.info('Starting daily active users aggregation...');
+        logger.info('[Postgres] Starting daily active users aggregation...');
         const games = await activeUsersAggregationService.getGamesWithEvents();
 
         if (games.length === 0) {
-          logger.info('No games with events to aggregate active users');
+          logger.info('[Postgres] No games with events to aggregate active users');
           return;
         }
 
@@ -31,35 +31,35 @@ export function startActiveUsersAggregationJob(): void {
             await activeUsersAggregationService.aggregateDailyActiveUsers(gameId, yesterday);
             success++;
           } catch (error) {
-            logger.error(`Active users aggregation failed for game ${gameId}:`, error);
+            logger.error(`[Postgres] Active users aggregation failed for game ${gameId}:`, error);
             errors++;
           } finally {
             await maybeThrottleAggregation(`active-users-daily-job:${gameId}`);
           }
         }
 
-        logger.info(`Daily active users aggregation complete: ${success} succeeded, ${errors} failed`);
+        logger.info(`[Postgres] Daily active users aggregation complete: ${success} succeeded, ${errors} failed`);
       } catch (error) {
-        logger.error('Error in active users daily aggregation job:', error);
+        logger.error('[Postgres] Error in active users daily aggregation job:', error);
       }
     });
   });
 
-  logger.info('Active users aggregation cron job started (runs daily at 02:30 UTC)');
+  logger.info('[Postgres] Active users aggregation cron job started (runs daily at 02:30 UTC)');
 }
 
 export function startActiveUsersHourlyTodayJob(): void {
-  logger.info('Initializing hourly active users aggregation for today...');
+  logger.info('[Postgres] Initializing hourly active users aggregation for today...');
 
   // Hourly rollup for today at minute 10
   cron.schedule('10 * * * *', async () => {
     await withJobAdvisoryLock('active-users-hourly-today', async () => {
       try {
-        logger.info('Starting hourly active users aggregation for today...');
+        logger.info('[Postgres] Starting hourly active users aggregation for today...');
         const games = await activeUsersAggregationService.getGamesWithEvents();
 
         if (games.length === 0) {
-          logger.info('No games with events to aggregate active users for today');
+          logger.info('[Postgres] No games with events to aggregate active users for today');
           return;
         }
 
@@ -74,19 +74,19 @@ export function startActiveUsersHourlyTodayJob(): void {
             await activeUsersAggregationService.aggregateDailyActiveUsers(gameId, today);
             success++;
           } catch (error) {
-            logger.error(`Active users hourly aggregation failed for game ${gameId}:`, error);
+            logger.error(`[Postgres] Active users hourly aggregation failed for game ${gameId}:`, error);
             errors++;
           } finally {
             await maybeThrottleAggregation(`active-users-hourly-job:${gameId}`);
           }
         }
 
-        logger.info(`Hourly active users aggregation complete: ${success} succeeded, ${errors} failed`);
+        logger.info(`[Postgres] Hourly active users aggregation complete: ${success} succeeded, ${errors} failed`);
       } catch (error) {
-        logger.error('Error in active users hourly aggregation job:', error);
+        logger.error('[Postgres] Error in active users hourly aggregation job:', error);
       }
     });
   });
 
-  logger.info('Active users hourly aggregation job started (runs hourly at :10 UTC)');
+  logger.info('[Postgres] Active users hourly aggregation job started (runs hourly at :10 UTC)');
 }

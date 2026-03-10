@@ -2,13 +2,25 @@ import logger from '../utils/logger';
 
 const { Pool } = require('pg');
 
-const advisoryLockPool = new Pool({
-  connectionString: process.env.DATABASE_URL,
-  max: 2,
-});
+function createAdvisoryLockPool() {
+  return new Pool({
+    connectionString: process.env.DATABASE_URL,
+    max: 2,
+    connectionTimeoutMillis: Math.max(2000, Number(process.env.JOB_LOCK_CONNECT_TIMEOUT_MS || 10000)),
+    idleTimeoutMillis: Math.max(1000, Number(process.env.JOB_LOCK_IDLE_TIMEOUT_MS || 30000)),
+    keepAlive: true,
+    keepAliveInitialDelayMillis: Math.max(1000, Number(process.env.JOB_LOCK_KEEPALIVE_INITIAL_DELAY_MS || 5000))
+  });
+}
 
-const lockConnectRetryAttempts = Math.max(1, Number(process.env.JOB_LOCK_CONNECT_RETRIES || 3));
-const lockConnectRetryDelayMs = Math.max(100, Number(process.env.JOB_LOCK_CONNECT_RETRY_DELAY_MS || 500));
+let advisoryLockPool = createAdvisoryLockPool();
+
+const lockConnectRetryAttempts = Math.max(1, Number(process.env.JOB_LOCK_CONNECT_RETRIES || 6));
+const lockConnectRetryDelayMs = Math.max(100, Number(process.env.JOB_LOCK_CONNECT_RETRY_DELAY_MS || 1000));
+const lockConnectRetryMaxDelayMs = Math.max(
+  lockConnectRetryDelayMs,
+  Number(process.env.JOB_LOCK_CONNECT_RETRY_MAX_DELAY_MS || 5000)
+);
 
 const sleep = (ms: number): Promise<void> =>
   new Promise((resolve) => setTimeout(resolve, ms));
@@ -28,6 +40,16 @@ function isTransientLockError(error: unknown): boolean {
   );
 }
 
+async function resetPoolSafely(jobName: string): Promise<void> {
+  const currentPool = advisoryLockPool;
+  advisoryLockPool = createAdvisoryLockPool();
+  try {
+    await currentPool.end();
+  } catch (error) {
+    logger.warn(`[${jobName}] Advisory lock pool reset: close old pool failed`, error);
+  }
+}
+
 async function connectWithRetry(jobName: string): Promise<any | null> {
   for (let attempt = 1; attempt <= lockConnectRetryAttempts; attempt++) {
     try {
@@ -35,11 +57,16 @@ async function connectWithRetry(jobName: string): Promise<any | null> {
     } catch (error) {
       const willRetry = attempt < lockConnectRetryAttempts && isTransientLockError(error);
       if (willRetry) {
+        const backoff = Math.min(
+          lockConnectRetryDelayMs * Math.pow(2, attempt - 1),
+          lockConnectRetryMaxDelayMs
+        );
         logger.warn(
-          `[${jobName}] Advisory lock DB connect failed (attempt ${attempt}/${lockConnectRetryAttempts}), retrying in ${lockConnectRetryDelayMs}ms`,
+          `[${jobName}] Advisory lock DB connect failed (attempt ${attempt}/${lockConnectRetryAttempts}), retrying in ${backoff}ms`,
           error
         );
-        await sleep(lockConnectRetryDelayMs);
+        await resetPoolSafely(jobName);
+        await sleep(backoff);
         continue;
       }
 

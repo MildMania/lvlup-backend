@@ -11,20 +11,20 @@ const aggregationService = new LevelMetricsAggregationService();
  * Runs at 2 AM UTC daily to aggregate the previous day's level events
  */
 export function startLevelMetricsAggregationJob(): void {
-  logger.info('Initializing level metrics aggregation cron job...');
+  logger.info('[Postgres] Initializing level metrics aggregation cron job...');
 
   // Run at 2 AM UTC every day
   cron.schedule('0 2 * * *', async () => {
     await withJobAdvisoryLock('level-metrics-daily', async () => {
       try {
-        logger.info('Starting daily level metrics aggregation...');
+        logger.info('[Postgres] Starting daily level metrics aggregation...');
 
         // Get games with level events
         const games = await aggregationService.getGamesWithLevelEvents();
-        logger.info(`Found ${games.length} games with level events`);
+        logger.info(`[Postgres] Found ${games.length} games with level events`);
 
         if (games.length === 0) {
-          logger.info('No games with level events to aggregate');
+          logger.info('[Postgres] No games with level events to aggregate');
           return;
         }
 
@@ -41,7 +41,7 @@ export function startLevelMetricsAggregationJob(): void {
             await aggregationService.aggregateDailyMetrics(gameId, yesterday);
             successCount++;
           } catch (error) {
-            logger.error(`Error aggregating metrics for game ${gameId}:`, error);
+            logger.error(`[Postgres] Error aggregating metrics for game ${gameId}:`, error);
             errorCount++;
           } finally {
             await maybeThrottleAggregation(`level-metrics-daily-job:${gameId}`);
@@ -49,15 +49,15 @@ export function startLevelMetricsAggregationJob(): void {
         }
 
         logger.info(
-          `Daily aggregation complete: ${successCount} succeeded, ${errorCount} failed`
+          `[Postgres] Daily aggregation complete: ${successCount} succeeded, ${errorCount} failed`
         );
       } catch (error) {
-        logger.error('Error in daily aggregation job:', error);
+        logger.error('[Postgres] Error in daily aggregation job:', error);
       }
     });
   });
 
-  logger.info('Level metrics aggregation cron job started (runs daily at 2 AM UTC)');
+  logger.info('[Postgres] Level metrics aggregation cron job started (runs daily at 2 AM UTC)');
 }
 
 /**
@@ -65,19 +65,19 @@ export function startLevelMetricsAggregationJob(): void {
  * Rebuilds today's aggregates every hour to avoid raw scans on dashboard.
  */
 export function startLevelMetricsHourlyTodayJob(): void {
-  logger.info('Initializing hourly level metrics aggregation for today...');
+  logger.info('[Postgres] Initializing hourly level metrics aggregation for today...');
 
   // Run at minute 5 every hour (UTC)
   cron.schedule('5 * * * *', async () => {
     await withJobAdvisoryLock('level-metrics-hourly-today', async () => {
       try {
-        logger.info('Starting hourly aggregation for today...');
+        logger.info('[Postgres] Starting hourly aggregation for today...');
 
         const games = await aggregationService.getGamesWithLevelEvents();
-        logger.info(`Found ${games.length} games with level events`);
+        logger.info(`[Postgres] Found ${games.length} games with level events`);
 
         if (games.length === 0) {
-          logger.info('No games with level events to aggregate for today');
+          logger.info('[Postgres] No games with level events to aggregate for today');
           return;
         }
 
@@ -94,7 +94,7 @@ export function startLevelMetricsHourlyTodayJob(): void {
             await aggregationService.aggregateHourlyMetricsIncremental(gameId, hourStart, hourEnd);
             successCount++;
           } catch (error) {
-            logger.error(`Error aggregating today's metrics for game ${gameId}:`, error);
+            logger.error(`[Postgres] Error aggregating today's metrics for game ${gameId}:`, error);
             errorCount++;
           } finally {
             await maybeThrottleAggregation(`level-metrics-hourly-job:${gameId}`);
@@ -102,15 +102,15 @@ export function startLevelMetricsHourlyTodayJob(): void {
         }
 
         logger.info(
-          `Hourly aggregation for today complete: ${successCount} succeeded, ${errorCount} failed`
+          `[Postgres] Hourly aggregation for today complete: ${successCount} succeeded, ${errorCount} failed`
         );
       } catch (error) {
-        logger.error('Error in hourly aggregation job:', error);
+        logger.error('[Postgres] Error in hourly aggregation job:', error);
       }
     });
   });
 
-  logger.info('Hourly level metrics aggregation started (runs every hour at :05 UTC)');
+  logger.info('[Postgres] Hourly level metrics aggregation started (runs every hour at :05 UTC)');
 }
 
 /**

@@ -14,10 +14,16 @@ import clickHouseService from './ClickHouseService';
 export class AnalyticsService {
     private prisma: PrismaClient;
     private revenueService: RevenueService;
+    private readonly closedSessionExtensionWindowMs: number;
 
     constructor(prismaClient?: PrismaClient) {
         this.prisma = prismaClient || prisma;
         this.revenueService = new RevenueService(prismaClient);
+        const configuredWindowSec = Number(process.env.SESSION_CLOSED_EXTENSION_WINDOW_SECONDS || 600);
+        const safeWindowSec = Number.isFinite(configuredWindowSec) && configuredWindowSec >= 0
+            ? Math.floor(configuredWindowSec)
+            : 600;
+        this.closedSessionExtensionWindowMs = safeWindowSec * 1000;
     }
 
     private static readonly IGNORED_EVENT_NAMES = new Set(['app_paused', 'app_resumed']);
@@ -220,6 +226,18 @@ export class AnalyticsService {
 
                 if (candidateEndTime <= session.endTime) {
                     logger.debug(`Ignoring stale endSession for already closed session ${sessionId} (existing endTime: ${session.endTime.toISOString()}, requested: ${requestedEndTime.toISOString()})`);
+                    return session;
+                }
+
+                const extensionMs = candidateEndTime.getTime() - session.endTime.getTime();
+                if (extensionMs > this.closedSessionExtensionWindowMs) {
+                    logger.warn(`[Session] Ignoring late closed-session extension beyond allowed window`, {
+                        sessionId,
+                        existingEndTime: session.endTime.toISOString(),
+                        candidateEndTime: candidateEndTime.toISOString(),
+                        extensionMs,
+                        allowedWindowMs: this.closedSessionExtensionWindowMs
+                    });
                     return session;
                 }
 

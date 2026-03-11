@@ -47,6 +47,7 @@ export class SessionHeartbeatBatchWriter {
     private isShuttingDown: boolean = false;
     private isFlushing: boolean = false;
     private readonly flushChunkSize: number;
+    private readonly closedSessionExtensionWindowSec: number;
     
     // Metrics
     private totalFlushed: number = 0;
@@ -56,6 +57,10 @@ export class SessionHeartbeatBatchWriter {
     constructor(prismaClient?: PrismaClient) {
         this.prisma = prismaClient || prisma;
         this.flushChunkSize = Math.max(1, Number(process.env.HEARTBEAT_BATCH_UPDATE_CHUNK_SIZE || 250));
+        const configuredWindowSec = Number(process.env.SESSION_CLOSED_EXTENSION_WINDOW_SECONDS || 600);
+        this.closedSessionExtensionWindowSec = Number.isFinite(configuredWindowSec) && configuredWindowSec >= 0
+            ? Math.floor(configuredWindowSec)
+            : 600;
     }
 
     /**
@@ -221,7 +226,22 @@ export class SessionHeartbeatBatchWriter {
                     WHEN v.last_heartbeat > s."lastHeartbeat" THEN v.last_heartbeat
                     ELSE s."lastHeartbeat"
                   END,
+                  "endTime" = CASE
+                    WHEN s."endTime" IS NULL THEN s."endTime"
+                    WHEN v.last_heartbeat > s."endTime"
+                      AND v.last_heartbeat <= s."endTime" + (${this.closedSessionExtensionWindowSec} * interval '1 second')
+                      THEN v.last_heartbeat
+                    ELSE s."endTime"
+                  END,
                   "duration" = CASE
+                    WHEN s."endTime" IS NOT NULL
+                      AND v.last_heartbeat > s."endTime"
+                      AND v.last_heartbeat <= s."endTime" + (${this.closedSessionExtensionWindowSec} * interval '1 second')
+                      THEN GREATEST(
+                        COALESCE(s."duration", 0),
+                        EXTRACT(EPOCH FROM (v.last_heartbeat - s."startTime"))::int,
+                        0
+                      )
                     WHEN v.duration_sec IS NOT NULL THEN
                       CASE
                         WHEN s."duration" IS NULL THEN v.duration_sec
@@ -243,7 +263,13 @@ export class SessionHeartbeatBatchWriter {
                   VALUES ${valuesSql}
                 ) AS v(session_id, last_heartbeat, duration_sec, country_code)
                 WHERE s."id" = v.session_id
-                  AND s."endTime" IS NULL
+                  AND (
+                    s."endTime" IS NULL
+                    OR (
+                      v.last_heartbeat > s."endTime"
+                      AND v.last_heartbeat <= s."endTime" + (${this.closedSessionExtensionWindowSec} * interval '1 second')
+                    )
+                  )
             `);
             updatedTotal += Number(updated || 0);
         }

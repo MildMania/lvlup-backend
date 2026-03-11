@@ -77,6 +77,7 @@ export class EventBatchWriter {
     private flushTimer: NodeJS.Timeout | null = null;
     private isShuttingDown: boolean = false;
     private isFlushing: boolean = false;
+    private readonly closedSessionExtensionWindowMs: number;
     
     // Metrics
     private totalFlushed: number = 0;
@@ -85,6 +86,11 @@ export class EventBatchWriter {
 
     constructor(prismaClient?: PrismaClient) {
         this.prisma = prismaClient || prisma;
+        const configuredWindowSec = Number(process.env.SESSION_CLOSED_EXTENSION_WINDOW_SECONDS || 600);
+        const safeWindowSec = Number.isFinite(configuredWindowSec) && configuredWindowSec >= 0
+            ? Math.floor(configuredWindowSec)
+            : 600;
+        this.closedSessionExtensionWindowMs = safeWindowSec * 1000;
     }
 
     /**
@@ -271,10 +277,17 @@ export class EventBatchWriter {
         }
 
         let extendedCount = 0;
+        let ignoredTooLateCount = 0;
 
         for (const session of sessions) {
             const latestEventTs = latestBySession.get(session.id);
             if (!latestEventTs || !session.endTime || latestEventTs <= session.endTime) {
+                continue;
+            }
+
+            const extensionMs = latestEventTs.getTime() - session.endTime.getTime();
+            if (extensionMs > this.closedSessionExtensionWindowMs) {
+                ignoredTooLateCount += 1;
                 continue;
             }
 
@@ -303,6 +316,13 @@ export class EventBatchWriter {
             logger.info(`[EventBatchWriter] Extended ${extendedCount} closed sessions based on late events`, {
                 checkedSessions: sessions.length,
                 candidateSessions: latestBySession.size
+            });
+        }
+        if (ignoredTooLateCount > 0) {
+            logger.warn(`[EventBatchWriter] Ignored ${ignoredTooLateCount} closed-session late-event extensions beyond allowed window`, {
+                checkedSessions: sessions.length,
+                candidateSessions: latestBySession.size,
+                allowedWindowMs: this.closedSessionExtensionWindowMs
             });
         }
     }

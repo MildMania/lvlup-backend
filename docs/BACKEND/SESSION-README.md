@@ -4,6 +4,14 @@ Use this file as the first read for any new work session.
 
 Last verified against code on: 2026-03-10
 
+## Documentation Rule (Required)
+
+After each implementation/debug iteration:
+
+- Update existing docs when behavior/flags/flows changed.
+- Do **not** create new docs unless explicitly requested.
+- Keep this file as the first entry point and update links/references here when needed.
+
 ## 1) Runtime Architecture
 
 - `backend/src/index.ts` controls process mode with:
@@ -89,4 +97,3 @@ Check in this order:
 3. Are heavy endpoints falling back to Postgres?
 4. Are hourly jobs enabled unexpectedly?
 5. Are there extra Prisma clients / excessive idle connections?
-

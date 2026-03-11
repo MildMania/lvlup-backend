@@ -80,6 +80,33 @@ export class AnalyticsService {
         // Client timestamp is reasonable, use it
         return clientTime;
     }
+
+    /**
+     * Sanitize session end timestamps coming from clients.
+     * Accept small clock drift, clamp invalid/future values to server time.
+     */
+    private sanitizeSessionEndTimestamp(value: Date, context: { sessionId: string; source: 'requestedEndTime' | 'lastHeartbeat' }): Date {
+        const now = new Date();
+        const FUTURE_TOLERANCE_MS = 5000;
+
+        if (Number.isNaN(value.getTime())) {
+            logger.warn(`[Session] Invalid ${context.source}, falling back to server time`, {
+                sessionId: context.sessionId
+            });
+            return now;
+        }
+
+        if (value.getTime() > now.getTime() + FUTURE_TOLERANCE_MS) {
+            logger.warn(`[Session] Future ${context.source} rejected, clamping to server time`, {
+                sessionId: context.sessionId,
+                sourceTime: value.toISOString(),
+                serverTime: now.toISOString()
+            });
+            return now;
+        }
+
+        return value;
+    }
     // Create or get user
     async getOrCreateUser(gameId: string, userProfile: UserProfile) {
         try {
@@ -172,13 +199,23 @@ export class AnalyticsService {
                 throw new Error('Session not found');
             }
 
-            const requestedEndTime = new Date(endTime);
+            const requestedEndTime = this.sanitizeSessionEndTimestamp(new Date(endTime), {
+                sessionId,
+                source: 'requestedEndTime'
+            });
+
+            const saneLastHeartbeat = session.lastHeartbeat
+                ? this.sanitizeSessionEndTimestamp(session.lastHeartbeat, {
+                    sessionId,
+                    source: 'lastHeartbeat'
+                })
+                : null;
 
             // For already-closed sessions, keep idempotency for stale/duplicate end requests,
             // but allow extending endTime if client sends a later valid end timestamp.
             if (session.endTime) {
-                const candidateEndTime = session.lastHeartbeat && session.lastHeartbeat > requestedEndTime
-                    ? session.lastHeartbeat
+                const candidateEndTime = saneLastHeartbeat && saneLastHeartbeat > requestedEndTime
+                    ? saneLastHeartbeat
                     : requestedEndTime;
 
                 if (candidateEndTime <= session.endTime) {
@@ -201,8 +238,8 @@ export class AnalyticsService {
             
             // Use the later of requested endTime or lastHeartbeat
             // This handles cases where heartbeats arrived after endSession was called
-            const actualEndTime = session.lastHeartbeat && session.lastHeartbeat > requestedEndTime 
-                ? session.lastHeartbeat 
+            const actualEndTime = saneLastHeartbeat && saneLastHeartbeat > requestedEndTime
+                ? saneLastHeartbeat
                 : requestedEndTime;
             
             const duration = Math.floor((actualEndTime.getTime() - session.startTime.getTime()) / 1000);

@@ -15,6 +15,7 @@ export class AnalyticsService {
     private prisma: PrismaClient;
     private revenueService: RevenueService;
     private readonly closedSessionExtensionWindowMs: number;
+    private readonly sessionFutureToleranceMs: number;
 
     constructor(prismaClient?: PrismaClient) {
         this.prisma = prismaClient || prisma;
@@ -24,6 +25,11 @@ export class AnalyticsService {
             ? Math.floor(configuredWindowSec)
             : 600;
         this.closedSessionExtensionWindowMs = safeWindowSec * 1000;
+        const configuredFutureToleranceSec = Number(process.env.SESSION_FUTURE_TOLERANCE_SECONDS || 60);
+        const safeFutureToleranceSec = Number.isFinite(configuredFutureToleranceSec) && configuredFutureToleranceSec >= 0
+            ? Math.floor(configuredFutureToleranceSec)
+            : 60;
+        this.sessionFutureToleranceMs = safeFutureToleranceSec * 1000;
     }
 
     private static readonly IGNORED_EVENT_NAMES = new Set(['app_paused', 'app_resumed']);
@@ -93,7 +99,6 @@ export class AnalyticsService {
      */
     private sanitizeSessionEndTimestamp(value: Date, context: { sessionId: string; source: 'requestedEndTime' | 'lastHeartbeat' }): Date {
         const now = new Date();
-        const FUTURE_TOLERANCE_MS = 5000;
 
         if (Number.isNaN(value.getTime())) {
             logger.warn(`[Session] Invalid ${context.source}, falling back to server time`, {
@@ -102,7 +107,7 @@ export class AnalyticsService {
             return now;
         }
 
-        if (value.getTime() > now.getTime() + FUTURE_TOLERANCE_MS) {
+        if (value.getTime() > now.getTime() + this.sessionFutureToleranceMs) {
             logger.warn(`[Session] Future ${context.source} rejected, clamping to server time`, {
                 sessionId: context.sessionId,
                 sourceTime: value.toISOString(),

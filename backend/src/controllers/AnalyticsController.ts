@@ -278,10 +278,14 @@ export class AnalyticsController {
                     });
                 }
 
-                // Prevent future dates (with 5 second tolerance for clock drift)
+                // Prevent future dates (with configurable tolerance for clock drift)
                 const serverTime = new Date();
                 const timeDiffMs = startDate.getTime() - serverTime.getTime();
-                const FUTURE_TOLERANCE_MS = 5000; // 5 seconds tolerance
+                const configuredFutureToleranceSec = Number(process.env.SESSION_FUTURE_TOLERANCE_SECONDS || 60);
+                const safeFutureToleranceSec = Number.isFinite(configuredFutureToleranceSec) && configuredFutureToleranceSec >= 0
+                    ? Math.floor(configuredFutureToleranceSec)
+                    : 60;
+                const FUTURE_TOLERANCE_MS = safeFutureToleranceSec * 1000;
                 
                 if (timeDiffMs > FUTURE_TOLERANCE_MS) {
                     const diffSeconds = (timeDiffMs / 1000).toFixed(2);

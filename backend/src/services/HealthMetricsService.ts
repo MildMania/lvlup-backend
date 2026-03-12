@@ -1,4 +1,4 @@
-import { PrismaClient } from '@prisma/client';
+import { Prisma, PrismaClient } from '@prisma/client';
 import prisma from '../prisma';
 import clickHouseService from './ClickHouseService';
 import logger from '../utils/logger';
@@ -285,128 +285,134 @@ export class HealthMetricsService {
   ): Promise<CrashMetrics> {
     const { startDate, endDate, platform, country, appVersion, crashesLimit = 15, crashesOffset = 0 } = filters;
 
-    const crashWhere: any = {
-      gameId,
-      timestamp: {
-        gte: startDate,
-        lte: endDate,
-      },
-    };
+    const crashConditions: Prisma.Sql[] = [
+      Prisma.sql`"gameId" = ${gameId}`,
+      Prisma.sql`"timestamp" >= ${startDate}`,
+      Prisma.sql`"timestamp" <= ${endDate}`,
+    ];
+    if (platform) crashConditions.push(Prisma.sql`"platform" = ${platform}`);
+    if (country) crashConditions.push(Prisma.sql`"country" = ${country}`);
+    if (appVersion) crashConditions.push(Prisma.sql`"appVersion" = ${appVersion}`);
+    const crashWhereSql = Prisma.sql`${Prisma.join(crashConditions, ' AND ')}`;
 
-    if (platform) crashWhere.platform = platform;
-    if (country) crashWhere.country = country;
-    if (appVersion) crashWhere.appVersion = appVersion;
+    const sessionConditions: Prisma.Sql[] = [
+      Prisma.sql`"gameId" = ${gameId}`,
+      Prisma.sql`"startTime" >= ${startDate}`,
+      Prisma.sql`"startTime" <= ${endDate}`,
+    ];
+    if (platform) sessionConditions.push(Prisma.sql`"platform" = ${platform}`);
+    if (appVersion) sessionConditions.push(Prisma.sql`"version" = ${appVersion}`);
+    const sessionWhereSql = Prisma.sql`${Prisma.join(sessionConditions, ' AND ')}`;
 
-    const totalCrashes = await this.prismaClient.crashLog.count({ where: crashWhere });
+    const [crashSummaryRows, sessionSummaryRows] = await Promise.all([
+      this.prismaClient.$queryRaw<
+        Array<{ total_crashes: bigint; affected_users: bigint; sessions_with_crashes: bigint }>
+      >(Prisma.sql`
+        SELECT
+          COUNT(*)::bigint AS "total_crashes",
+          COUNT(DISTINCT "userId") FILTER (WHERE "userId" IS NOT NULL)::bigint AS "affected_users",
+          COUNT(DISTINCT "sessionId") FILTER (WHERE "sessionId" IS NOT NULL)::bigint AS "sessions_with_crashes"
+        FROM "crash_logs"
+        WHERE ${crashWhereSql}
+      `),
+      this.prismaClient.$queryRaw<Array<{ total_sessions: bigint; total_users: bigint }>>(Prisma.sql`
+        SELECT
+          COUNT(*)::bigint AS "total_sessions",
+          COUNT(DISTINCT "userId")::bigint AS "total_users"
+        FROM "sessions"
+        WHERE ${sessionWhereSql}
+      `),
+    ]);
 
-    const sessionWhere: any = {
-      gameId,
-      startTime: {
-        gte: startDate,
-        lte: endDate,
-      },
-    };
-    if (platform) sessionWhere.platform = platform;
-    if (appVersion) sessionWhere.version = appVersion;
-
-    const totalSessions = await this.prismaClient.session.count({ where: sessionWhere });
-
-    const activeUsersInPeriod = await this.prismaClient.session.findMany({
-      where: sessionWhere,
-      select: { userId: true },
-      distinct: ['userId'],
-    });
-    const totalUsers = activeUsersInPeriod.length;
-
-    const crashedUserIds = await this.prismaClient.crashLog.findMany({
-      where: {
-        ...crashWhere,
-        userId: { not: null },
-      },
-      select: { userId: true },
-      distinct: ['userId'],
-    });
-    const affectedUsers = crashedUserIds.length;
-
-    const sessionsWithCrashIds = await this.prismaClient.crashLog.findMany({
-      where: {
-        ...crashWhere,
-        sessionId: { not: null },
-      },
-      select: { sessionId: true },
-      distinct: ['sessionId'],
-    });
-    const sessionsWithCrashes = sessionsWithCrashIds.length;
+    const totalCrashes = Number(crashSummaryRows[0]?.total_crashes || 0);
+    const affectedUsers = Number(crashSummaryRows[0]?.affected_users || 0);
+    const sessionsWithCrashes = Number(crashSummaryRows[0]?.sessions_with_crashes || 0);
+    const totalSessions = Number(sessionSummaryRows[0]?.total_sessions || 0);
+    const totalUsers = Number(sessionSummaryRows[0]?.total_users || 0);
 
     const crashRate = totalSessions > 0 ? (sessionsWithCrashes / totalSessions) * 100 : 0;
     const crashFreeUserRate = totalUsers > 0 ? ((totalUsers - affectedUsers) / totalUsers) * 100 : 100;
     const crashFreeSessionRate = totalSessions > 0 ? ((totalSessions - sessionsWithCrashes) / totalSessions) * 100 : 100;
 
-    const crashesByType = await this.prismaClient.crashLog.groupBy({
-      by: ['crashType'],
-      where: crashWhere,
-      _count: true,
-    });
+    const [crashesByType, crashesBySeverity, topCrashRows, totalCrashGroupRows] = await Promise.all([
+      this.prismaClient.$queryRaw<Array<{ crash_type: string; count: bigint }>>(Prisma.sql`
+        SELECT "crashType" AS "crash_type", COUNT(*)::bigint AS "count"
+        FROM "crash_logs"
+        WHERE ${crashWhereSql}
+        GROUP BY "crashType"
+      `),
+      this.prismaClient.$queryRaw<Array<{ severity: string; count: bigint }>>(Prisma.sql`
+        SELECT "severity" AS "severity", COUNT(*)::bigint AS "count"
+        FROM "crash_logs"
+        WHERE ${crashWhereSql}
+        GROUP BY "severity"
+      `),
+      this.prismaClient.$queryRaw<
+        Array<{
+          id: string;
+          message: string;
+          exception_type: string;
+          count: bigint;
+          affected_users: bigint;
+          last_occurrence: Date;
+        }>
+      >(Prisma.sql`
+        WITH grouped AS (
+          SELECT
+            "message",
+            COALESCE("exceptionType", 'Unknown') AS "exception_type",
+            COUNT(*)::bigint AS "count",
+            COUNT(DISTINCT "userId") FILTER (WHERE "userId" IS NOT NULL)::bigint AS "affected_users",
+            MAX("timestamp") AS "last_occurrence"
+          FROM "crash_logs"
+          WHERE ${crashWhereSql}
+          GROUP BY "message", COALESCE("exceptionType", 'Unknown')
+        ),
+        latest AS (
+          SELECT DISTINCT ON ("message", COALESCE("exceptionType", 'Unknown'))
+            "id",
+            "message",
+            COALESCE("exceptionType", 'Unknown') AS "exception_type",
+            "timestamp"
+          FROM "crash_logs"
+          WHERE ${crashWhereSql}
+          ORDER BY "message", COALESCE("exceptionType", 'Unknown'), "timestamp" DESC
+        )
+        SELECT
+          latest."id" AS "id",
+          grouped."message" AS "message",
+          grouped."exception_type" AS "exception_type",
+          grouped."count" AS "count",
+          grouped."affected_users" AS "affected_users",
+          grouped."last_occurrence" AS "last_occurrence"
+        FROM grouped
+        JOIN latest
+          ON latest."message" = grouped."message"
+         AND latest."exception_type" = grouped."exception_type"
+        ORDER BY grouped."count" DESC
+        LIMIT ${crashesLimit}
+        OFFSET ${crashesOffset}
+      `),
+      this.prismaClient.$queryRaw<Array<{ total_crash_groups: bigint }>>(Prisma.sql`
+        SELECT COUNT(*)::bigint AS "total_crash_groups"
+        FROM (
+          SELECT 1
+          FROM "crash_logs"
+          WHERE ${crashWhereSql}
+          GROUP BY "message", COALESCE("exceptionType", 'Unknown')
+        ) t
+      `),
+    ]);
 
-    const crashesBySeverity = await this.prismaClient.crashLog.groupBy({
-      by: ['severity'],
-      where: crashWhere,
-      _count: true,
-    });
-
-    const allCrashes = await this.prismaClient.crashLog.findMany({
-      where: crashWhere,
-      select: {
-        id: true,
-        message: true,
-        exceptionType: true,
-        userId: true,
-        timestamp: true,
-      },
-    });
-
-    const crashGroups = new Map<string, {
-      id: string;
-      message: string;
-      exceptionType: string;
-      count: number;
-      users: Set<string>;
-      lastOccurrence: Date;
-    }>();
-
-    allCrashes.forEach((crash) => {
-      const key = `${crash.message}::${crash.exceptionType}`;
-      if (!crashGroups.has(key)) {
-        crashGroups.set(key, {
-          id: crash.id,
-          message: crash.message,
-          exceptionType: crash.exceptionType || 'Unknown',
-          count: 0,
-          users: new Set(),
-          lastOccurrence: crash.timestamp,
-        });
-      }
-      const group = crashGroups.get(key)!;
-      group.count++;
-      if (crash.userId) group.users.add(crash.userId);
-      if (crash.timestamp > group.lastOccurrence) {
-        group.lastOccurrence = crash.timestamp;
-      }
-    });
-
-    const sortedCrashGroups = Array.from(crashGroups.values()).sort((a, b) => b.count - a.count);
-
-    const totalCrashGroups = sortedCrashGroups.length;
-    const topCrashes = sortedCrashGroups
-      .slice(crashesOffset, crashesOffset + crashesLimit)
-      .map((c) => ({
-        id: c.id,
-        message: c.message,
-        exceptionType: c.exceptionType,
-        count: c.count,
-        affectedUsers: c.users.size,
-        lastOccurrence: c.lastOccurrence,
-      }));
+    const totalCrashGroups = Number(totalCrashGroupRows[0]?.total_crash_groups || 0);
+    const topCrashes = topCrashRows.map((row) => ({
+      id: row.id,
+      message: row.message,
+      exceptionType: row.exception_type || 'Unknown',
+      count: Number(row.count || 0),
+      affectedUsers: Number(row.affected_users || 0),
+      lastOccurrence: row.last_occurrence,
+    }));
 
     return {
       totalCrashes,
@@ -416,12 +422,12 @@ export class HealthMetricsService {
       affectedUsers,
       totalUsers,
       crashesByType: crashesByType.map((c) => ({
-        type: c.crashType,
-        count: c._count,
+        type: c.crash_type,
+        count: Number(c.count || 0),
       })),
       crashesBySeverity: crashesBySeverity.map((c) => ({
         severity: c.severity,
-        count: c._count,
+        count: Number(c.count || 0),
       })),
       topCrashes,
       totalCrashGroups,
@@ -509,82 +515,78 @@ export class HealthMetricsService {
   private async getCrashTimelineFromPostgres(gameId: string, filters: HealthFilters): Promise<CrashTimeline[]> {
     const { startDate, endDate, platform, country, appVersion } = filters;
 
-    const crashWhere: any = {
-      gameId,
-      timestamp: {
-        gte: startDate,
-        lte: endDate,
-      },
-    };
+    const crashConditions: Prisma.Sql[] = [
+      Prisma.sql`"gameId" = ${gameId}`,
+      Prisma.sql`"timestamp" >= ${startDate}`,
+      Prisma.sql`"timestamp" <= ${endDate}`,
+    ];
+    if (platform) crashConditions.push(Prisma.sql`"platform" = ${platform}`);
+    if (country) crashConditions.push(Prisma.sql`"country" = ${country}`);
+    if (appVersion) crashConditions.push(Prisma.sql`"appVersion" = ${appVersion}`);
+    const crashWhereSql = Prisma.sql`${Prisma.join(crashConditions, ' AND ')}`;
 
-    if (platform) crashWhere.platform = platform;
-    if (country) crashWhere.country = country;
-    if (appVersion) crashWhere.appVersion = appVersion;
+    const sessionConditions: Prisma.Sql[] = [
+      Prisma.sql`"gameId" = ${gameId}`,
+      Prisma.sql`"startTime" >= ${startDate}`,
+      Prisma.sql`"startTime" <= ${endDate}`,
+    ];
+    if (platform) sessionConditions.push(Prisma.sql`"platform" = ${platform}`);
+    if (appVersion) sessionConditions.push(Prisma.sql`"version" = ${appVersion}`);
+    const sessionWhereSql = Prisma.sql`${Prisma.join(sessionConditions, ' AND ')}`;
 
-    const crashes = await this.prismaClient.crashLog.findMany({
-      where: crashWhere,
-      select: {
-        timestamp: true,
-        userId: true,
-      },
-    });
-
-    const sessionWhere: any = {
-      gameId,
-      startTime: {
-        gte: startDate,
-        lte: endDate,
-      },
-    };
-    if (platform) sessionWhere.platform = platform;
-    if (appVersion) sessionWhere.version = appVersion;
-
-    const sessions = await this.prismaClient.session.findMany({
-      where: sessionWhere,
-      select: {
-        startTime: true,
-        userId: true,
-      },
-    });
-
-    const crashesByDate = new Map<string, { count: number; users: Set<string> }>();
-    crashes.forEach((crash) => {
-      const dateStr = crash.timestamp.toISOString().split('T')[0];
-      if (!dateStr) return;
-      if (!crashesByDate.has(dateStr)) {
-        crashesByDate.set(dateStr, { count: 0, users: new Set() });
-      }
-      const data = crashesByDate.get(dateStr)!;
-      data.count++;
-      if (crash.userId) data.users.add(crash.userId);
-    });
-
-    const usersByDate = new Map<string, Set<string>>();
-    sessions.forEach((session) => {
-      const dateStr = session.startTime.toISOString().split('T')[0];
-      if (!dateStr) return;
-      if (!usersByDate.has(dateStr)) {
-        usersByDate.set(dateStr, new Set());
-      }
-      usersByDate.get(dateStr)!.add(session.userId);
-    });
+    const [crashRows, sessionRows] = await Promise.all([
+      this.prismaClient.$queryRaw<Array<{ day: Date; crashes: bigint; affected_users: bigint }>>(Prisma.sql`
+        SELECT
+          date_trunc('day', "timestamp")::date AS "day",
+          COUNT(*)::bigint AS "crashes",
+          COUNT(DISTINCT "userId") FILTER (WHERE "userId" IS NOT NULL)::bigint AS "affected_users"
+        FROM "crash_logs"
+        WHERE ${crashWhereSql}
+        GROUP BY 1
+      `),
+      this.prismaClient.$queryRaw<Array<{ day: Date; total_users: bigint }>>(Prisma.sql`
+        SELECT
+          date_trunc('day', "startTime")::date AS "day",
+          COUNT(DISTINCT "userId")::bigint AS "total_users"
+        FROM "sessions"
+        WHERE ${sessionWhereSql}
+        GROUP BY 1
+      `),
+    ]);
 
     const timeline: CrashTimeline[] = [];
-    const allDates = new Set([...crashesByDate.keys(), ...usersByDate.keys()]);
+    const usersByDate = new Map<string, number>();
+    const crashesByDate = new Map<string, { count: number; affectedUsers: number }>();
 
-    allDates.forEach((dateStr) => {
-      const crashData = crashesByDate.get(dateStr) || { count: 0, users: new Set() };
-      const totalUsers = usersByDate.get(dateStr)?.size || 0;
+    for (const row of sessionRows) {
+      const dateStr = row.day.toISOString().split('T')[0];
+      if (!dateStr) continue;
+      usersByDate.set(dateStr, Number(row.total_users || 0));
+    }
+
+    for (const row of crashRows) {
+      const dateStr = row.day.toISOString().split('T')[0];
+      if (!dateStr) continue;
+      crashesByDate.set(dateStr, {
+        count: Number(row.crashes || 0),
+        affectedUsers: Number(row.affected_users || 0),
+      });
+    }
+
+    const allDates = new Set([...usersByDate.keys(), ...crashesByDate.keys()]);
+    for (const dateStr of allDates) {
+      const crashData = crashesByDate.get(dateStr) || { count: 0, affectedUsers: 0 };
+      const totalUsers = usersByDate.get(dateStr) || 0;
       const crashRate = totalUsers > 0 ? (crashData.count / totalUsers) * 100 : 0;
 
       timeline.push({
         date: dateStr,
         crashes: crashData.count,
-        affectedUsers: crashData.users.size,
+        affectedUsers: crashData.affectedUsers,
         totalUsers,
         crashRate: Number(crashRate.toFixed(2)),
       });
-    });
+    }
 
     return timeline.sort((a, b) => a.date.localeCompare(b.date));
   }

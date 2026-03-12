@@ -66,7 +66,7 @@ export class AnalyticsService {
      */
     private validateClientTimestamp(clientTs?: number): Date {
         const serverTime = new Date();
-        
+
         if (!clientTs) {
             return serverTime;
         }
@@ -258,13 +258,13 @@ export class AnalyticsService {
                 logger.info(`Extended closed session ${sessionId} endTime to ${candidateEndTime.toISOString()} (previous: ${session.endTime.toISOString()}, requested: ${requestedEndTime.toISOString()}, lastHeartbeat: ${session.lastHeartbeat?.toISOString() || 'none'})`);
                 return updatedClosedSession;
             }
-            
+
             // Use the later of requested endTime or lastHeartbeat
             // This handles cases where heartbeats arrived after endSession was called
             const actualEndTime = saneLastHeartbeat && saneLastHeartbeat > requestedEndTime
                 ? saneLastHeartbeat
                 : requestedEndTime;
-            
+
             const duration = Math.floor((actualEndTime.getTime() - session.startTime.getTime()) / 1000);
 
             const updatedSession = await this.prisma.session.update({
@@ -321,21 +321,21 @@ export class AnalyticsService {
             const properties = { ...(eventData.properties || {}) };
             const levelFunnel = (properties as any).levelFunnel ?? eventData.levelFunnel ?? null;
             const levelFunnelVersion = (properties as any).levelFunnelVersion ?? eventData.levelFunnelVersion ?? null;
-            
+
             // Debug logging
             if (levelFunnel || levelFunnelVersion) {
                 logger.info(`Extracted levelFunnel: ${levelFunnel}, levelFunnelVersion: ${levelFunnelVersion} from event ${eventData.eventName}`);
             }
-            
+
             // Remove levelFunnel fields from properties since they're stored in dedicated columns
             delete (properties as any).levelFunnel;
             delete (properties as any).levelFunnelVersion;
-            
+
             // Use validated client timestamp for accurate temporal ordering
             // Critical for offline events and analytics accuracy (DAU, retention, funnels)
             const eventTimestamp = this.validateClientTimestamp(eventData.clientTs);
             const serverTime = new Date(); // Actual server receipt time
-            
+
             // Prepare event data for batch writer
             const eventRecord = {
                 gameId: gameId,
@@ -344,44 +344,44 @@ export class AnalyticsService {
                 eventName: eventData.eventName,
                 properties: properties,
                 timestamp: eventTimestamp, // Use validated client timestamp
-                
+
                 // Event metadata
                 eventUuid: eventData.eventUuid ?? null,
                 // Store original client timestamp for reference
-                clientTs: eventData.clientTs ? BigInt(eventData.clientTs) : 
-                          (eventData.timestamp ? BigInt(new Date(eventData.timestamp).getTime()) : null),
+                clientTs: eventData.clientTs ? BigInt(eventData.clientTs) :
+                    (eventData.timestamp ? BigInt(new Date(eventData.timestamp).getTime()) : null),
                 serverReceivedAt: serverTime, // Track when server received the event
-                
+
                 // Device & Platform info
                 platform: eventData.platform ?? null,
                 osVersion: eventData.osVersion ?? null,
                 manufacturer: eventData.manufacturer ?? null,
                 device: eventData.device ?? null,
                 deviceId: eventData.deviceId ?? null,
-                
+
                 // App info
                 appVersion: eventData.appVersion ?? null,
                 appBuild: eventData.appBuild ?? null,
                 sdkVersion: eventData.sdkVersion ?? null,
-                
+
                 // Network & Additional
                 connectionType: eventData.connectionType ?? null,
                 sessionNum: eventData.sessionNum ?? null,
-                
+
                 // Geographic location (minimal)
                 countryCode: eventData.countryCode ?? null,
-                
+
                 // Level funnel tracking (for AB testing level designs)
                 // Extracted from properties (new SDK format) or top-level (backward compatibility)
                 levelFunnel: levelFunnel,
                 levelFunnelVersion: levelFunnelVersion,
             };
-            
+
             // Enqueue event for batched insertion (non-blocking)
             eventBatchWriter.enqueue(eventRecord);
 
             logger.debug(`Event ${eventData.eventName} enqueued for batch write (user: ${userId})`);
-            
+
             // Dual-write pattern: Create revenue record for monetization events
             if (
                 eventData.eventName === 'ad_impression' ||
@@ -397,7 +397,7 @@ export class AnalyticsService {
                     logger.error(`Failed to create revenue record for ${eventData.eventName}:`, revenueError);
                 }
             }
-            
+
             // Return a synthetic response (we don't have the DB-generated ID yet)
             return {
                 id: 'batched', // Indicate this was batched
@@ -421,12 +421,12 @@ export class AnalyticsService {
         eventId: string
     ) {
         const props = eventData.properties || {};
-        
+
         if (eventData.eventName === 'ad_impression') {
             // Extract ad impression revenue data
             const revenue = (props as any).revenue || 0;
             if (revenue <= 0) return; // Skip if no revenue
-            
+
             const revenueData: any = {
                 revenueType: RevenueType.AD_IMPRESSION,
                 revenue,
@@ -443,14 +443,14 @@ export class AnalyticsService {
                 appVersion: eventData.appVersion,
                 countryCode: eventData.countryCode,
             };
-            
+
             await this.revenueService.trackRevenue(gameId, userId, sessionId, revenueData, eventData);
-            
+
         } else if (eventData.eventName === 'iap_purchase' || eventData.eventName === 'in_app_purchase') {
             // Extract in-app purchase revenue data
             const revenue = (props as any).revenue || (props as any).price || 0;
             if (revenue <= 0) return; // Skip if no revenue
-            
+
             const revenueData: any = {
                 revenueType: RevenueType.IN_APP_PURCHASE,
                 revenue,
@@ -466,7 +466,7 @@ export class AnalyticsService {
                 appVersion: eventData.appVersion,
                 countryCode: eventData.countryCode,
             };
-            
+
             await this.revenueService.trackRevenue(gameId, userId, sessionId, revenueData, eventData);
         }
     }
@@ -508,21 +508,21 @@ export class AnalyticsService {
                 const properties = { ...(eventData.properties || {}) };
                 const levelFunnel = (properties as any).levelFunnel ?? eventData.levelFunnel ?? null;
                 const levelFunnelVersion = (properties as any).levelFunnelVersion ?? eventData.levelFunnelVersion ?? null;
-                
+
                 // Debug logging
                 if (levelFunnel || levelFunnelVersion) {
                     logger.info(`Extracted levelFunnel: ${levelFunnel}, levelFunnelVersion: ${levelFunnelVersion} from event ${eventData.eventName}`);
                 }
-                
+
                 // Remove levelFunnel fields from properties since they're stored in dedicated columns
                 delete (properties as any).levelFunnel;
                 delete (properties as any).levelFunnelVersion;
-                
+
                 // Use validated client timestamp for each event in batch
                 // Critical for offline events to preserve temporal sequence
                 const eventTimestamp = this.validateClientTimestamp(eventData.clientTs);
                 const serverTime = new Date(); // Server receipt time
-                
+
                 const eventRecord = {
                     gameId: gameId,
                     userId: user.id,
@@ -530,43 +530,43 @@ export class AnalyticsService {
                     eventName: eventData.eventName,
                     properties: properties,
                     timestamp: eventTimestamp, // Use validated client timestamp
-                    
+
                     // Event metadata
                     eventUuid: eventData.eventUuid ?? null,
                     clientTs: eventData.clientTs ? BigInt(eventData.clientTs) : null,
                     serverReceivedAt: serverTime, // Track when server received
-                    
+
                     // Device & Platform info - prefer event-level, fallback to deviceInfo
                     platform: eventData.platform ?? deviceInfo.platform ?? null,
                     osVersion: eventData.osVersion ?? deviceInfo.osVersion ?? null,
                     manufacturer: eventData.manufacturer ?? deviceInfo.manufacturer ?? null,
                     device: eventData.device ?? deviceInfo.device ?? null,
                     deviceId: eventData.deviceId ?? deviceInfo.deviceId ?? null,
-                    
+
                     // App info - prefer event-level, fallback to deviceInfo
                     appVersion: eventData.appVersion ?? deviceInfo.appVersion ?? null,
                     appBuild: eventData.appBuild ?? deviceInfo.appBuild ?? null,
                     sdkVersion: eventData.sdkVersion ?? deviceInfo.sdkVersion ?? null,
-                    
+
                     // Network & Additional - prefer event-level, fallback to deviceInfo
                     connectionType: eventData.connectionType ?? deviceInfo.connectionType ?? null,
                     sessionNum: eventData.sessionNum ?? deviceInfo.sessionNum ?? null,
-                    
+
                     // Geographic location (minimal)
                     countryCode: eventData.countryCode ?? null,
-                    
+
                     // Level funnel tracking (for AB testing level designs)
                     // Extracted from properties (new SDK format) or top-level (backward compatibility)
                     levelFunnel: levelFunnel,
                     levelFunnelVersion: levelFunnelVersion,
                 };
-                
+
                 // Enqueue each event for batched insertion
                 eventBatchWriter.enqueue(eventRecord);
             });
 
             logger.info(`Batch enqueued ${eventsToTrack.length} events for user ${batchData.userId}`);
-            
+
             // Return count of enqueued events
             return { count: eventsToTrack.length };
         } catch (error) {
@@ -603,7 +603,7 @@ export class AnalyticsService {
                     includeTopEvents
                 })
             );
-            
+
             // Try to get from cache first (5 minute TTL)
             const cached = cache.get(cacheKey) as AnalyticsData | undefined;
             if (cached) {
@@ -869,9 +869,9 @@ export class AnalyticsService {
     }
 
     async getEvents(
-        gameId: string, 
-        limit: number = 100, 
-        offset: number = 0, 
+        gameId: string,
+        limit: number = 100,
+        offset: number = 0,
         sort: string = 'desc',
         filters?: {
             userId?: string;
@@ -1302,3 +1302,4 @@ export class AnalyticsService {
         }
     }
 }
+

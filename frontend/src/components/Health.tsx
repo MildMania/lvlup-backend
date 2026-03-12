@@ -261,26 +261,33 @@ const Health: React.FC<{ gameId: string }> = ({ gameId }) => {
         return;
       }
       const { start, end } = range;
-      const params = new URLSearchParams({
+      const baseParams = new URLSearchParams({
         startDate: start.toISOString(),
         endDate: end.toISOString(),
-        crashesLimit: crashesLimit.toString(),
-        crashesOffset: (crashesPage * crashesLimit).toString(),
       });
 
-      if (platform) params.append('platform', platform);
+      if (platform) baseParams.append('platform', platform);
       if (selectedCountries.length > 0) {
         selectedCountries
           .filter(country => country && country !== 'All')
-          .forEach(country => params.append('country', country));
+          .forEach(country => baseParams.append('country', country));
       }
       if (selectedVersions.length > 0) {
         selectedVersions
           .filter(version => version && version !== 'All')
-          .forEach(version => params.append('appVersion', version));
+          .forEach(version => baseParams.append('appVersion', version));
       }
-      if (severity) params.append('severity', severity);
-      if (crashType) params.append('crashType', crashType);
+      if (severity) baseParams.append('severity', severity);
+      if (crashType) baseParams.append('crashType', crashType);
+
+      const metricsParams = new URLSearchParams(baseParams);
+      metricsParams.append('crashesLimit', crashesLimit.toString());
+      metricsParams.append('crashesOffset', (crashesPage * crashesLimit).toString());
+
+      const timelineParams = new URLSearchParams(baseParams);
+      const crashesParams = new URLSearchParams(baseParams);
+      crashesParams.append('limit', crashesLimit.toString());
+      crashesParams.append('offset', (crashesPage * crashesLimit).toString());
 
       const apiUrl = import.meta.env.VITE_API_BASE_URL;
       const apiKey = getApiKey();
@@ -295,9 +302,9 @@ const Health: React.FC<{ gameId: string }> = ({ gameId }) => {
       };
 
       const [metricsRes, timelineRes, logsRes] = await Promise.all([
-        fetch(`${apiUrl}/games/${gameId}/health/metrics?${params}`, { headers }),
-        fetch(`${apiUrl}/games/${gameId}/health/timeline?${params}`, { headers }),
-        fetch(`${apiUrl}/games/${gameId}/health/crashes?${params}`, { headers }),
+        fetch(`${apiUrl}/games/${gameId}/health/metrics?${metricsParams}`, { headers }),
+        fetch(`${apiUrl}/games/${gameId}/health/timeline?${timelineParams}`, { headers }),
+        fetch(`${apiUrl}/games/${gameId}/health/crashes?${crashesParams}`, { headers }),
       ]);
 
       console.log('Response status:', {

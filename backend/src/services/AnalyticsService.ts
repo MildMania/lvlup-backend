@@ -378,7 +378,11 @@ export class AnalyticsService {
             logger.debug(`Event ${eventData.eventName} enqueued for batch write (user: ${userId})`);
             
             // Dual-write pattern: Create revenue record for monetization events
-            if (eventData.eventName === 'ad_impression' || eventData.eventName === 'iap_purchase') {
+            if (
+                eventData.eventName === 'ad_impression' ||
+                eventData.eventName === 'iap_purchase' ||
+                eventData.eventName === 'in_app_purchase'
+            ) {
                 try {
                     // Pass a synthetic event ID (we don't have the real one yet due to batching)
                     // Revenue tracking will work independently
@@ -437,7 +441,7 @@ export class AnalyticsService {
             
             await this.revenueService.trackRevenue(gameId, userId, sessionId, revenueData, eventData);
             
-        } else if (eventData.eventName === 'iap_purchase') {
+        } else if (eventData.eventName === 'iap_purchase' || eventData.eventName === 'in_app_purchase') {
             // Extract in-app purchase revenue data
             const revenue = (props as any).revenue || (props as any).price || 0;
             if (revenue <= 0) return; // Skip if no revenue

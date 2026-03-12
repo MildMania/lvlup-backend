@@ -4,6 +4,34 @@ import { HealthMetricsService } from '../services/HealthMetricsService';
 const healthService = new HealthMetricsService();
 
 export class HealthMetricsController {
+  private resolveDateRange(startDateRaw: unknown, endDateRaw: unknown): { startDate: Date; endDate: Date } {
+    const now = new Date();
+    const defaultEnd = now;
+    const defaultStart = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+
+    const parsedStart = typeof startDateRaw === 'string' ? new Date(startDateRaw) : null;
+    const parsedEnd = typeof endDateRaw === 'string' ? new Date(endDateRaw) : null;
+
+    let endDate = parsedEnd && !Number.isNaN(parsedEnd.getTime()) ? parsedEnd : defaultEnd;
+    let startDate = parsedStart && !Number.isNaN(parsedStart.getTime()) ? parsedStart : defaultStart;
+
+    // Guard against inverted ranges and future end dates.
+    if (startDate > endDate) {
+      startDate = new Date(endDate.getTime() - 7 * 24 * 60 * 60 * 1000);
+    }
+    if (endDate > now) {
+      endDate = now;
+    }
+
+    // Hard cap to latest 7 days for health/performance reads.
+    const maxWindowMs = 7 * 24 * 60 * 60 * 1000;
+    if (endDate.getTime() - startDate.getTime() > maxWindowMs) {
+      startDate = new Date(endDate.getTime() - maxWindowMs);
+    }
+
+    return { startDate, endDate };
+  }
+
   async getHealthMetrics(req: Request, res: Response) {
     try {
       const { gameId } = req.params;
@@ -13,13 +41,11 @@ export class HealthMetricsController {
         return res.status(400).json({ error: 'gameId is required' });
       }
 
-      if (!startDate || !endDate) {
-        return res.status(400).json({ error: 'startDate and endDate are required' });
-      }
+      const dateRange = this.resolveDateRange(startDate, endDate);
 
       const filters = {
-        startDate: new Date(startDate as string),
-        endDate: new Date(endDate as string),
+        startDate: dateRange.startDate,
+        endDate: dateRange.endDate,
         ...(platform && { platform: platform as string }),
         ...(country && { country: country as string }),
         ...(appVersion && { appVersion: appVersion as string }),
@@ -44,13 +70,11 @@ export class HealthMetricsController {
         return res.status(400).json({ error: 'gameId is required' });
       }
 
-      if (!startDate || !endDate) {
-        return res.status(400).json({ error: 'startDate and endDate are required' });
-      }
+      const dateRange = this.resolveDateRange(startDate, endDate);
 
       const filters = {
-        startDate: new Date(startDate as string),
-        endDate: new Date(endDate as string),
+        startDate: dateRange.startDate,
+        endDate: dateRange.endDate,
         ...(platform && { platform: platform as string }),
         ...(country && { country: country as string }),
         ...(appVersion && { appVersion: appVersion as string }),
@@ -83,13 +107,11 @@ export class HealthMetricsController {
         return res.status(400).json({ error: 'gameId is required' });
       }
 
-      if (!startDate || !endDate) {
-        return res.status(400).json({ error: 'startDate and endDate are required' });
-      }
+      const dateRange = this.resolveDateRange(startDate, endDate);
 
       const filters = {
-        startDate: new Date(startDate as string),
-        endDate: new Date(endDate as string),
+        startDate: dateRange.startDate,
+        endDate: dateRange.endDate,
         ...(platform && { platform: platform as string }),
         ...(country && { country: country as string }),
         ...(appVersion && { appVersion: appVersion as string }),
@@ -142,13 +164,11 @@ export class HealthMetricsController {
         return res.status(400).json({ error: 'message or exceptionType is required' });
       }
 
-      if (!startDate || !endDate) {
-        return res.status(400).json({ error: 'startDate and endDate are required' });
-      }
+      const dateRange = this.resolveDateRange(startDate, endDate);
 
       const filters = {
-        startDate: new Date(startDate as string),
-        endDate: new Date(endDate as string),
+        startDate: dateRange.startDate,
+        endDate: dateRange.endDate,
         ...(platform && { platform: platform as string }),
         ...(country && { country: country as string }),
         ...(appVersion && { appVersion: appVersion as string }),

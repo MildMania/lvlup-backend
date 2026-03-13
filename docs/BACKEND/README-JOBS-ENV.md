@@ -120,6 +120,18 @@ This prevents background jobs from impacting API latency and pool pressure.
   - Default: `10000`
   - Maximum API-key cache entry count before FIFO eviction.
 
+## Advisory lock controls
+
+- `ENABLE_JOB_ADVISORY_LOCKS`
+  - Default: `1`
+  - Enables Postgres advisory-lock coordination for cron jobs.
+  - Set to `0` only on a guaranteed single-worker setup.
+
+- `JOB_LOCK_FAIL_OPEN`
+  - Default: `0`
+  - If advisory-lock DB connect/query fails, run the job anyway (without lock) instead of skipping.
+  - Useful for single-worker environments with transient DB networking errors.
+
 ## ClickHouse pipeline controls
 
 - `ANALYTICS_CLICKHOUSE_STRICT`

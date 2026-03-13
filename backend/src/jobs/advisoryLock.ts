@@ -21,6 +21,13 @@ const lockConnectRetryMaxDelayMs = Math.max(
   lockConnectRetryDelayMs,
   Number(process.env.JOB_LOCK_CONNECT_RETRY_MAX_DELAY_MS || 5000)
 );
+const enableJobAdvisoryLocks = !(
+  process.env.ENABLE_JOB_ADVISORY_LOCKS === '0' ||
+  process.env.ENABLE_JOB_ADVISORY_LOCKS === 'false'
+);
+const jobLockFailOpen =
+  process.env.JOB_LOCK_FAIL_OPEN === '1' ||
+  process.env.JOB_LOCK_FAIL_OPEN === 'true';
 
 const sleep = (ms: number): Promise<void> =>
   new Promise((resolve) => setTimeout(resolve, ms));
@@ -79,12 +86,23 @@ async function connectWithRetry(jobName: string): Promise<any | null> {
 }
 
 export async function withJobAdvisoryLock(jobName: string, run: () => Promise<void>): Promise<void> {
+  if (!enableJobAdvisoryLocks) {
+    logger.warn(`[${jobName}] Advisory locks disabled (ENABLE_JOB_ADVISORY_LOCKS=0); running job without lock`);
+    await run();
+    return;
+  }
+
   const lockNamespace = 'lvlup_jobs';
   const lockId = `job:${jobName}`;
   const lockNamespaceHashSql = 'hashtext($1)';
   const lockIdHashSql = 'hashtext($2)';
   const client = await connectWithRetry(jobName);
   if (!client) {
+    if (jobLockFailOpen) {
+      logger.warn(`[${jobName}] Advisory lock DB unavailable; JOB_LOCK_FAIL_OPEN enabled, running without lock`);
+      await run();
+      return;
+    }
     logger.warn(`Skipping ${jobName}: advisory lock DB unavailable`);
     return;
   }
@@ -99,6 +117,10 @@ export async function withJobAdvisoryLock(jobName: string, run: () => Promise<vo
       acquired = Boolean((result.rows[0] as { acquired?: boolean } | undefined)?.acquired);
     } catch (error) {
       logger.error(`[${jobName}] Advisory lock query failed`, error);
+      if (jobLockFailOpen) {
+        logger.warn(`[${jobName}] JOB_LOCK_FAIL_OPEN enabled, running without lock after lock-query failure`);
+        await run();
+      }
       return;
     }
 

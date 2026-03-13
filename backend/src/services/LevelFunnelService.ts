@@ -842,20 +842,31 @@ export class LevelFunnelService {
                 egp: bigint;
             }>
         >(Prisma.sql`
+            WITH per_level_user AS (
+                SELECT
+                    "levelId",
+                    "userId",
+                    BOOL_OR("started" = true) AS started,
+                    BOOL_OR("completed" = true) AS completed,
+                    BOOL_OR("boosterUsed" = true) AS booster,
+                    BOOL_OR("egpUsed" = true) AS egp
+                FROM "level_metrics_daily_users"
+                WHERE "gameId" = ${gameId}
+                  AND "date" >= ${startDate}
+                  AND "date" <= ${endDate}
+                  ${countries.length ? Prisma.sql`AND "countryCode" IN (${Prisma.join(countries)})` : Prisma.sql``}
+                  ${platforms.length ? Prisma.sql`AND "platform" IN (${Prisma.join(platforms)})` : Prisma.sql``}
+                  ${versions.length ? Prisma.sql`AND "appVersion" IN (${Prisma.join(versions)})` : Prisma.sql``}
+                  ${funnelClauses}
+                GROUP BY "levelId", "userId"
+            )
             SELECT
                 "levelId" AS "levelId",
-                COUNT(DISTINCT "userId") FILTER (WHERE "started" = true) AS started,
-                COUNT(DISTINCT "userId") FILTER (WHERE "completed" = true) AS completed,
-                COUNT(DISTINCT "userId") FILTER (WHERE "boosterUsed" = true) AS booster,
-                COUNT(DISTINCT "userId") FILTER (WHERE "egpUsed" = true) AS egp
-            FROM "level_metrics_daily_users"
-            WHERE "gameId" = ${gameId}
-              AND "date" >= ${startDate}
-              AND "date" <= ${endDate}
-              ${countries.length ? Prisma.sql`AND "countryCode" IN (${Prisma.join(countries)})` : Prisma.sql``}
-              ${platforms.length ? Prisma.sql`AND "platform" IN (${Prisma.join(platforms)})` : Prisma.sql``}
-              ${versions.length ? Prisma.sql`AND "appVersion" IN (${Prisma.join(versions)})` : Prisma.sql``}
-              ${funnelClauses}
+                COUNT(*) FILTER (WHERE started) AS started,
+                COUNT(*) FILTER (WHERE completed) AS completed,
+                COUNT(*) FILTER (WHERE booster) AS booster,
+                COUNT(*) FILTER (WHERE egp) AS egp
+            FROM per_level_user
             GROUP BY "levelId"
         `);
 

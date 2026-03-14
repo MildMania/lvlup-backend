@@ -20,6 +20,12 @@ import { eventBatchWriter } from './services/EventBatchWriter';
 import { revenueBatchWriter } from './services/RevenueBatchWriter';
 import { sessionHeartbeatBatchWriter } from './services/SessionHeartbeatBatchWriter';
 
+// In worker-only mode, keep externally provided env (e.g. PM2/.worker.env) ahead of .env.
+// In other modes, keep prior behavior where .env overrides inherited shell vars.
+const preloadRunApi = process.env.RUN_API !== 'false';
+const preloadRunJobs = process.env.RUN_JOBS !== 'false';
+dotenv.config({ override: !(preloadRunJobs && !preloadRunApi) });
+
 const runApi = process.env.RUN_API !== 'false';
 const runJobs = process.env.RUN_JOBS !== 'false';
 const enableLevelMetricsHourlyJob = process.env.ENABLE_LEVEL_METRICS_HOURLY === '1' || process.env.ENABLE_LEVEL_METRICS_HOURLY === 'true';
@@ -35,10 +41,6 @@ const hasExplicitPostgresAggregationFlag = typeof process.env.ENABLE_POSTGRES_AG
 const enablePostgresAggregationJobs = hasExplicitPostgresAggregationFlag
     ? (process.env.ENABLE_POSTGRES_AGGREGATION_JOBS === '1' || process.env.ENABLE_POSTGRES_AGGREGATION_JOBS === 'true')
     : (legacyEnablePostgresAggregationJobsWithClickHouse || !enableClickHouseAggregationJobs);
-
-// In worker-only mode, keep externally provided env (e.g. PM2/.worker.env) ahead of .env.
-// In other modes, keep prior behavior where .env overrides inherited shell vars.
-dotenv.config({ override: !(runJobs && !runApi) });
 
 const app = express();
 const PORT = process.env.PORT ? parseInt(process.env.PORT) : 3000;

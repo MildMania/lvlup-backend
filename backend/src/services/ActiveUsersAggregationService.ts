@@ -153,13 +153,12 @@ export class ActiveUsersAggregationService {
   }
 
   async getGamesWithEvents(): Promise<string[]> {
-    const results = await this.prisma.event.findMany({
-      distinct: ['gameId'],
-      select: { gameId: true },
+    const rows = await this.prisma.game.findMany({
+      select: { id: true },
+      orderBy: { createdAt: 'asc' },
       take: 1000
     });
-
-    return results.map((r) => r.gameId);
+    return rows.map((r) => r.id);
   }
 
   private async aggregateExactDailyDauChunked(gameId: string, dayStart: Date, dayEnd: Date): Promise<void> {

@@ -166,12 +166,12 @@ export class MonetizationAggregationService {
   }
 
   async getGamesWithRevenue(): Promise<string[]> {
-    const rows = await this.prisma.revenue.findMany({
-      distinct: ['gameId'],
-      select: { gameId: true },
+    const rows = await this.prisma.game.findMany({
+      select: { id: true },
+      orderBy: { createdAt: 'asc' },
       take: 1000
     });
-    return rows.map((r) => r.gameId);
+    return rows.map((r) => r.id);
   }
 
   async backfill(gameId: string, startDate: Date, endDate: Date): Promise<void> {

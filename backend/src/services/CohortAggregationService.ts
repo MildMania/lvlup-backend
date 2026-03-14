@@ -398,12 +398,12 @@ export class CohortAggregationService {
   }
 
   async getGamesWithUsers(): Promise<string[]> {
-    const results = await this.prisma.user.findMany({
-      distinct: ['gameId'],
-      select: { gameId: true },
+    const rows = await this.prisma.game.findMany({
+      select: { id: true },
+      orderBy: { createdAt: 'asc' },
       take: 1000
     });
-    return results.map((r) => r.gameId);
+    return rows.map((r) => r.id);
   }
 
   private async getCohortSizesByDimensions(

@@ -1261,18 +1261,12 @@ export class LevelMetricsAggregationService {
    */
   async getGamesWithLevelEvents(): Promise<string[]> {
     try {
-      const results = await this.prisma.event.findMany({
-        where: {
-          eventName: { in: ['level_start', 'level_complete', 'level_failed'] }
-        },
-        distinct: ['gameId'],
-        select: {
-          gameId: true
-        },
+      const rows = await this.prisma.game.findMany({
+        select: { id: true },
+        orderBy: { createdAt: 'asc' },
         take: 1000
       });
-
-      return results.map((r) => r.gameId);
+      return rows.map((r) => r.id);
     } catch (error) {
       logger.error('Error getting games with level events:', error);
       throw error;

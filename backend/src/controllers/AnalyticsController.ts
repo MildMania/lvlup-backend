@@ -333,7 +333,8 @@ export class AnalyticsController {
                 success: true,
                 data: {
                     sessionId: session.id,
-                    startTime: session.startTime
+                    startTime: session.startTime,
+                    sessionNum: session.sessionNum
                 }
             });
         } catch (error) {

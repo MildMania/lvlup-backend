@@ -71,7 +71,7 @@ export function startActiveUsersHourlyTodayJob(): void {
 
         for (const gameId of games) {
           try {
-            await activeUsersAggregationService.aggregateDailyActiveUsers(gameId, today);
+            await activeUsersAggregationService.aggregateDailyActiveUsers(gameId, today, { skipHll: true });
             success++;
           } catch (error) {
             logger.error(`[Postgres] Active users hourly aggregation failed for game ${gameId}:`, error);

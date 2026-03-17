@@ -179,20 +179,34 @@ export class AnalyticsService {
         try {
             const sessionId = uuidv4();
 
-            const session = await this.prisma.session.create({
-                data: {
-                    id: sessionId,
-                    gameId: gameId,
-                    userId: userId,
-                    startTime: new Date(sessionData.startTime),
-                    platform: sessionData.platform ?? null,
-                    version: sessionData.appVersion ?? sessionData.version ?? null, // Use appVersion first, fallback to version
-                    countryCode: sessionData.countryCode ?? null // Store country code directly on session
-                }
+            // Atomically increment user session count and create session in a transaction
+            const [updatedUser, session] = await this.prisma.$transaction([
+                this.prisma.user.update({
+                    where: { id: userId },
+                    data: { sessionCount: { increment: 1 } },
+                    select: { sessionCount: true }
+                }),
+                this.prisma.session.create({
+                    data: {
+                        id: sessionId,
+                        gameId: gameId,
+                        userId: userId,
+                        startTime: new Date(sessionData.startTime),
+                        platform: sessionData.platform ?? null,
+                        version: sessionData.appVersion ?? sessionData.version ?? null,
+                        countryCode: sessionData.countryCode ?? null
+                    }
+                })
+            ]);
+
+            // Update session with the server-assigned session number
+            const finalSession = await this.prisma.session.update({
+                where: { id: sessionId },
+                data: { sessionNum: updatedUser.sessionCount }
             });
 
-            logger.info(`Session ${session.id} started for user ${userId}`);
-            return session;
+            logger.info('Session ' + finalSession.id + ' started for user ' + userId + ' (sessionNum: ' + updatedUser.sessionCount + ')');
+            return finalSession;
         } catch (error) {
             logger.error('Error starting session:', error);
             throw error;
@@ -1302,4 +1316,3 @@ export class AnalyticsService {
         }
     }
 }
-

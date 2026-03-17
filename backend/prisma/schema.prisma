@@ -61,6 +61,7 @@ model User {
   language          String?
   createdAt         DateTime           @default(now())
   updatedAt         DateTime           @updatedAt
+  sessionCount      Int                @default(0)
   aiQueries         AiQuery[]
   events            Event[]
   playerCheckpoints PlayerCheckpoint[]
@@ -83,6 +84,7 @@ model Session {
   platform      String?
   version       String?
   countryCode   String? // ISO country code (e.g., "MX", "US", "TR")
+  sessionNum    Int?
   events        Event[]
   revenueEvents Revenue[]
   user          User      @relation(fields: [userId], references: [id], onDelete: Cascade)

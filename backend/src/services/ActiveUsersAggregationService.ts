@@ -18,7 +18,7 @@ export class ActiveUsersAggregationService {
       process.env.ACTIVE_USERS_DAILY_CHUNKED === 'true';
   }
 
-  async aggregateDailyActiveUsers(gameId: string, targetDate: Date): Promise<void> {
+  async aggregateDailyActiveUsers(gameId: string, targetDate: Date, options?: { skipHll?: boolean }): Promise<void> {
     const date = new Date(targetDate);
     date.setUTCHours(0, 0, 0, 0);
     const dayStart = new Date(date);
@@ -51,6 +51,18 @@ export class ActiveUsersAggregationService {
       await this.aggregateExactDailyDauLegacy(gameId, dayStart, dayEnd);
     }
 
+    // HLL rollups for approximate WAU/MAU — skipped during hourly runs to avoid
+    // re-scanning the full day's events every hour (sawtooth egress pattern).
+    // The daily job at 02:30 UTC runs without skipHll and keeps WAU/MAU accurate.
+    if (options?.skipHll) {
+      logger.info(`[HLL] Skipping HLL rollup for ${gameId} (hourly run)`);
+      return;
+    }
+
+    await this.aggregateHllRollup(gameId, dayStart, dayEnd);
+  }
+
+  async aggregateHllRollup(gameId: string, dayStart: Date, dayEnd: Date): Promise<void> {
     // HLL rollups for approximate WAU/MAU (computed in app, stored as BYTEA)
     const hllMap = new Map<string, {
       platform: string;
@@ -129,6 +141,8 @@ export class ActiveUsersAggregationService {
         `;
       }
     }
+
+    logger.info(`[HLL] HLL rollup complete for ${gameId}: ${processed} events processed`);
   }
 
   async backfillHistorical(gameId: string, startDate: Date, endDate: Date): Promise<void> {

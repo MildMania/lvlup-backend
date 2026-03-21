@@ -192,6 +192,15 @@ export class SessionHeartbeatBatchWriter {
             }
         } finally {
             this.isFlushing = false;
+            // If new heartbeats arrived while this flush was running, make sure
+            // they are drained promptly instead of waiting for another enqueue.
+            if (this.buffer.size > 0) {
+                if (this.buffer.size >= MAX_BATCH_SIZE) {
+                    setImmediate(() => this.flush());
+                } else {
+                    this.startFlushTimer();
+                }
+            }
         }
     }
 

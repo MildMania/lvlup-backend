@@ -229,6 +229,15 @@ export class EventBatchWriter {
             }
         } finally {
             this.isFlushing = false;
+            // If new events arrived while this flush was running, continue draining
+            // the buffer so it does not remain stuck without an active timer.
+            if (this.buffer.length > 0) {
+                if (this.buffer.length >= MAX_BATCH_SIZE) {
+                    setImmediate(() => this.flush());
+                } else {
+                    this.startFlushTimer();
+                }
+            }
         }
     }
 

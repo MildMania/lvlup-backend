@@ -242,6 +242,15 @@ export class RevenueBatchWriter {
             }
         } finally {
             this.isFlushing = false;
+            // If new revenue rows arrived during the flush, keep draining them
+            // instead of leaving the buffer idle until the next enqueue.
+            if (this.buffer.length > 0) {
+                if (this.buffer.length >= MAX_BATCH_SIZE) {
+                    setImmediate(() => this.flush());
+                } else {
+                    this.startFlushTimer();
+                }
+            }
         }
     }
 

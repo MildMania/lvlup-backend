@@ -1,4 +1,4 @@
-import { PrismaClient } from '@prisma/client';
+import { Prisma, PrismaClient } from '@prisma/client';
 import logger from '../utils/logger';
 import prismaInstance from '../prisma';
 
@@ -9,9 +9,9 @@ import prismaInstance from '../prisma';
 export class SessionHeartbeatService {
     private prisma: PrismaClient;
     private intervalId: NodeJS.Timeout | null = null;
-    private readonly HEARTBEAT_TIMEOUT_SECONDS = 180; // 3 minutes without heartbeat = session ended
-    private readonly CLEANUP_INTERVAL_SECONDS = 120; // Check every 2 minutes (reduced from 60s to save memory)
-    private readonly MAX_SESSIONS_PER_CLEANUP = 100; // Limit sessions processed per run to prevent memory spikes
+    private readonly HEARTBEAT_TIMEOUT_SECONDS = Number(process.env.HEARTBEAT_TIMEOUT_SECONDS || 600);
+    private readonly CLEANUP_INTERVAL_SECONDS = Number(process.env.SESSION_CLEANUP_INTERVAL_SECONDS || 120);
+    private readonly MAX_SESSIONS_PER_CLEANUP = Number(process.env.MAX_SESSIONS_PER_CLEANUP || 500);
 
     constructor() {
         this.prisma = prismaInstance;
@@ -104,34 +104,28 @@ export class SessionHeartbeatService {
 
             logger.debug(`Found ${inactiveSessions.length} inactive sessions to close`);
 
-            let closedCount = 0;
+            const sessionIds = inactiveSessions.map((session) => session.id);
             let errorCount = 0;
 
-            for (const session of inactiveSessions) {
-                try {
-                    // Calculate endTime based on last heartbeat
-                    // Use lastHeartbeat if available, otherwise use startTime (for sessions that never got a heartbeat)
-                    const endTime = session.lastHeartbeat || session.startTime;
-                    const duration = Math.floor((endTime.getTime() - session.startTime.getTime()) / 1000);
+            let closedCount = 0;
 
-                    // Ensure duration is at least positive
-                    const finalDuration = Math.max(duration, 0);
+            try {
+                const updatedRows = await this.prisma.$executeRaw<number>(Prisma.sql`
+                    UPDATE "Session"
+                    SET
+                        "endTime" = COALESCE("lastHeartbeat", "startTime"),
+                        "duration" = GREATEST(
+                            EXTRACT(EPOCH FROM (COALESCE("lastHeartbeat", "startTime") - "startTime"))::int,
+                            0
+                        )
+                    WHERE "id" IN (${Prisma.join(sessionIds)})
+                      AND "endTime" IS NULL
+                `);
 
-                    await this.prisma.session.update({
-                        where: { id: session.id },
-                        data: {
-                            endTime: endTime,
-                            duration: finalDuration
-                        }
-                    });
-
-                    closedCount++;
-                    
-                    logger.debug(`Closed inactive session ${session.id} (platform: ${session.platform}, duration: ${finalDuration}s, last heartbeat: ${session.lastHeartbeat?.toISOString() || 'never'})`);
-                } catch (error) {
-                    errorCount++;
-                    logger.error(`Error closing inactive session ${session.id}:`, error);
-                }
+                closedCount = Number(updatedRows);
+            } catch (error) {
+                errorCount++;
+                logger.error('Error closing inactive sessions in batch:', error);
             }
 
             logger.debug(`Inactive session cleanup complete: ${closedCount} closed, ${errorCount} errors`);
